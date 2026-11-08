@@ -57,6 +57,7 @@ import { startEmergencySiren, stopEmergencySiren, unlockAudio, setEmergencySiren
 import { broadcastPushNotification } from '../utils/fcmNotificationService';
 
 import { compressImageFile } from '../utils/imageCompressor';
+import { getAuthHeaders } from '../utils/apiConfig';
 
 export interface RedAlertCreateModalProps {
 
@@ -689,10 +690,10 @@ export const RedAlertCreateModal: any = ({
 
       fetch('/api/alerts/notify-channels', {
         method: 'POST',
-        headers: {
+        headers: getAuthHeaders({
           'Content-Type': 'application/json',
-          'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
-        },
+        }),
+        credentials: 'include',
         body: JSON.stringify({
           alertId: docId,
           title: titleSi,

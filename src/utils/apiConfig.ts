@@ -13,7 +13,7 @@
 // ==============================================================
 
 // සජීවී Production Backend Server Domain එක (ඔබගේ Live Cloud Server එක)
-const DEFAULT_REMOTE_BACKEND = 'https://supporservice.online';
+const DEFAULT_REMOTE_BACKEND = 'https://supportservice.online';
 
 /**
  * යෙදුම ජංගම දුරකථනයක (Mobile APK) ධාවනය වන්නේදැයි හඳුනාගැනීම
@@ -54,7 +54,7 @@ export function getApiBaseUrl(): string {
 const AUTH_SESSION_TOKEN_KEY = 'sahaya_auth_session_token';
 const CSRF_TOKEN_KEY = 'sahaya_csrf_token';
 
-// In-memory primary token store to reduce XSS exposure compared to persistent storage
+// In-memory primary token store synced with sessionStorage & localStorage
 let inMemorySessionToken = '';
 let inMemoryCsrfToken = '';
 
@@ -62,7 +62,12 @@ export function getAuthSessionToken(): string {
   if (inMemorySessionToken) return inMemorySessionToken;
   if (typeof window === 'undefined') return '';
   try {
-    return sessionStorage.getItem(AUTH_SESSION_TOKEN_KEY) || '';
+    const token =
+      sessionStorage.getItem(AUTH_SESSION_TOKEN_KEY) ||
+      localStorage.getItem(AUTH_SESSION_TOKEN_KEY) ||
+      '';
+    if (token) inMemorySessionToken = token;
+    return token;
   } catch {
     return '';
   }
@@ -73,6 +78,7 @@ export function setAuthSessionToken(token: string): void {
   if (typeof window === 'undefined' || !token) return;
   try {
     sessionStorage.setItem(AUTH_SESSION_TOKEN_KEY, token);
+    localStorage.setItem(AUTH_SESSION_TOKEN_KEY, token);
   } catch {}
 }
 
@@ -80,11 +86,20 @@ export function getCsrfToken(): string {
   if (inMemoryCsrfToken) return inMemoryCsrfToken;
   if (typeof document !== 'undefined') {
     const match = document.cookie.match(/(?:^|;\s*)sahaya_csrf=([^;]+)/);
-    if (match && match[1]) return decodeURIComponent(match[1]);
+    if (match && match[1]) {
+      const decoded = decodeURIComponent(match[1]);
+      inMemoryCsrfToken = decoded;
+      return decoded;
+    }
   }
   if (typeof window !== 'undefined') {
     try {
-      return sessionStorage.getItem(CSRF_TOKEN_KEY) || '';
+      const token =
+        sessionStorage.getItem(CSRF_TOKEN_KEY) ||
+        localStorage.getItem(CSRF_TOKEN_KEY) ||
+        '';
+      if (token) inMemoryCsrfToken = token;
+      return token;
     } catch {}
   }
   return '';
@@ -95,6 +110,7 @@ export function setCsrfToken(token: string): void {
   if (typeof window === 'undefined' || !token) return;
   try {
     sessionStorage.setItem(CSRF_TOKEN_KEY, token);
+    localStorage.setItem(CSRF_TOKEN_KEY, token);
   } catch {}
 }
 
@@ -106,6 +122,7 @@ export function clearAuthSessionToken(): void {
     sessionStorage.removeItem(AUTH_SESSION_TOKEN_KEY);
     sessionStorage.removeItem(CSRF_TOKEN_KEY);
     localStorage.removeItem(AUTH_SESSION_TOKEN_KEY);
+    localStorage.removeItem(CSRF_TOKEN_KEY);
   } catch {}
 }
 
@@ -113,6 +130,7 @@ export function getAuthHeaders(extraHeaders: Record<string, string> = {}): Recor
   const token = getAuthSessionToken();
   const csrf = getCsrfToken();
   const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
     'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
     ...extraHeaders,
   };
@@ -151,8 +169,8 @@ export async function apiFetch(
     Accept: 'application/json',
   });
 
-  if (!(options.body instanceof FormData)) {
-    defaultHeaders['Content-Type'] = 'application/json';
+  if (options.body instanceof FormData) {
+    delete defaultHeaders['Content-Type'];
   }
 
   try {

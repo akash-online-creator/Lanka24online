@@ -1,4 +1,5 @@
 import { removeNotificationsForPost } from "../utils/notificationManager";
+import { getAuthHeaders } from "../utils/apiConfig";
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import {
@@ -297,10 +298,7 @@ export async function getUserFromFirestore(userIdOrInput: string) {
     try {
       const res = await fetch('/api/auth/lookup-user', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
-        },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ identifier: cleanInput }),
       });
       if (res.ok) {
@@ -338,10 +336,7 @@ export async function notifyAdminViaTelegramOnRegistration(params: {
 
     await fetch('/api/notify-registration', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
-      },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         registrationType: params.registrationType,
         identifierOrName: params.identifierOrName,
@@ -616,14 +611,10 @@ export async function deleteUserAccount(userOrId: any, _permanent = true): Promi
     try {
       const primaryId = userObj?.id || Array.from(idsToDelete)[0];
       const primaryNic = userObj?.nicNumber || userObj?.nic || userObj?.userId || primaryId;
-      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('sahaya_auth_session_token') : null;
       await fetch("/api/admin/delete-user", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Sahaya-Client-Guard": "sahaya_v1_secure",
-          ...(storedToken ? { Authorization: `Bearer ${storedToken}` } : {}),
-        },
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
+        credentials: "include",
         body: JSON.stringify({
           id: primaryId,
           userId: primaryNic,
@@ -850,7 +841,8 @@ export async function addHelpPostToFirestore(postData: any) {
     try {
       const uploadRes = await fetch('/api/storage/upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        credentials: 'include',
         body: JSON.stringify({
           fileBase64: enriched.imageUrl,
           mediaType: 'image',
@@ -1558,10 +1550,8 @@ export async function castWeightedRedAlertVoteTransaction(
   if (txResult.crossedNearbyThreshold || txResult.crossedConfirmedThreshold) {
     fetch('/api/alerts/notify-channels', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
-      },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
       body: JSON.stringify({
         alertId: params.alertId,
         title: txResult.alertData.disasterTitleSi || txResult.alertData.title || 'හදිසි ආපදා අනතුරු ඇඟවීමක්',

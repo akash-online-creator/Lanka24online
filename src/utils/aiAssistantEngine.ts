@@ -3,6 +3,7 @@ import { subscribeToVerifiedAiKnowledge, savePendingAiQuery } from '../lib/fireb
 import { searchSriLankanPlacesAndRoads, calculateRoadDistanceKm } from './geoUtils';
 import { getClientCachedAiResponse, setClientCachedAiResponse } from './semanticCache';
 import { resolveLocalKnowledge as resolveRoutineLocalKnowledge } from './localKnowledgeResolver';
+import { getAuthHeaders } from './apiConfig';
 
 export interface AssistantAction {
   type:
@@ -89,7 +90,8 @@ export async function translateText(
   try {
     const res = await fetch('/api/translate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
       body: JSON.stringify({
         text: clean,
         targetLanguage: targetLang,
@@ -435,7 +437,8 @@ export async function askAssistant(
   try {
     const res = await fetch('/api/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
       body: JSON.stringify({
         message: clean,
         language: userLang,

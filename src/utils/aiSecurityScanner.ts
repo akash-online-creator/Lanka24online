@@ -1,4 +1,5 @@
 import { User, AiSecurityScanResult, DuplicatePhotoMatch } from '../types';
+import { getAuthHeaders } from './apiConfig';
 
 /**
  * Calculates a lightweight 64-bit perceptual hash (dHash) from an image Data URL
@@ -172,7 +173,8 @@ export async function scanUserNicSecurity(
   try {
     const response = await fetch('/api/admin/scan-id-security', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
       body: JSON.stringify({
         photoUrl,
         declaredNic: user.nicNumber || '',

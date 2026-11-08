@@ -17,6 +17,7 @@ import {
 import { LocationOption, Language } from '../types';
 import { uploadMediaToTelegram } from '../utils/telegramStorage';
 import { resolveExactLocation } from '../utils/geoUtils';
+import { getAuthHeaders } from '../utils/apiConfig';
 
 interface AiVoiceInlineBarProps {
   currentLocation?: LocationOption;
@@ -275,7 +276,8 @@ export const AiVoiceInlineBar: React.FC<AiVoiceInlineBarProps> = ({
       try {
         const response = await fetch('/api/ai/voice-parse', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+          credentials: 'include',
           body: JSON.stringify({
             transcript: fullTranscript,
             language: selectedLanguage,

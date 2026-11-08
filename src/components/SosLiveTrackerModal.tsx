@@ -387,7 +387,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     const sid = sessionId || `sos_${Date.now()}`;
     const baseDomain = (typeof window !== 'undefined' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'localhost')
       ? window.location.origin
-      : 'https://supporservice.online';
+      : 'https://supportservice.online';
     return `${baseDomain}/?sos_session=${sid}`;
   }, [sessionId]);
 
@@ -395,7 +395,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     const sid = sessionId || `sos_${Date.now()}`;
     const baseDomain = (typeof window !== 'undefined' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'localhost')
       ? window.location.origin
-      : 'https://supporservice.online';
+      : 'https://supportservice.online';
     return `${baseDomain}/?sos_session=${sid}&cid=${contactId}`;
   }, [sessionId]);
 

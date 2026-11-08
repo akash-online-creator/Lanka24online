@@ -1,4 +1,5 @@
 import { TelegramMediaRecord } from '../types';
+import { getAuthHeaders } from './apiConfig';
 
 export interface TelegramUploadOptions {
   file?: File | Blob;
@@ -121,9 +122,10 @@ export async function uploadMediaToTelegram(options: TelegramUploadOptions): Pro
 
     const response = await fetch('/api/storage/upload', {
       method: 'POST',
-      headers: {
+      headers: getAuthHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
+      credentials: 'include',
       body: JSON.stringify(payload),
     });
 
@@ -256,7 +258,11 @@ export async function getTelegramStatus(): Promise<TelegramStatusResponse> {
  */
 export async function testTelegramBot(): Promise<{ success: boolean; message: string }> {
   try {
-    const response = await fetch('/api/telegram/test', { method: 'POST' });
+    const response = await fetch('/api/telegram/test', {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
+    });
     const data = await response.json();
     return {
       success: Boolean(data.success),
@@ -275,7 +281,10 @@ export async function testTelegramBot(): Promise<{ success: boolean; message: st
  */
 export async function getTelegramMediaLogs(): Promise<{ logs: any[]; totalCount: number }> {
   try {
-    const res = await fetch('/api/telegram/logs');
+    const res = await fetch('/api/telegram/logs', {
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    });
     if (!res.ok) return { logs: [], totalCount: 0 };
     return await res.json();
   } catch {

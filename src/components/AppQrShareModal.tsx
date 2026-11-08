@@ -25,7 +25,7 @@ export const AppQrShareModal: React.FC<AppQrShareModalProps> = ({
   isOpen,
   onClose,
   language = 'si',
-  initialUrl = 'https://supporservice.online/',
+  initialUrl = 'https://supportservice.online/',
   title
 }) => {
   const [copied, setCopied] = useState(false);

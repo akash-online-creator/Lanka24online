@@ -131,7 +131,7 @@ export const TelegramGroupEditModal: React.FC<TelegramGroupEditModalProps> = ({
           {
             id: `link_${initialGroup.id}_primary`,
             code: initialGroup.inviteCode || 'INVITE123',
-            link: initialGroup.inviteLink || `https://supporservice.online/?join=${initialGroup.id}`,
+            link: initialGroup.inviteLink || `https://supportservice.online/?join=${initialGroup.id}`,
             createdAt: new Date().toLocaleDateString(),
             usageCount: initialGroup.members?.length || 1,
             requiresApproval: initialGroup.privacy === 'private',
@@ -784,7 +784,7 @@ export const TelegramGroupEditModal: React.FC<TelegramGroupEditModalProps> = ({
                     ප්‍රසිද්ධ Username / Permanent Link
                   </label>
                   <div className="flex items-center rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-xs">
-                    <span className="text-slate-400 mr-1 font-mono">https://supporservice.online/</span>
+                    <span className="text-slate-400 mr-1 font-mono">https://supportservice.online/</span>
                     <input
                       type="text"
                       value={username.replace('@', '')}
@@ -1021,7 +1021,7 @@ export const TelegramGroupEditModal: React.FC<TelegramGroupEditModalProps> = ({
                       const newLinkItem: GroupInviteLinkItem = {
                         id: `link_${Date.now()}`,
                         code: newCode,
-                        link: `https://supporservice.online/?join=${initialGroup.id}&code=${newCode}`,
+                        link: `https://supportservice.online/?join=${initialGroup.id}&code=${newCode}`,
                         createdAt: new Date().toLocaleDateString(),
                         usageCount: 0,
                         requiresApproval: privacy === 'private',

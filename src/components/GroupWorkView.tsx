@@ -307,7 +307,7 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
     e.stopPropagation();
     const link =
       group.inviteLink ||
-      `https://supporservice.online/?join_group=${encodeURIComponent(
+      `https://supportservice.online/?join_group=${encodeURIComponent(
         group.username?.replace(/^@/, '') || group.id
       )}&code=${encodeURIComponent(group.inviteCode || '')}`;
 

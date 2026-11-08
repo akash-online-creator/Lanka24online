@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { DisasterReliefItem } from '../types';
+import { getAuthHeaders } from '../utils/apiConfig';
 
 export interface SriLankaDisasterMapProps {
   disasterItems: DisasterReliefItem[];
@@ -524,7 +525,8 @@ export const SriLankaDisasterMap: React.FC<SriLankaDisasterMapProps> = ({
 
       const response = await fetch(`${apiBaseUrl}/rathuweliya/broadcast`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
 

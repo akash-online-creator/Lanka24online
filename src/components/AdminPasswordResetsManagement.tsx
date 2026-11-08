@@ -105,7 +105,7 @@ export const AdminPasswordResetsManagement: React.FC<AdminPasswordResetsManageme
 
 කරුණාකර මෙම තාවකාලික මුරපදය භාවිතයෙන් පද්ධතියට ලොග් වන්න. ලොග් වූ වහාම ඔබගේ නව ස්ථිර මුරපදය ඇතුළත් කිරීමට විමසනු ඇත.
 
-ප්‍රවේශ වීමට: https://supporservice.online
+ප්‍රවේශ වීමට: https://supportservice.online
 
 ස්තූතියි!
 සහය සේවා කණ්ඩායම`;
@@ -129,7 +129,7 @@ export const AdminPasswordResetsManagement: React.FC<AdminPasswordResetsManageme
 
 කරුණාකර ඔබ ලියාපදිංචි වීමේදී ලබා දුන් සත්‍ය ජාතික හැඳුනුම්පත් අංකය (NIC), දුරකථන අංකය හා සම්පුර්ණ නම නිවැරදිව ඇතුළත් කර නැවත ඉල්ලීමක් යොමු කරන්න.
 
-ප්‍රවේශ වීමට: https://supporservice.online
+ප්‍රවේශ වීමට: https://supportservice.online
 
 ස්තූතියි!
 සහය සේවා පරිපාලන කණ්ඩායම`;

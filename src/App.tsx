@@ -572,6 +572,24 @@ export const App: React.FC = () => {
       console.warn(e);
     }
 
+    // Obtain server-side signed sessionToken & csrfToken for Quick PIN login
+    fetch('/api/auth/session', {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
+      body: JSON.stringify({
+        identifier: authenticatedUser.nicNumber || authenticatedUser.nic || authenticatedUser.userId || authenticatedUser.id,
+        pinVerified: true,
+        clientUser: sanitizeUserForSessionStorage(authenticatedUser),
+      }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.sessionToken) setAuthSessionToken(data.sessionToken);
+        if (data?.csrfToken) setCsrfToken(data.csrfToken);
+      })
+      .catch(() => {});
+
     if (authenticatedUser.role === 'admin' || authenticatedUser.role === 'super_admin') {
       setActiveView('admin');
     } else if (authenticatedUser.status === 'pending') {

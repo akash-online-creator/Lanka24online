@@ -1,4 +1,5 @@
 import { User } from '../types';
+import { getAuthHeaders } from './apiConfig';
 
 /**
  * Normalizes user identifiers (NIC, UserID, Phone, Numeric ID) for robust matching
@@ -219,10 +220,10 @@ export async function hashUserPassword(rawPass: string): Promise<string> {
     try {
       const res = await fetch('/api/auth/hash-password', {
         method: 'POST',
-        headers: {
+        headers: getAuthHeaders({
           'Content-Type': 'application/json',
-          'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
-        },
+        }),
+        credentials: 'include',
         body: JSON.stringify({ password: clean }),
       });
       if (res.ok) {

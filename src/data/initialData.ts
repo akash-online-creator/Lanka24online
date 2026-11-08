@@ -171,7 +171,7 @@ export const initialUsers: User[] = [
     userNumericId: '970181547',
     credits: 500,
     name: 'පරිපාලක (Admin)',
-    email: 'admin@supporservice.online',
+    email: 'admin@supportservice.online',
     nicNumber: '970181547V',
     phone: '',
     address: 'ශ්‍රී ලංකාව',

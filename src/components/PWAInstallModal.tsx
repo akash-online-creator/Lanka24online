@@ -84,8 +84,8 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
     };
   }, []);
 
-  const directUrl = typeof window !== 'undefined' ? window.location.origin : 'https://supporservice.online';
-  const downloadLandingUrl = typeof window !== 'undefined' ? `${window.location.origin}/download` : 'https://supporservice.online/download';
+  const directUrl = typeof window !== 'undefined' ? window.location.origin : 'https://supportservice.online';
+  const downloadLandingUrl = typeof window !== 'undefined' ? `${window.location.origin}/download` : 'https://supportservice.online/download';
   const apkDownloadUrl = FALLBACK_APK_DIRECT_URL;
 
   const [qrDataUrl, setQrDataUrl] = useState<string>('');

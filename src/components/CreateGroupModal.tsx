@@ -195,7 +195,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
       const inviteLink = privacy === 'private' 
 
-        ? `https://supporservice.online/?join_group=${cleanUsername}&code=${generatedInviteCode}`
+        ? `https://supportservice.online/?join_group=${cleanUsername}&code=${generatedInviteCode}`
 
         : undefined;
 
@@ -239,7 +239,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
         createdAtMs: Date.now(),
         membersCount: 1,
         inviteCode: generatedInviteCode,
-        inviteLink: inviteLink || `https://supporservice.online/?join=${generatedGroupId}`,
+        inviteLink: inviteLink || `https://supportservice.online/?join=${generatedGroupId}`,
         chatHistoryVisible: true,
         appearanceColor: '#22c55e',
         topicsEnabled: false,
@@ -278,7 +278,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
           {
             id: `link_${generatedGroupId}_primary`,
             code: generatedInviteCode,
-            link: inviteLink || `https://supporservice.online/?join=${generatedGroupId}`,
+            link: inviteLink || `https://supportservice.online/?join=${generatedGroupId}`,
             createdAt: new Date().toLocaleDateString(),
             usageCount: 1,
             requiresApproval: privacy === 'private',

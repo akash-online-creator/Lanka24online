@@ -17,6 +17,7 @@ import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 
 import firebaseConfigJson from '../../firebase-applet-config.json';
+import { getAuthHeaders } from './apiConfig';
 
 export type PushCategory = any;
 
@@ -303,10 +304,8 @@ export async function registerFcmToken(currentUserId?: string) {
           const coords = getLocalCoordinates();
           fetch('/api/webpush/subscribe', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
-            },
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+            credentials: 'include',
             body: JSON.stringify({
               userId: currentUserId || 'usr_guest',
               subscription: subJson,
@@ -876,14 +875,10 @@ export async function broadcastPushNotification(payload: FcmPayloadData) {
   }
 
   try {
-    const storedToken = typeof window !== 'undefined' ? localStorage.getItem('sahaya_auth_session_token') : null;
     fetch('/api/push/broadcast', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
-        ...(storedToken ? { Authorization: `Bearer ${storedToken}` } : {}),
-      },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
       body: JSON.stringify(enrichedPayload),
     }).catch(() => {});
   } catch {}
@@ -899,10 +894,8 @@ export async function subscribeDeviceToTopic(token: string, topicName: string): 
   try {
     const res = await fetch('/api/fcm/subscribe-topic', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
-      },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
       body: JSON.stringify({ token, topic: cleanTopic }),
     });
     if (res.ok) {
@@ -924,10 +917,8 @@ export async function unsubscribeDeviceFromTopic(token: string, topicName: strin
   try {
     const res = await fetch('/api/fcm/unsubscribe-topic', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
-      },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
       body: JSON.stringify({ token, topic: cleanTopic }),
     });
     return res.ok;

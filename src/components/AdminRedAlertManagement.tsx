@@ -28,6 +28,7 @@ import { addDeletedRedAlertId, filterNonDeletedRedAlerts } from '../utils/delete
 import { broadcastRedAlertResolvedNotification } from '../utils/notificationManager';
 import { checkIsAdmin, UserProfile } from '../utils/postOwnerHelper';
 import { useUserMode } from '../context/UserModeContext';
+import { getAuthHeaders } from '../utils/apiConfig';
 
 interface AdminRedAlertManagementProps {
   alerts?: RedAlertItem[];
@@ -117,7 +118,8 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
       try {
         const response = await fetch(`${BACKEND_API_URL}/rathuweliya/broadcast-alert`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+          credentials: 'include',
           body: JSON.stringify({
             disasterType: alert.disasterTitleSi || alert.disasterType || 'හදිසි ආපදාව',
             latitude: alert.latitude,
