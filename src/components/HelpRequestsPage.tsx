@@ -450,6 +450,43 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     return 5;
   };
 
+  const activeRedAlerts = useMemo(() => {
+    return (redAlerts ? redAlerts : []).filter((a) => Boolean(a)).map((a) => {
+      const anyA = a as any;
+      const baseTitle = anyA.disasterTitleSi ? anyA.disasterTitleSi : a.title ? a.title : 'හදිසි ආපදා දැන්වීම';
+      const baseDesc = a.description ? a.description : '';
+      const fakeCount = (Array.isArray(a.fakeReports) ? a.fakeReports.length : 0) ? (Array.isArray(a.fakeReports) ? a.fakeReports.length : 0) : a.fakeReportsCount ? a.fakeReportsCount : 0;
+      const isFake = Boolean(anyA.isFlaggedFake ? true : a.status === 'fake' ? true : Math.max(fakeCount, 4) === fakeCount);
+      const isRemoved = Boolean(a.status === 'cancelled' ? true : anyA.isDeleted);
+      const isResolved = Boolean(a.status === 'resolved');
+      const delTime = anyA.deletedAtDisplay ? anyA.deletedAtDisplay : a.cancelledAt ? a.cancelledAt : anyA.deletedAt ? anyA.deletedAt : '';
+      const resTime = anyA.resolvedAtDisplay ? anyA.resolvedAtDisplay : a.resolvedAt ? a.resolvedAt : '';
+
+      if (isRemoved) {
+        return {
+          ...a,
+          disasterTitleSi: `🗑️ [ඉවත් කරන ලදී: ${delTime}] ${baseTitle}`,
+          description: `🗑️ මෙම දැන්වීම ඉවත් කරන ලදී (දිනය සහ වේලාව: ${delTime}) • ${baseDesc}`,
+        };
+      }
+      if (isFake) {
+        return {
+          ...a,
+          disasterTitleSi: '⚠️ [මෙය අසත්‍ය ලෙස පළකරන ලද දැන්වීමකි] ' + baseTitle,
+          description: '🚨 මෙය අසත්‍ය ලෙස පළකරන ලද දැන්වීමකි (පරිශීලකයන් ' + fakeCount + ' දෙනෙකු අසත්‍යයක් ලෙස වාර්තා කර ඇත) • ' + baseDesc,
+        };
+      }
+      if (isResolved) {
+        return {
+          ...a,
+          disasterTitleSi: `✅ [විසඳන ලදී: ${resTime}] ${baseTitle}`,
+          description: `✅ මෙම ආපදා දැන්වීම විසඳන ලදී (${resTime}) • ${baseDesc}`,
+        };
+      }
+      return a;
+    });
+  }, [redAlerts]);
+
   const newsFeedSortedPosts = useMemo(() => {
     const isAdminUser = Boolean(user && (user.role === 'admin' ? true : user.role === 'super_admin'));
     const sourceList = (filteredPosts ? filteredPosts : []).filter((p): p is HelpPost => {
@@ -473,6 +510,132 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     });
 
     const existingCodes = new Set(sourceList.map((p) => String(p.postCode ? p.postCode : p.id)));
+    sourceList.forEach((p) => {
+      if (p?.id) existingCodes.add(String(p.id));
+    });
+
+    const isRedAlertCategoryView = Boolean(
+      !boardCategoryFilter ||
+      boardCategoryFilter === 'emergency' ||
+      boardCategoryFilter === 'red_alert' ||
+      boardCategoryFilter === 'urgent' ||
+      boardCategoryFilter === 'resolved' ||
+      activeFeedTab === 'emergency'
+    );
+
+    const mappedRedAlertPosts: HelpPost[] = isRedAlertCategoryView
+      ? (activeRedAlerts || [])
+          .filter((a: any) => {
+            if (!a || !a.id) return false;
+            const alertCodeStr = String(a.alertCode || a.id);
+            if (existingCodes.has(alertCodeStr) || existingCodes.has(String(a.id))) return false;
+            const isRemoved = Boolean(a.status === 'cancelled' || a.isDeleted || isPostPermanentlyDeleted(a.id));
+            if (isRemoved) return false;
+            if (boardCategoryFilter === 'resolved') {
+              return a.status === 'resolved';
+            }
+            if (a.status === 'resolved') return false;
+
+            // Search query filter if active
+            if (searchQuery && searchQuery.trim()) {
+              const q = searchQuery.trim().toLowerCase();
+              const hay = `${a.disasterTitleSi || ''} ${a.title || ''} ${a.description || ''} ${a.locationName || ''} ${a.alertCode || ''}`.toLowerCase();
+              if (!hay.includes(q)) return false;
+            }
+
+            // Distance filter on general 'all' feed when local (<15km) tab is active (under explicit 'emergency' category, show all active Red Alerts)
+            const isExplicitEmergencyFilter = Boolean(
+              boardCategoryFilter === 'emergency' ||
+              boardCategoryFilter === 'red_alert' ||
+              boardCategoryFilter === 'urgent' ||
+              activeFeedTab === 'emergency'
+            );
+            if (!isExplicitEmergencyFilter && feedDistanceTab === 'local' && currentLocation && typeof a.latitude === 'number' && typeof a.longitude === 'number') {
+              const myUid = String(user?.userId || user?.id || user?.nic || '');
+              const isMyAlert = Boolean(myUid && a.reportedByUserId && String(a.reportedByUserId) === myUid);
+              if (!isMyAlert) {
+                const dist = calculateDistanceKm(currentLocation.lat, currentLocation.lng, a.latitude, a.longitude);
+                if (dist > (maxDistanceRadius || 15)) return false;
+              }
+            }
+            return true;
+          })
+          .map((a: any) => {
+            const dConfig: any = getDisasterConfig(a.disasterType);
+            const alertCode = a.alertCode ? String(a.alertCode) : `#RED-${String(a.id).slice(-4)}`;
+            const baseTitle = a.disasterTitleSi || a.title || dConfig?.titleSi || dConfig?.labelSi || 'හදිසි ආපදා දැන්වීම';
+            const rTitle =
+              baseTitle.startsWith('🚨') || baseTitle.startsWith('⚠️') || baseTitle.startsWith('✅') || baseTitle.startsWith('🗑️')
+                ? baseTitle
+                : `🚨 රතු එළිය: ${baseTitle}`;
+            const confScore =
+              typeof a.score === 'number'
+                ? a.score
+                : typeof a.confidenceScore === 'number'
+                ? a.confidenceScore
+                : (Array.isArray(a.confirmations) ? a.confirmations.length : a.confirmationsCount || 0) -
+                  (Array.isArray(a.fakeReports) ? a.fakeReports.length : a.fakeReportsCount || 0);
+            const confStatusText =
+              confScore >= 10
+                ? '✅ ප්‍රජාව තහවුරු කළ සත්‍ය ආපදාවකි'
+                : confScore >= 4
+                ? '🟢 බොහෝ දුරට සත්‍ය විය හැක'
+                : confScore <= -10
+                ? '❌ අසත්‍ය බවට තහවුරු විය'
+                : confScore <= -4
+                ? '🟠 අසත්‍ය විය හැක'
+                : '🟡 සැක සහිත (තහවුරු වෙමින් පවතී)';
+            const rDetails = `${a.description || 'ආරක්ෂිත ස්ථානයක රැඳී සිටින්න. වැඩිදුර තොරතුරු බලාපොරොත්තු වන්න.'}\n📍 ස්ථානය: ${a.locationName || 'ශ්‍රී ලංකාව'} • 📊 ප්‍රජා විශ්වාස මිනුම: ${confStatusText} (ලකුණු: ${confScore > 0 ? `+${confScore}` : confScore}/±10)`;
+            const showRep = a.showReporterInfo !== false;
+            const reporterName = showRep
+              ? a.reportedByName || a.contactName || 'රතු එළිය වාර්තාකරු'
+              : 'නිර්නාමික වාර්තාකරු (රතු එළිය)';
+            const reporterPhone = showRep ? a.reportedByPhone || a.contactPhone || '' : '';
+            const imgUrl =
+              a.photoEvidenceUrl ||
+              a.imageUrl ||
+              a.photoUrl ||
+              (Array.isArray(a.mediaUrls) && a.mediaUrls.length > 0 ? a.mediaUrls[0] : undefined);
+
+            return {
+              id: a.id,
+              postCode: alertCode,
+              category: 'red_alert',
+              serviceType: 'red_alert',
+              postType: 'red_alert',
+              disasterType: a.disasterType,
+              tagCategory: 'හදිසි / ආපදා',
+              tagName: `🚨 රතු එළිය • ${dConfig?.titleSi || dConfig?.labelSi || 'හදිසි ආපදා'}`,
+              headline: rTitle,
+              title: rTitle,
+              whatHappened: rDetails,
+              whatIsNeeded: `📊 ප්‍රජා විශ්වාස මිනුම: ${confStatusText} • සම්පූර්ණ රතු එළිය විස්තරය, සයිරන් පාලනය සහ සත්‍ය/අසත්‍ය ලකුණු ලබාදීමට මෙම දැන්වීම මත ක්ලික් කරන්න.`,
+              content: rDetails,
+              locationName: a.locationName || 'ශ්‍රී ලංකාව',
+              lat: typeof a.latitude === 'number' ? a.latitude : currentLocation?.lat || 6.9271,
+              lng: typeof a.longitude === 'number' ? a.longitude : currentLocation?.lng || 79.8612,
+              latitude: typeof a.latitude === 'number' ? a.latitude : currentLocation?.lat || 6.9271,
+              longitude: typeof a.longitude === 'number' ? a.longitude : currentLocation?.lng || 79.8612,
+              imageUrl: imgUrl,
+              photoUrl: imgUrl,
+              priorityLevel: 'emergency',
+              isPinnedEmergency: true,
+              userId: a.reportedByUserId || 'red_alert_reporter',
+              actualAuthorId: a.reportedByUserId || 'red_alert_reporter',
+              actualAuthorName: a.reportedByName || reporterName,
+              userName: reporterName,
+              isAnonymous: !showRep,
+              userPhone: reporterPhone,
+              contactNumber: reporterPhone,
+              contactPersonName: reporterName,
+              status: a.status === 'resolved' ? 'resolved' : 'active',
+              createdAt: a.createdAt || new Date().toISOString(),
+              createdAtMs: a.createdAtMs || (a.createdAt ? new Date(a.createdAt).getTime() : Date.now()),
+              rawRedAlert: a,
+            } as unknown as HelpPost;
+          })
+      : [];
+
     const storedBloodPosts: HelpPost[] = (!boardCategoryFilter ? true : boardCategoryFilter === 'emergency' ? true : boardCategoryFilter === 'blood_disaster')
       ? (getStoredBloodRequests() ? getStoredBloodRequests() : [])
           .filter((b: any) => Boolean(b && b.id && !existingCodes.has(String(b.postCode ? b.postCode : b.id))))
@@ -552,7 +715,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
           })
       : [];
 
-    let result = [...sourceList, ...storedBloodPosts, ...storedDisasterPosts];
+    let result = [...mappedRedAlertPosts, ...sourceList, ...storedBloodPosts, ...storedDisasterPosts];
 
     // Apply active feed tab filter
     if (activeFeedTab === 'emergency') {
@@ -562,7 +725,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     } else if (activeFeedTab === 'saved' || boardCategoryFilter === 'saved') {
       // 📌 සුරැකි / ගබඩාකල දැන්වීම්: සියලුම සුරැකි දැන්වීම් සම්පූර්ණයෙන්ම ආරක්ෂිතව පෙන්වීම
       const savedSet = new Set(savedPostIds);
-      result = (helpPosts || []).filter(
+      result = [...mappedRedAlertPosts, ...(helpPosts || [])].filter(
         (p) => p && p.id && savedSet.has(p.id) && !isPostPermanentlyDeleted(p.id) && !p.isDeleted && p.status !== 'deleted'
       );
     }
@@ -593,7 +756,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       const timeB = getPostTimestamp(b);
       return timeB - timeA;
     });
-  }, [filteredPosts, activeFeedTab, savedPostIds, currentLocation, boardCategoryFilter, bloodDisasterSyncTick]);
+  }, [filteredPosts, activeRedAlerts, activeFeedTab, savedPostIds, currentLocation, boardCategoryFilter, bloodDisasterSyncTick, searchQuery, feedDistanceTab, maxDistanceRadius, user, helpPosts]);
   // Automatic Infinite Scroll: Auto-load next 8 posts as soon as user views the last 2 posts
   useEffect(() => {
     if (visibleCount >= newsFeedSortedPosts.length) return;
@@ -620,43 +783,6 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       observer.disconnect();
     };
   }, [visibleCount, newsFeedSortedPosts.length, handleLoadMore]);
-
-  const activeRedAlerts = useMemo(() => {
-    return (redAlerts ? redAlerts : []).filter((a) => Boolean(a)).map((a) => {
-      const anyA = a as any;
-      const baseTitle = anyA.disasterTitleSi ? anyA.disasterTitleSi : a.title ? a.title : 'හදිසි ආපදා දැන්වීම';
-      const baseDesc = a.description ? a.description : '';
-      const fakeCount = (Array.isArray(a.fakeReports) ? a.fakeReports.length : 0) ? (Array.isArray(a.fakeReports) ? a.fakeReports.length : 0) : a.fakeReportsCount ? a.fakeReportsCount : 0;
-      const isFake = Boolean(anyA.isFlaggedFake ? true : a.status === 'fake' ? true : Math.max(fakeCount, 4) === fakeCount);
-      const isRemoved = Boolean(a.status === 'cancelled' ? true : anyA.isDeleted);
-      const isResolved = Boolean(a.status === 'resolved');
-      const delTime = anyA.deletedAtDisplay ? anyA.deletedAtDisplay : a.cancelledAt ? a.cancelledAt : anyA.deletedAt ? anyA.deletedAt : '';
-      const resTime = anyA.resolvedAtDisplay ? anyA.resolvedAtDisplay : a.resolvedAt ? a.resolvedAt : '';
-
-      if (isRemoved) {
-        return {
-          ...a,
-          disasterTitleSi: `🗑️ [ඉවත් කරන ලදී: ${delTime}] ${baseTitle}`,
-          description: `🗑️ මෙම දැන්වීම ඉවත් කරන ලදී (දිනය සහ වේලාව: ${delTime}) • ${baseDesc}`,
-        };
-      }
-      if (isFake) {
-        return {
-          ...a,
-          disasterTitleSi: '⚠️ [මෙය අසත්‍ය ලෙස පළකරන ලද දැන්වීමකි] ' + baseTitle,
-          description: '🚨 මෙය අසත්‍ය ලෙස පළකරන ලද දැන්වීමකි (පරිශීලකයන් ' + fakeCount + ' දෙනෙකු අසත්‍යයක් ලෙස වාර්තා කර ඇත) • ' + baseDesc,
-        };
-      }
-      if (isResolved) {
-        return {
-          ...a,
-          disasterTitleSi: `✅ [විසඳන ලදී: ${resTime}] ${baseTitle}`,
-          description: `✅ මෙම ආපදා දැන්වීම විසඳන ලදී (${resTime}) • ${baseDesc}`,
-        };
-      }
-      return a;
-    });
-  }, [redAlerts]);
 
   const [liveMarketItemsCount, setLiveMarketItemsCount] = useState(() => getStoredMarketItems().length);
   const [liveMarketShopsCount, setLiveMarketShopsCount] = useState(() => getStoredMarketShops().length);
@@ -698,10 +824,22 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       if (p.visibilityMode === 'schedule' && p.scheduledPublishAt && Date.parse(p.scheduledPublishAt) > Date.now() && !isAdminUser && !isOwner) return false;
       return true;
     });
+    const existingIds = new Set(posts.map((p: any) => String(p.postCode ? p.postCode : p.id)));
+    posts.forEach((p: any) => {
+      if (p?.id) existingIds.add(String(p.id));
+    });
+    const validRedAlertsCount = (Array.isArray(redAlerts) ? redAlerts : []).filter((a: any) => {
+      if (!a || !a.id) return false;
+      if (a.status === 'cancelled' || a.status === 'resolved' || a.isDeleted || isPostPermanentlyDeleted(a.id)) return false;
+      if (existingIds.has(String(a.alertCode || a.id)) || existingIds.has(String(a.id))) return false;
+      return true;
+    }).length;
+    const extraBloodCount = (getStoredBloodRequests() || []).filter((b: any) => b && b.id && !existingIds.has(String(b.postCode || b.id))).length;
+    const extraDisasterCount = (getStoredDisasterReliefItems() || []).filter((d: any) => d && d.id && !existingIds.has(String(d.id))).length;
     const mktPostsCount = posts.filter((p) => Boolean(p && (p.category === 'marketplace' ? true : p.serviceType === 'marketplace'))).length;
     return {
-      all: posts.length,
-      emergency: posts.filter((p) => isEmergencyOrHighPriority(p)).length,
+      all: posts.length + validRedAlertsCount + extraBloodCount + extraDisasterCount,
+      emergency: posts.filter((p) => isEmergencyOrHighPriority(p)).length + validRedAlertsCount + extraBloodCount + extraDisasterCount,
       quick_services: posts.filter((p) => isQuickService(p)).length,
       normal_services: posts.filter((p) => {
         if (!p) return false;
@@ -738,7 +876,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       from_me_to_you: posts.filter((p) => Boolean(p && (p.category === 'from_me_to_you' ? true : p.serviceType === 'from_me_to_you'))).length,
       saved: savedPostIds.length,
     };
-  }, [helpPosts, savedPostIds, liveMarketItemsCount, liveMarketShopsCount]);
+  }, [helpPosts, redAlerts, bloodDisasterSyncTick, savedPostIds, liveMarketItemsCount, liveMarketShopsCount, user]);
   // 🚨 Dynamic Cycling Carousel state for multiple Red Alerts
   const [activeAlertIndex, setActiveAlertIndex] = useState(0);
   const [isAlertCarouselPaused, setIsAlertCarouselPaused] = useState(false);
@@ -1357,7 +1495,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       ) : (
         /* The Facebook-Style News Feed Stream */
         <div className="space-y-4">
-          {(newsFeedSortedPosts.length === 0 && !((activeFeedTab === 'emergency' || boardCategoryFilter === 'emergency' || (!boardCategoryFilter && activeFeedTab === 'all')) && activeRedAlerts.length > 0)) ? (
+          {newsFeedSortedPosts.length === 0 ? (
             <div className="w-full bg-white dark:bg-[#071710] border border-slate-200/90 dark:border-[#132a1d] rounded-3xl p-8 text-center space-y-4 shadow-sm">
               <div className="w-14 h-14 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center">
                 {activeFeedTab === 'saved' ? (
@@ -1475,14 +1613,44 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                       isOwner={isPostOwner}
                       isSaved={savedPostIds.includes(post.id)}
                       onToggleSave={(p) => handleToggleSavePost(p)}
-                      onOfferSupport={(p) => onOfferSupport(p)}
+                      onOfferSupport={(p) => {
+                        if ((p as any)?.rawRedAlert && onViewRedAlertDetail) {
+                          onViewRedAlertDetail((p as any).rawRedAlert);
+                          return;
+                        }
+                        onOfferSupport(p);
+                      }}
                       onEditPost={(p) => onEditPost(p)}
                       onToggleHidePost={(p) => onToggleHidePost ? onToggleHidePost(p) : undefined}
-                      onViewPost={(p) => onViewPost(p)}
+                      onViewPost={(p) => {
+                        if ((p as any)?.rawRedAlert && onViewRedAlertDetail) {
+                          onViewRedAlertDetail((p as any).rawRedAlert);
+                          return;
+                        }
+                        onViewPost(p);
+                      }}
                       onDeletePost={(p) => onDeletePost(p)}
-                      onOpenChat={(p) => onOpenChat(p)}
-                      onOpenConfirm={(p) => onOpenConfirm ? onOpenConfirm(p) : onOfferSupport(p)}
-                      onOpenSupportOffers={(p) => onOpenSupportOffers(p)}
+                      onOpenChat={(p) => {
+                        if ((p as any)?.rawRedAlert && onViewRedAlertDetail) {
+                          onViewRedAlertDetail((p as any).rawRedAlert);
+                          return;
+                        }
+                        onOpenChat(p);
+                      }}
+                      onOpenConfirm={(p) => {
+                        if ((p as any)?.rawRedAlert && onViewRedAlertDetail) {
+                          onViewRedAlertDetail((p as any).rawRedAlert);
+                          return;
+                        }
+                        return onOpenConfirm ? onOpenConfirm(p) : onOfferSupport(p);
+                      }}
+                      onOpenSupportOffers={(p) => {
+                        if ((p as any)?.rawRedAlert && onViewRedAlertDetail) {
+                          onViewRedAlertDetail((p as any).rawRedAlert);
+                          return;
+                        }
+                        onOpenSupportOffers(p);
+                      }}
                       onRequireRegistration={onRequireRegistration}
                       onBoostPost={(p) => {
                         if (onBoostPost) {

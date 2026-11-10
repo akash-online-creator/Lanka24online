@@ -279,11 +279,35 @@ export const App: React.FC = () => {
     });
     const unsubscribeAlerts = subscribeToRedAlerts((alerts) => {
       if (Array.isArray(alerts)) {
-        const filtered = filterNonDeletedRedAlerts(alerts);
+        const currentLocal = getStoredRedAlerts();
+        const map = new Map<string, RedAlertItem>();
+        currentLocal.forEach((a) => { if (a && a.id) map.set(String(a.id), a); });
+        alerts.forEach((a) => { if (a && a.id) map.set(String(a.id), a); });
+        const filtered = filterNonDeletedRedAlerts(Array.from(map.values())).sort((a: any, b: any) => {
+          const tA = Number(a.createdAtMs || (a.createdAt ? new Date(a.createdAt).getTime() : 0));
+          const tB = Number(b.createdAtMs || (b.createdAt ? new Date(b.createdAt).getTime() : 0));
+          return tB - tA;
+        });
         setRedAlerts(filtered);
         saveRedAlertsToStorage(filtered);
       }
     });
+    const handleLocalRedAlertCreated = (e: any) => {
+      const newAlert = e?.detail?.alert;
+      if (newAlert && newAlert.id) {
+        setRedAlerts((prev) => {
+          const list = Array.isArray(prev) ? prev : [];
+          const next = filterNonDeletedRedAlerts(
+            list.some((a) => a && a.id === newAlert.id)
+              ? list.map((a) => (a && a.id === newAlert.id ? newAlert : a))
+              : [newAlert, ...list]
+          );
+          saveRedAlertsToStorage(next);
+          return next;
+        });
+      }
+    };
+    window.addEventListener('sahaya_red_alert_created', handleLocalRedAlertCreated);
     const unsubscribeIssues = subscribeToIssuesFromFirestore((dbIssues) => {
       if (Array.isArray(dbIssues)) {
         setIssues(dbIssues);
@@ -298,6 +322,7 @@ export const App: React.FC = () => {
       unsubscribePosts?.();
       unsubscribeAlerts?.();
       unsubscribeIssues?.();
+      window.removeEventListener('sahaya_red_alert_created', handleLocalRedAlertCreated);
     };
   }, []);
 

@@ -707,6 +707,10 @@ export const RedAlertCreateModal: any = ({
         }),
       }).catch(() => {});
 
+      try {
+        window.dispatchEvent(new CustomEvent('sahaya_red_alert_created', { detail: { alert: createdAlert } }));
+      } catch (_) {}
+
       setPublishedAlert(createdAlert);
 
     } catch (err) {

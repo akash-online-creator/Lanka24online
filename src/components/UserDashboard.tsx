@@ -1313,12 +1313,19 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     if (boardCategoryFilter && boardCategoryFilter !== 'saved') {
       if (boardCategoryFilter === 'resolved') {
         if (!post.isResolved && post.status !== 'resolved') return false;
-      } else if (boardCategoryFilter === 'urgent' || boardCategoryFilter === 'emergency') {
+      } else if (boardCategoryFilter === 'urgent' || boardCategoryFilter === 'emergency' || boardCategoryFilter === 'red_alert') {
+        const anyPost = post as any;
+        const pCode = String(post.postCode || anyPost.alertCode || '');
         const isEmergPost =
           Boolean(post.isUrgent || post.urgencyLevel || post.isPinnedEmergency) ||
           post.priorityLevel === 'emergency' ||
           post.priorityLevel === 'high' ||
           post.category === 'emergency' ||
+          post.category === 'red_alert' ||
+          anyPost.postType === 'red_alert' ||
+          anyPost.serviceType === 'red_alert' ||
+          pCode.startsWith('#RED-') ||
+          pCode.startsWith('#EMG-') ||
           post.category === 'blood_disaster' ||
           post.tagCategory === 'හදිසි / ආපදා';
         if (!isEmergPost) return false;
@@ -2588,7 +2595,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
           try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}
           if (setRedAlerts) {
-            setRedAlerts((prev) => [newAlert, ...(prev || [])]);
+            setRedAlerts((prev) => {
+              const list = Array.isArray(prev) ? prev : [];
+              return list.some((a) => a && a.id === newAlert.id) ? list : [newAlert, ...list];
+            });
           }
           setIsRedAlertCreateOpen(false);
         }}

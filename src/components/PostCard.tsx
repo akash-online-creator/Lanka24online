@@ -377,12 +377,20 @@ onEditPost(post);
 };
 const handleViewClick = (e: React.MouseEvent) => {
 e.stopPropagation();
+if ((post as any)?.rawRedAlert && onViewPost) {
+onViewPost(post);
+return;
+}
 setIsExpandedFullModal(true);
 };
 const handleChatClick = (e: React.MouseEvent) => {
 e.stopPropagation();
 if (isDemo) {
 if (onRequireRegistration) onRequireRegistration();
+return;
+}
+if ((post as any)?.rawRedAlert && onViewPost) {
+onViewPost(post);
 return;
 }
 if (onOpenChat) {
@@ -397,6 +405,10 @@ const handleSupportClick = (e: React.MouseEvent) => {
 e.stopPropagation();
 if (isDemo) {
 if (onRequireRegistration) onRequireRegistration();
+return;
+}
+if ((post as any)?.rawRedAlert && onViewPost) {
+onViewPost(post);
 return;
 }
 if (ownerCheck && onOpenSupportOffers) {
@@ -528,9 +540,9 @@ title: 'Inbox / Chat පණිවිඩයක් එවන්න'
 }, h(MessageCircle, { className: 'w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400' }), h('span', null, 'Inbox')), Boolean(onOfferSupport ? true : onOpenSupportOffers ? true : onOpenConfirm) ? h('button', {
 type: 'button',
 onClick: handleSupportClick,
-className: 'px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 text-xs font-black shadow-sm',
-title: ownerCheck ? 'සහායකයින් බලන්න' : 'සහාය වන්න (Offer Support)'
-}, h(ownerCheck ? UserCheck : HelpCircle, { className: 'w-3.5 h-3.5' }), h('span', null, ownerCheck ? getLangText('සහායකයින්', 'Helpers', 'உதவியாளர்கள்') : getLangText('සහාය වන්න', 'Help', 'உதவுக'))) : null, canModify && onEditPost ? h('button', {
+className: 'px-3 py-1.5 rounded-xl ' + ((post as any)?.rawRedAlert ? 'bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 ' : 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 ') + 'text-white flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 text-xs font-black shadow-sm',
+title: (post as any)?.rawRedAlert ? 'රතු එළිය විස්තරය සහ සත්‍ය/අසත්‍ය ලකුණු' : ownerCheck ? 'සහායකයින් බලන්න' : 'සහාය වන්න (Offer Support)'
+}, h(ownerCheck && !(post as any)?.rawRedAlert ? UserCheck : HelpCircle, { className: 'w-3.5 h-3.5' }), h('span', null, (post as any)?.rawRedAlert ? getLangText('🚨 රතු එළිය විස්තරය', '🚨 Red Alert Details', '🚨 சிவப்பு எச்சரிக்கை') : ownerCheck ? getLangText('සහායකයින්', 'Helpers', 'உதவியாளர்கள்') : getLangText('සහාය වන්න', 'Help', 'உதவுக'))) : null, canModify && onEditPost ? h('button', {
 type: 'button',
 onClick: handleEditClick,
 className: 'p-1.5 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/60 rounded-xl cursor-pointer active:scale-95',
@@ -608,7 +620,13 @@ const hasValidImage = Boolean(imgUrl && !imageError);
 const shouldCap16x9 = Boolean(isLongText ? true : hasValidImage);
 const shortDesc = isLongText ? rawDesc.slice(0, 165) + '...' : rawDesc;
 return h(React.Fragment, null, h('div', {
-onClick: () => setIsExpandedFullModal(true),
+onClick: () => {
+if ((post as any)?.rawRedAlert && onViewPost) {
+onViewPost(post);
+return;
+}
+setIsExpandedFullModal(true);
+},
 className: 'relative rounded-3xl bg-white dark:bg-[#07170e] border border-slate-200/90 dark:border-emerald-950/80 shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden p-4 sm:p-5 flex flex-col justify-between cursor-pointer'
 }, renderCardHeader(), post.audioUrl ? h('div', {
 onClick: (e: any) => e.stopPropagation(),
