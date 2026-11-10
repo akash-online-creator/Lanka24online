@@ -596,6 +596,9 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     }
   }
 
+  /// Tier 1 (Startup): Request ONLY Notification & Location permissions initially.
+  /// Camera, Microphone, and Battery Unrestricted permissions are requested on-demand
+  /// when the user navigates to and uses those specific services.
   Future<void> _requestAllInitialPermissions() async {
     try {
       if (await Permission.notification.isDenied) {
@@ -604,16 +607,18 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
       if (await Permission.location.isDenied) {
         await Permission.location.request();
       }
-      await _start24x7BackgroundAlertService();
+      await _start24x7BackgroundAlertService(requestBatteryExemption: false);
     } catch (e) {
       debugPrint('Initial permissions auto-request notice: $e');
     }
   }
 
-  Future<void> _start24x7BackgroundAlertService() async {
+  Future<void> _start24x7BackgroundAlertService({bool requestBatteryExemption = false}) async {
     try {
-      if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
-        await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+      if (requestBatteryExemption) {
+        if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
+          await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+        }
       }
       if (!await FlutterForegroundTask.isRunningService) {
         await FlutterForegroundTask.startService(
@@ -625,6 +630,45 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
       }
     } catch (e) {
       debugPrint('Background service setup notice: $e');
+    }
+  }
+
+  Future<void> _handleContextualPermissionCommand(String cmd) async {
+    try {
+      if (cmd == 'GET_GPS' || cmd == 'FORCE_REFRESH' || cmd == 'REQUEST_LOCATION') {
+        if (await Permission.location.isDenied) {
+          await Permission.location.request();
+        }
+        _fetchAndInjectCurrentLocation();
+      } else if (cmd == 'REQUEST_NOTIFICATION') {
+        final status = await Permission.notification.request();
+        final granted = status.isGranted;
+        _controller.runJavaScript("""
+          window.dispatchEvent(new CustomEvent('sahaya:native_permission_result', { detail: { type: 'notifications', granted: $granted } }));
+        """);
+      } else if (cmd == 'REQUEST_CAMERA') {
+        final status = await Permission.camera.request();
+        final granted = status.isGranted;
+        _controller.runJavaScript("""
+          window.dispatchEvent(new CustomEvent('sahaya:native_permission_result', { detail: { type: 'camera', granted: $granted } }));
+        """);
+      } else if (cmd == 'REQUEST_MICROPHONE') {
+        final status = await Permission.microphone.request();
+        final granted = status.isGranted;
+        _controller.runJavaScript("""
+          window.dispatchEvent(new CustomEvent('sahaya:native_permission_result', { detail: { type: 'microphone', granted: $granted } }));
+        """);
+      } else if (cmd == 'REQUEST_BATTERY_UNRESTRICTED') {
+        await _start24x7BackgroundAlertService(requestBatteryExemption: true);
+        final granted = await FlutterForegroundTask.isIgnoringBatteryOptimizations;
+        _controller.runJavaScript("""
+          window.dispatchEvent(new CustomEvent('sahaya:native_permission_result', { detail: { type: 'battery', granted: $granted } }));
+        """);
+      } else if (cmd == 'OPEN_SETTINGS') {
+        await openAppSettings();
+      }
+    } catch (e) {
+      debugPrint('Contextual permission handler notice: $e');
     }
   }
 
@@ -698,9 +742,13 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
       ..addJavaScriptChannel(
         'SahayaGpsChannel',
         onMessageReceived: (JavaScriptMessage message) async {
-          if (message.message == 'GET_GPS' || message.message == 'FORCE_REFRESH') {
-            _fetchAndInjectCurrentLocation();
-          }
+          await _handleContextualPermissionCommand(message.message);
+        },
+      )
+      ..addJavaScriptChannel(
+        'SahayaPermissionChannel',
+        onMessageReceived: (JavaScriptMessage message) async {
+          await _handleContextualPermissionCommand(message.message);
         },
       )
       ..addJavaScriptChannel(

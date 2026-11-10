@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Square, Play, Pause, Trash2, Send, Volume2, AlertCircle, Cloud, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Mic, Square, Play, Pause, Trash2, Send, Volume2, AlertCircle, Cloud, Loader2, Settings } from 'lucide-react';
 import { uploadMediaToTelegram } from '../utils/telegramStorage';
 import { TelegramMediaRecord } from '../types';
+import { requestContextualMicrophonePermission, openContextualAppSettings } from '../utils/contextualPermissions';
 
 interface AudioVoiceRecorderProps {
   onSendAudio: (audioUrl: string, durationSec: number, telegramRecord?: TelegramMediaRecord) => void;
@@ -69,74 +70,82 @@ export const AudioVoiceRecorder: React.FC<AudioVoiceRecorderProps> = ({
   const timerRef = useRef<number | null>(null);
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
   const mimeTypeRef = useRef<string>('');
+  const isMountedRef = useRef<boolean>(true);
+
+  const startRecordingSession = useCallback(async () => {
+    setPermissionError(null);
+    try {
+      const permRes = await requestContextualMicrophonePermission(false);
+      if (!permRes.granted || !permRes.stream) {
+        setPermissionError(
+          permRes.errorSi ||
+            'හඬ පණිවිඩ යැවීම සඳහා මයික්‍රෆෝන අවසරය (Microphone Permission) ලබා දෙන්න.'
+        );
+        return;
+      }
+
+      const stream = permRes.stream;
+      if (!isMountedRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+
+      streamRef.current = stream;
+      const mime = getSupportedAudioMimeType();
+      mimeTypeRef.current = mime;
+
+      const options: MediaRecorderOptions = mime ? { mimeType: mime } : {};
+      const mediaRecorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const actualMime = mimeTypeRef.current || 'audio/webm';
+        const blob = new Blob(audioChunksRef.current, { type: actualMime });
+        setAudioBlob(blob);
+        try {
+          const url = URL.createObjectURL(blob);
+          setAudioUrl(url);
+        } catch (e) {
+          console.warn('URL.createObjectURL notice:', e);
+        }
+        setIsRecording(false);
+      };
+
+      mediaRecorder.start(200);
+      setIsRecording(true);
+
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = window.setInterval(() => {
+        setElapsedSec((prev) => {
+          if (prev + 1 >= maxDurationSec) {
+            stopRecording();
+            return maxDurationSec;
+          }
+          return prev + 1;
+        });
+      }, 1000);
+    } catch (err: any) {
+      console.warn('Microphone access denied or error:', err);
+      setPermissionError(
+        'මයික්‍රෆෝනය භාවිතය සඳහා අවසර ලබා දී නොමැත. මෙම සේවාව භාවිතා කිරීමට පමණක් Microphone Allow කරන්න.'
+      );
+    }
+  }, [maxDurationSec]);
 
   // Start recording on mount
   useEffect(() => {
-    let isCancelled = false;
-
-    const startRecordingSession = async () => {
-      try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          setPermissionError('ඔබගේ බ්‍රවුසරය හඬ පටිගත කිරීම (Voice Recording) සඳහා සහය නොදක්වයි.');
-          return;
-        }
-
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        if (isCancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-
-        streamRef.current = stream;
-        const mime = getSupportedAudioMimeType();
-        mimeTypeRef.current = mime;
-
-        const options: MediaRecorderOptions = mime ? { mimeType: mime } : {};
-        const mediaRecorder = new MediaRecorder(stream, options);
-        mediaRecorderRef.current = mediaRecorder;
-        audioChunksRef.current = [];
-
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data && event.data.size > 0) {
-            audioChunksRef.current.push(event.data);
-          }
-        };
-
-        mediaRecorder.onstop = () => {
-          const actualMime = mimeTypeRef.current || 'audio/webm';
-          const blob = new Blob(audioChunksRef.current, { type: actualMime });
-          setAudioBlob(blob);
-          try {
-            const url = URL.createObjectURL(blob);
-            setAudioUrl(url);
-          } catch (e) {
-            console.warn('URL.createObjectURL notice:', e);
-          }
-          setIsRecording(false);
-        };
-
-        mediaRecorder.start(200);
-        setIsRecording(true);
-
-        timerRef.current = window.setInterval(() => {
-          setElapsedSec((prev) => {
-            if (prev + 1 >= maxDurationSec) {
-              stopRecording();
-              return maxDurationSec;
-            }
-            return prev + 1;
-          });
-        }, 1000);
-      } catch (err: any) {
-        console.warn('Microphone access denied or error:', err);
-        setPermissionError('මයික්‍රෆෝනය භාවිතය සඳහා අවසර ලබා දී නොමැත. කරුණාකර Browser Settings හි Microphone Allow කරන්න.');
-      }
-    };
-
+    isMountedRef.current = true;
     startRecordingSession();
 
     return () => {
-      isCancelled = true;
+      isMountedRef.current = false;
       if (timerRef.current) clearInterval(timerRef.current);
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         try {
@@ -147,7 +156,7 @@ export const AudioVoiceRecorder: React.FC<AudioVoiceRecorderProps> = ({
         streamRef.current.getTracks().forEach((t) => t.stop());
       }
     };
-  }, [maxDurationSec]);
+  }, [startRecordingSession]);
 
   const stopRecording = () => {
     if (timerRef.current) {
@@ -270,18 +279,41 @@ export const AudioVoiceRecorder: React.FC<AudioVoiceRecorderProps> = ({
 
   if (permissionError) {
     return (
-      <div className="p-3 bg-rose-50 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-800 rounded-2xl text-rose-800 dark:text-rose-200 text-xs space-y-2">
-        <div className="flex items-center gap-2 font-bold">
-          <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-          <span>{permissionError}</span>
+      <div className="p-3 bg-rose-50 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-800 rounded-2xl text-rose-800 dark:text-rose-200 text-xs space-y-2.5">
+        <div className="flex items-start gap-2 font-bold">
+          <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+          <div className="space-y-0.5">
+            <p>{permissionError}</p>
+            <p className="text-[11px] font-medium text-rose-700/80 dark:text-rose-300/80">
+              🛡️ ඔබගේ පෞද්ගලිකත්වය ආරක්ෂා කිරීම සඳහා මයික්‍රෆෝන අවසරය ඉල්ලන්නේ හඬ පණිවිඩ යවන විට පමණි.
+            </p>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-3 py-1 bg-rose-200 dark:bg-rose-900 text-rose-900 dark:text-white rounded-lg font-bold text-[11px] cursor-pointer"
-        >
-          වසන්න (Cancel)
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={startRecordingSession}
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-[11px] flex items-center gap-1 cursor-pointer shadow-xs"
+          >
+            <Mic className="w-3.5 h-3.5" />
+            <span>🎙️ මයික්‍රෆෝනය සක්‍රීය කරන්න (Allow Mic)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => openContextualAppSettings()}
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+          >
+            <Settings className="w-3.5 h-3.5" />
+            <span>Settings ⚙️</span>
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3 py-1.5 bg-rose-200 dark:bg-rose-900 text-rose-900 dark:text-white rounded-xl font-bold text-[11px] cursor-pointer"
+          >
+            වසන්න (Cancel)
+          </button>
+        </div>
       </div>
     );
   }

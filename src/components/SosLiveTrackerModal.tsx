@@ -56,6 +56,11 @@ import { SosLiveViewerModal } from './SosLiveViewerModal';
 import { getLastKnownLocation } from '../utils/autoGpsService';
 import { resolveExactLocation } from '../utils/geoUtils';
 import { verifyCurrentUserPin } from '../utils/devicePinManager';
+import {
+  requestContextualMicrophonePermission,
+  requestContextualBatteryUnrestricted,
+  openContextualAppSettings,
+} from '../utils/contextualPermissions';
 /**
  * Comprehensive Sri Lanka Police Stations Directory
  * Covers all 25 Districts, 9 Provinces and Emergency Units.
@@ -316,6 +321,9 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   // Direct System Settings Launcher (Opens OS App Settings on Android / Web)
   const openMicrophoneDeviceSettings = useCallback(() => {
     try {
+      if (openContextualAppSettings()) {
+        return;
+      }
       if ((window as any).Android?.openAppSettings) {
         (window as any).Android.openAppSettings();
         return;
@@ -610,25 +618,24 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     }
   }, [isSirenOn, startHighDecibelSiren, stopHighDecibelSiren]);
 
-  // 🎙️ CONTINUOUS BACKGROUND AUDIO EVIDENCE RECORDER (Robust 5s Standalone Clips with Complete Container Headers)
+  // 🎙️ CONTINUOUS BACKGROUND AUDIO EVIDENCE RECORDER (Requested On-Demand when user activates SOS Audio)
   const startAudioRecordingLoop = useCallback(async () => {
     if (isContinuousAudioRunningRef.current) return;
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-      setMicSettingError('හඬ පටිගත කිරීම සඳහා ඔබගේ උපකරණයේ MediaDevices සහය නොදක්වයි.');
-      setShowMicSettingsModal(true);
-      return;
-    }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-        video: false,
-      });
+      const permRes = await requestContextualMicrophonePermission(true);
+      if (!permRes.granted || !permRes.stream) {
+        setIsRecordingAudio(false);
+        isContinuousAudioRunningRef.current = false;
+        setMicSettingError(
+          permRes.errorSi ||
+            'මයික්‍රෆෝන් (Microphone) අවසරය ලබා දී නොමැත. කරුණාකර Settings වෙත ගොස් Microphone අවසරය Allow කරන්න.'
+        );
+        setShowMicSettingsModal(true);
+        return;
+      }
 
+      const stream = permRes.stream;
       audioStreamRef.current = stream;
       isContinuousAudioRunningRef.current = true;
       setIsRecordingAudio(true);
@@ -867,6 +874,8 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     setSessionId(activeId);
     localStorage.setItem('active_sos_session_id', activeId);
     setIsActive(true);
+    // Request battery unrestricted exemption contextually when SOS Live Tracker is actively started
+    requestContextualBatteryUnrestricted();
 
     const initSosSession = async () => {
       try {

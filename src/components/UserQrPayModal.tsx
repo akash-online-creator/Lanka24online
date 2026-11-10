@@ -37,8 +37,14 @@ import {
   CreditCard,
   SwitchCamera,
   Layers,
-  Flashlight
+  Flashlight,
+  Settings
 } from 'lucide-react';
+import {
+  checkContextualPermissionState,
+  requestContextualCameraPermission,
+  openContextualAppSettings,
+} from '../utils/contextualPermissions';
 
 interface UserQrPayModalProps {
   isOpen: boolean;
@@ -194,16 +200,22 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
     }
   }, [isOpen, initialTab, effectiveRecipient, allUsers]);
 
-  // Auto start camera when switching to scan_pay tab (if no recipient is currently set)
+  // Auto start camera when switching to scan_pay tab ONLY if camera permission was already granted previously.
+  // Otherwise let the user tap "කැමරාව අරඹන්න (Allow Camera)" contextually inside the Scan & Pay service.
   useEffect(() => {
+    let cancelled = false;
     if (isOpen && activeTab === 'scan_pay' && !recipient && !completedTx) {
-      const timer = setTimeout(() => {
-        startCamera('environment');
-      }, 100);
-      return () => clearTimeout(timer);
+      checkContextualPermissionState('camera').then((state) => {
+        if (!cancelled && state === 'granted') {
+          startCamera('environment');
+        }
+      });
     } else {
       stopCamera();
     }
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, activeTab, recipient, completedTx]);
 
   // Audio feedback on successful QR scan
@@ -231,49 +243,23 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
     }
   };
 
-  // Start Camera Stream with reliable fallbacks
+  // Start Camera Stream with contextual on-demand permission request
   const startCamera = async (facing: 'environment' | 'user' = cameraFacing) => {
     setCameraError(null);
     stopCamera();
 
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setCameraError('කැමරාව මෙම බ්‍රවුසරයේ ක්‍රියාත්මක කළ නොහැක. කරුණාකර කේතය අතින් ඇතුළත් කරන්න හෝ QR පින්තූරය Upload කරන්න.');
+      const permRes = await requestContextualCameraPermission(facing);
+      if (!permRes.granted || !permRes.stream) {
+        setCameraError(
+          permRes.errorSi ||
+            'කැමරාවට අවසර ලබාදී නොමැත. කරුණාකර Camera Allow කරන්න හෝ කේතය / දුරකථන අංකය අතින් ඇතුළත් කරන්න.'
+        );
+        setCameraActive(false);
         return;
       }
 
-      let stream: MediaStream | null = null;
-      
-      // Attempt 1: Ideal facing mode and resolution
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            facingMode: { ideal: facing }, 
-            width: { ideal: 1280 }, 
-            height: { ideal: 720 } 
-          },
-          audio: false,
-        });
-      } catch (err1) {
-        // Attempt 2: Exact/basic facingMode
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: facing },
-            audio: false,
-          });
-        } catch (err2) {
-          // Attempt 3: Any available video camera fallback
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false,
-          });
-        }
-      }
-
-      if (!stream) {
-        throw new Error('කැමරා දත්ත ලබාගත නොහැකි විය.');
-      }
-
+      const stream = permRes.stream;
       streamRef.current = stream;
       setCameraActive(true);
       setCameraFacing(facing);
@@ -934,6 +920,14 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
                                   <p className="text-[11px] text-rose-200 font-bold leading-relaxed">{cameraError}</p>
                                 </div>
                                 <div className="flex items-center justify-end gap-2 pt-1 border-t border-rose-800/50">
+                                  <button
+                                    type="button"
+                                    onClick={() => openContextualAppSettings()}
+                                    className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-extrabold rounded-lg transition-all cursor-pointer flex items-center gap-1"
+                                  >
+                                    <Settings className="w-3 h-3" />
+                                    <span>Settings ⚙️</span>
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => startCamera('environment')}

@@ -12,12 +12,15 @@ import {
   Trash2, 
   Loader2, 
   CheckCircle2, 
-  Globe 
+  Globe,
+  Settings,
+  AlertCircle
 } from 'lucide-react';
 import { LocationOption, Language } from '../types';
 import { uploadMediaToTelegram } from '../utils/telegramStorage';
 import { resolveExactLocation } from '../utils/geoUtils';
 import { getAuthHeaders } from '../utils/apiConfig';
+import { requestContextualMicrophonePermission, openContextualAppSettings } from '../utils/contextualPermissions';
 
 interface AiVoiceInlineBarProps {
   currentLocation?: LocationOption;
@@ -51,6 +54,7 @@ export const AiVoiceInlineBar: React.FC<AiVoiceInlineBarProps> = ({
   const [interimTranscript, setInterimTranscript] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [successNotice, setSuccessNotice] = useState(false);
+  const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
 
   // Time & Location
   const [dateStr, setDateStr] = useState('');
@@ -144,13 +148,23 @@ export const AiVoiceInlineBar: React.FC<AiVoiceInlineBarProps> = ({
     }
   };
 
-  // 1. VOICE (Mic Record)
+  // 1. VOICE (Mic Record - Requested On-Demand)
   const handleStartRecording = async () => {
     refreshTimeAndLocation();
     setSuccessNotice(false);
+    setMicPermissionError(null);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const permRes = await requestContextualMicrophonePermission(false);
+      if (!permRes.granted || !permRes.stream) {
+        setMicPermissionError(
+          permRes.errorSi ||
+            'මයික්‍රෆෝනය සක්‍රිය කළ නොහැකි විය. කරුණාකර අවසර (Microphone Permission) ලබා දෙන්න හෝ කෙලින්ම සටහන ලියා යොමු කරන්න.'
+        );
+        return;
+      }
+
+      const stream = permRes.stream;
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -185,7 +199,9 @@ export const AiVoiceInlineBar: React.FC<AiVoiceInlineBarProps> = ({
       startSpeechRecognition();
     } catch (err: any) {
       console.warn('Microphone access notice:', err?.name || err?.message || err);
-      alert('මයික්‍රෆෝනය සක්‍රිය කළ නොහැකි විය. කරුණාකර අවසර (Microphone Permission) ලබා දෙන්න හෝ කෙලින්ම සටහන ලියා යොමු කරන්න.');
+      setMicPermissionError(
+        'මයික්‍රෆෝනය සක්‍රිය කළ නොහැකි විය. කරුණාකර අවසර (Microphone Permission) ලබා දෙන්න හෝ කෙලින්ම සටහන ලියා යොමු කරන්න.'
+      );
     }
   };
 
@@ -445,6 +461,34 @@ export const AiVoiceInlineBar: React.FC<AiVoiceInlineBarProps> = ({
         <div className="p-2 bg-white/80 dark:bg-emerald-950/60 rounded-xl border border-emerald-200/60 dark:border-emerald-900/40 text-[11px] font-semibold text-slate-800 dark:text-slate-200">
           <span className="text-emerald-700 dark:text-emerald-400 font-bold">පෙළ: </span>
           {transcript} <span className="text-slate-400 italic">{interimTranscript}</span>
+        </div>
+      )}
+
+      {/* Contextual Microphone Permission Prompt */}
+      {micPermissionError && (
+        <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-[11px] space-y-2">
+          <div className="flex items-start gap-1.5 font-bold">
+            <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+            <span>{micPermissionError}</span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleStartRecording}
+              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] flex items-center gap-1 cursor-pointer"
+            >
+              <Mic className="w-3 h-3" />
+              <span>🎙️ Microphone Allow කරන්න</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => openContextualAppSettings()}
+              className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+            >
+              <Settings className="w-3 h-3" />
+              <span>Settings ⚙️</span>
+            </button>
+          </div>
         </div>
       )}
 

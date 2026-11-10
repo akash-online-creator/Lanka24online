@@ -1,4 +1,9 @@
 import { compressImageFile } from '../utils/imageCompressor';
+import {
+  requestContextualBatteryUnrestricted,
+  requestContextualMicrophonePermission,
+  openContextualAppSettings,
+} from '../utils/contextualPermissions';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   X,
@@ -1987,6 +1992,9 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                       const nextVal = !is24hWakeLockActive;
                       setIs24hWakeLockActive(nextVal);
                       setBackgroundWakeLockEnabled(nextVal);
+                      if (nextVal) {
+                        requestContextualBatteryUnrestricted();
+                      }
                       setSaveSuccessMsg(
                         nextVal
                           ? getLang(
@@ -2028,8 +2036,8 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                       </div>
                       <div className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
                         {getLang(
-                          'SOS හදිසි අවස්ථාවකදී සජීවී හඬ සාක්ෂි විකාශනය සඳහා අවශ්‍ය මයික්‍රෆෝන් අවසර සැකසුම',
-                          'Microphone permission configuration for continuous live SOS audio streaming',
+                          'SOS හදිසි අවස්ථාවකදී සහ හඬ පණිවිඩ යැවීමේදී පමණක් මයික්‍රෆෝන් අවසරය සක්‍රීය කිරීමට',
+                          'Microphone permission configuration for live SOS audio & voice notes',
                           'நேரலை SOS ஆடியோவிற்கான மைக்ரோஃபோன் அனுமதி'
                         )}
                       </div>
@@ -2037,8 +2045,16 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       try {
+                        const res = await requestContextualMicrophonePermission(false);
+                        if (res.granted && res.stream) {
+                          res.stream.getTracks().forEach((t) => t.stop());
+                          setSaveSuccessMsg(getLang('✅ මයික්‍රෆෝන් අවසරය සක්‍රීයයි!', '✅ Microphone permission granted!', '✅ மைக்ரோஃபோன் அனுமதி வழங்கப்பட்டது!'));
+                          setTimeout(() => setSaveSuccessMsg(null), 3000);
+                          return;
+                        }
+                        if (openContextualAppSettings()) return;
                         if ((window as any).Android?.openAppSettings) {
                           (window as any).Android.openAppSettings();
                           return;
@@ -2052,21 +2068,12 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                           window.location.href = 'intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;package=com.sahayasewa.app;end';
                           return;
                         }
-                        if (navigator.mediaDevices?.getUserMedia) {
-                          navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => {
-                            s.getTracks().forEach((t) => t.stop());
-                            setSaveSuccessMsg(getLang('✅ මයික්‍රෆෝන් අවසරය සක්‍රීයයි!', '✅ Microphone permission granted!', '✅ மைக்ரோஃபோன் அனுமதி வழங்கப்பட்டது!'));
-                            setTimeout(() => setSaveSuccessMsg(null), 3000);
-                          }).catch(() => {
-                            alert('කරුණාකර ඔබගේ බ්‍රවුසරයේ හෝ දුරකථනයේ Settings වෙත ගොස් Microphone අවසරය Allow කරන්න.');
-                          });
-                        }
                       } catch (_) {}
                     }}
                     className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-md transition-all shrink-0 cursor-pointer active:scale-95 flex items-center gap-1.5"
                   >
                     <Settings className="w-3.5 h-3.5" />
-                    <span>{getLang('සැකසුම් (Settings)', 'Settings', 'அமைப்புகள்')}</span>
+                    <span>{getLang('සක්‍රීය කරන්න (Allow)', 'Allow', 'அனுமதி')}</span>
                   </button>
                 </div>
               </div>

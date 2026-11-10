@@ -15,7 +15,6 @@ import {
   ChevronRight,
   Settings,
   ArrowRight,
-  Battery,
 } from 'lucide-react';
 import { Language, Theme, LocationOption } from '../types';
 import { AppLogo } from './AppLogo';
@@ -511,7 +510,7 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
                 <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                   {resolvedLocation 
                     ? `ස්ථානය: ${resolvedLocation.nameSi}` 
-                    : 'ඔබ සිටින තැනට කි.මී. 5 ආසන්න ආපදා හඳුනාගැනීමට'}
+                    : 'ඔබ සිටින තැනට කි.මී. 15 ආසන්න ආපදා හඳුනාගැනීමට'}
                 </div>
               </div>
             </div>
@@ -546,7 +545,7 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
                   {notifGranted && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 inline" />}
                 </div>
                 <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                  App එක Close කර තිබුණද රතු එළිය ආපදා සයිරන් නාද වීමට
+                  රතු එළිය හදිසි ආපදා සයිරන් සහ දැනුම්දීම් ලබාගැනීමට
                 </div>
               </div>
             </div>
@@ -566,30 +565,13 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
             </button>
           </div>
 
-          {/* 3. 24/7 Background Radar & Battery Optimization Exemption Card */}
-          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-[#112519] border border-slate-200/80 dark:border-emerald-900/60 transition-all">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold shrink-0 bg-blue-500/20 text-blue-600 dark:text-blue-400">
-                <Battery className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="text-xs sm:text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <span>🔋 පසුබිම් අවදිය (Battery Unrestricted)</span>
-                </div>
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                  රාත්‍රියේ දුරකථනය Lock කර ඇති විටත් ආපදා සයිරන් නාද වීමට
-                </div>
-              </div>
+          {/* Privacy Guarantee: Other permissions are ONLY requested on-demand when using specific services */}
+          <div className="p-3 rounded-2xl bg-emerald-50/90 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/70 flex items-start gap-2.5">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+            <div className="text-[11px] text-slate-700 dark:text-emerald-200/90 leading-relaxed font-medium">
+              <span className="font-black text-emerald-800 dark:text-emerald-300">🛡️ පෞද්ගලිකත්ව ආරක්ෂණ සහතිකය: </span>
+              ඔබේ දුරකථනයේ තොරතුරු ආරක්ෂාව වෙනුවෙන් මුලදී ඉල්ලා සිටින්නේ <b>Location</b> සහ <b>Notification</b> අවසර 2 පමණි. කැමරා (Camera), මයික්‍රෆෝන (Mic) හෝ 24/7 පසුබිම් (Battery) අවසරයන් මුලදී ලබා නොගන්නා අතර, ඔබ අදාළ සේවාව භාවිතා කරන විට පමණක් අවශ්‍ය නම් සක්‍රීය කළ හැක.
             </div>
-
-            <button
-              type="button"
-              onClick={handleOpenAppSettings}
-              className="px-3.5 py-1.5 rounded-xl font-black text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all"
-              title="Settings > Battery > Unrestricted"
-            >
-              සැකසුම් ⚙️
-            </button>
           </div>
         </div>
 
@@ -597,7 +579,7 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
         <div className="pt-2 border-t border-slate-200/80 dark:border-white/10 flex flex-col sm:flex-row items-center justify-between gap-2.5">
           <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium text-center sm:text-left flex items-center gap-1">
             <Lock className="w-3 h-3 text-amber-500 inline shrink-0" />
-            <span>ආරක්ෂිත හේතුන් මත අවසර 2ම නිර්දේශ කෙරේ.</span>
+            <span>මූලික අවසර 2 පමණක් සක්‍රීය කර ආරක්ෂිතව පිවිසෙන්න.</span>
           </p>
 
           <button
