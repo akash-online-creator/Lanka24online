@@ -827,21 +827,21 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     if (categoryKey === 'found_items') {
       const creditRes = awardServiceReward(user, 'found_items');
       const spointRes = awardSPoints(user, 'G');
-      const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes.newBalance };
+      const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes };
       if (onUpdateUser) onUpdateUser(updatedUser);
       try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
       try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}
     } else if (categoryKey === 'job_post') {
       const creditRes = awardServiceReward(user, 'job_post');
       const spointRes = awardSPoints(user, 'H');
-      const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes.newBalance };
+      const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes };
       if (onUpdateUser) onUpdateUser(updatedUser);
       try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
       try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}
     } else if (categoryKey === 'accommodation_post') {
       const creditRes = awardServiceReward(user, 'accommodation_post');
       const spointRes = awardSPoints(user, 'I');
-      const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes.newBalance };
+      const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes };
       if (onUpdateUser) onUpdateUser(updatedUser);
       try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
       try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}
@@ -1498,14 +1498,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     if (confirmedPost.postType === 'quick_service' || confirmedPost.category === 'quick_services') {
       const creditRes = awardServiceReward(user, 'quick_service_helper');
       const spointRes = awardSPoints(user, 'E');
-      const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes.newBalance };
+      const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes };
       if (onUpdateUser) onUpdateUser(updatedUser);
       try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
       try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}
     } else {
       const creditRes = awardServiceReward(user, 'general_service_helper');
       const spointRes = awardSPoints(user, 'F');
-      const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes.newBalance };
+      const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes };
       if (onUpdateUser) onUpdateUser(updatedUser);
       try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
       try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}
@@ -2571,7 +2571,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onRegisterService={(newService) => {
           const creditRes = awardServiceReward(user, 'professional_service');
           const spointRes = awardSPoints(user, 'K');
-          const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes.newBalance };
+          const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes };
           if (onUpdateUser) onUpdateUser(updatedUser);
           try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
           try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}
@@ -2590,7 +2590,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onAlertCreated={(newAlert) => {
           const creditRes = awardServiceReward(user, 'red_alert');
           const spointRes = awardSPoints(user, 'A');
-          const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes.newPoints };
+          const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes };
           if (onUpdateUser) onUpdateUser(updatedUser);
           try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
           try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}

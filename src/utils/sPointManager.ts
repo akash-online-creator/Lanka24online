@@ -282,15 +282,14 @@ export function awardSPoints(
   };
 
   const newTotal = current.totalPoints + rule.points * addedCount;
+  const roundedTotal = Number(newTotal.toFixed(2));
 
   return {
-
-    totalPoints: Number(newTotal.toFixed(2)),
-
+    totalPoints: roundedTotal,
     serviceCounts: newCounts,
-
+    newBalance: roundedTotal,
+    newPoints: roundedTotal,
   };
-
 }
 
 /**

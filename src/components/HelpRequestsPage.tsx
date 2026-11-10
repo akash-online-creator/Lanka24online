@@ -21,13 +21,27 @@ import { AccommodationView } from './AccommodationView';
 import { JobsView } from './JobsView';
 import { BulletinBoardGuideModal } from './BulletinBoardGuideModal';
 import { BoostPostModal } from './BoostPostModal';
-import { subscribeToUserSavedPosts, toggleSavePostInFirestore, subscribeToMarketplaceItems, subscribeToMarketShops } from '../lib/firebase';
+import {
+  subscribeToUserSavedPosts,
+  toggleSavePostInFirestore,
+  subscribeToMarketplaceItems,
+  subscribeToMarketShops,
+  subscribeToGroups,
+  subscribeToAccommodationsFromFirestore,
+} from '../lib/firebase';
 import { getStoredMarketItems, getStoredMarketShops } from '../data/marketplaceData';
 import { getStoredBloodRequests, getStoredDisasterReliefItems } from '../data/bloodAndDisasterData';
+import { getStoredGroups } from '../data/groupWorkData';
+import { getStoredJobs } from '../utils/jobStorage';
+import { getStoredAccommodations } from '../utils/accommodationStorage';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { getDisasterConfig } from '../data/redAlertData';
 import { calculateDistanceKm } from '../utils/geoUtils';
-import { isPostPermanentlyDeleted } from '../utils/deletedPostsManager';
+import {
+  isPostPermanentlyDeleted,
+  filterNonDeletedJobs,
+  filterNonDeletedAccommodations,
+} from '../utils/deletedPostsManager';
 import { isPostHelpersSatisfiedOrFilled } from '../utils/serviceWorkflowManager';
 import { 
   ArrowLeft, 
@@ -487,6 +501,77 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     });
   }, [redAlerts]);
 
+  const [liveMarketItemsCount, setLiveMarketItemsCount] = useState(() => getStoredMarketItems().length);
+  const [liveMarketShopsCount, setLiveMarketShopsCount] = useState(() => getStoredMarketShops().length);
+  const [liveGroupsCount, setLiveGroupsCount] = useState(() => getStoredGroups().length);
+  const [liveJobs, setLiveJobs] = useState<any[]>(() => filterNonDeletedJobs(getStoredJobs()));
+  const [liveAccommodations, setLiveAccommodations] = useState<any[]>(() => {
+    try {
+      const cached = localStorage.getItem('sahaya_accommodations_data_v1');
+      if (cached) return filterNonDeletedAccommodations(JSON.parse(cached));
+    } catch {}
+    return [];
+  });
+
+  useEffect(() => {
+    const refreshLocalMarket = () => {
+      setLiveMarketItemsCount(getStoredMarketItems().length);
+      setLiveMarketShopsCount(getStoredMarketShops().length);
+    };
+    const refreshLocalJobs = () => {
+      setLiveJobs(filterNonDeletedJobs(getStoredJobs()));
+    };
+    const refreshLocalAccommodations = async () => {
+      try {
+        const items = await getStoredAccommodations();
+        if (Array.isArray(items)) {
+          setLiveAccommodations(filterNonDeletedAccommodations(items));
+        }
+      } catch {}
+    };
+    refreshLocalAccommodations();
+
+    window.addEventListener('sahaya_marketplace_updated', refreshLocalMarket);
+    window.addEventListener('sahaya_jobs_updated', refreshLocalJobs);
+    window.addEventListener('sahaya_accommodations_updated', refreshLocalAccommodations);
+
+    const unsubItems = subscribeToMarketplaceItems((remoteItems) => {
+      if (Array.isArray(remoteItems) && remoteItems.length >= 1) {
+        setLiveMarketItemsCount(remoteItems.length);
+      } else {
+        setLiveMarketItemsCount(getStoredMarketItems().length);
+      }
+    });
+    const unsubShops = subscribeToMarketShops((remoteShops) => {
+      if (Array.isArray(remoteShops) && remoteShops.length >= 1) {
+        setLiveMarketShopsCount(remoteShops.length);
+      } else {
+        setLiveMarketShopsCount(getStoredMarketShops().length);
+      }
+    });
+    const unsubGroups = subscribeToGroups((remoteGroups) => {
+      if (Array.isArray(remoteGroups) && remoteGroups.length >= 1) {
+        setLiveGroupsCount(getStoredGroups().length || remoteGroups.length);
+      } else {
+        setLiveGroupsCount(getStoredGroups().length);
+      }
+    });
+    const unsubAccommodations = subscribeToAccommodationsFromFirestore((remoteAcc) => {
+      if (Array.isArray(remoteAcc)) {
+        setLiveAccommodations(filterNonDeletedAccommodations(remoteAcc));
+      }
+    });
+    return () => {
+      window.removeEventListener('sahaya_marketplace_updated', refreshLocalMarket);
+      window.removeEventListener('sahaya_jobs_updated', refreshLocalJobs);
+      window.removeEventListener('sahaya_accommodations_updated', refreshLocalAccommodations);
+      unsubItems();
+      unsubShops();
+      unsubGroups();
+      if (typeof unsubAccommodations === 'function') unsubAccommodations();
+    };
+  }, []);
+
   const newsFeedSortedPosts = useMemo(() => {
     const isAdminUser = Boolean(user && (user.role === 'admin' ? true : user.role === 'super_admin'));
     const sourceList = (filteredPosts ? filteredPosts : []).filter((p): p is HelpPost => {
@@ -715,7 +800,114 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
           })
       : [];
 
-    let result = [...mappedRedAlertPosts, ...sourceList, ...storedBloodPosts, ...storedDisasterPosts];
+    const mappedJobPosts: HelpPost[] = !boardCategoryFilter
+      ? (Array.isArray(liveJobs) ? liveJobs : [])
+          .filter((j: any) => {
+            if (!j || !j.id) return false;
+            if (existingCodes.has(String(j.id)) || existingCodes.has(String(j.jobCode || ''))) return false;
+            if (searchQuery && searchQuery.trim()) {
+              const q = searchQuery.trim().toLowerCase();
+              const hay = `${j.title || ''} ${j.companyName || ''} ${j.description || ''} ${j.city || ''} ${j.country || ''}`.toLowerCase();
+              if (!hay.includes(q)) return false;
+            }
+            if (feedDistanceTab === 'local' && j.scope === 'local' && currentLocation && typeof j.lat === 'number' && typeof j.lng === 'number') {
+              const dist = calculateDistanceKm(currentLocation.lat, currentLocation.lng, j.lat, j.lng);
+              if (dist > (maxDistanceRadius || 15)) return false;
+            }
+            return true;
+          })
+          .map((j: any) => {
+            const jTitle = `💼 රැකියා අවස්ථාව: ${j.title || 'රැකියා ඇබෑර්තු'} (${j.companyName || j.city || 'ශ්‍රී ලංකාව'})`;
+            const jSalary = j.salaryDisplay || (j.salaryAmount ? `රු. ${Number(j.salaryAmount).toLocaleString()}` : 'සාකච්ඡා කරගත හැක');
+            const jDetails = `ආයතනය: ${j.companyName || '-'} • ස්ථානය: ${j.city || j.country || 'ශ්‍රී ලංකාව'} • වැටුප: ${jSalary} • ${j.description || ''}`;
+            return {
+              id: j.id,
+              postCode: j.jobCode || `#JOB-${String(j.id).slice(-4)}`,
+              category: 'jobs',
+              serviceType: 'jobs',
+              postType: 'job_listing',
+              tagCategory: 'රැකියා',
+              tagName: '💼 රැකියා',
+              headline: jTitle,
+              title: jTitle,
+              whatHappened: jDetails,
+              whatIsNeeded: `වැටුප: ${jSalary} • සම්පූර්ණ රැකියා විස්තරය බැලීමට ක්ලික් කරන්න.`,
+              content: jDetails,
+              locationName: j.city || j.country || 'ශ්‍රී ලංකාව',
+              lat: typeof j.lat === 'number' ? j.lat : currentLocation?.lat || 6.9271,
+              lng: typeof j.lng === 'number' ? j.lng : currentLocation?.lng || 79.8612,
+              latitude: typeof j.lat === 'number' ? j.lat : currentLocation?.lat || 6.9271,
+              longitude: typeof j.lng === 'number' ? j.lng : currentLocation?.lng || 79.8612,
+              imageUrl: j.imageUrl || (Array.isArray(j.photos) && j.photos[0]) || undefined,
+              photoUrl: j.imageUrl || (Array.isArray(j.photos) && j.photos[0]) || undefined,
+              userId: j.postedByUserId || j.userId || 'job_poster',
+              userName: j.contactName || j.companyName || 'රැකියා දැන්වීම්කරු',
+              userPhone: j.contactPhone || j.phone || '',
+              contactNumber: j.contactPhone || j.phone || '',
+              contactPersonName: j.contactName || j.companyName || 'රැකියා දැන්වීම්කරු',
+              status: 'active',
+              createdAt: j.createdAt || new Date().toISOString(),
+              createdAtMs: j.createdAtMs || Date.now(),
+              rawJobListing: j,
+            } as unknown as HelpPost;
+          })
+      : [];
+
+    const mappedAccommodationPosts: HelpPost[] = !boardCategoryFilter
+      ? (Array.isArray(liveAccommodations) ? liveAccommodations : [])
+          .filter((acc: any) => {
+            if (!acc || !acc.id) return false;
+            if (existingCodes.has(String(acc.id))) return false;
+            if (searchQuery && searchQuery.trim()) {
+              const q = searchQuery.trim().toLowerCase();
+              const hay = `${acc.title || ''} ${acc.description || ''} ${acc.city || ''} ${acc.address || ''}`.toLowerCase();
+              if (!hay.includes(q)) return false;
+            }
+            if (feedDistanceTab === 'local' && currentLocation && typeof acc.lat === 'number' && typeof acc.lng === 'number') {
+              const dist = calculateDistanceKm(currentLocation.lat, currentLocation.lng, acc.lat, acc.lng);
+              if (dist > (maxDistanceRadius || 15)) return false;
+            }
+            return true;
+          })
+          .map((acc: any) => {
+            const accTitle = `🏠 නවාතැන් පහසුකම්: ${acc.title || 'නවාතැනක්'} (${acc.city || 'ශ්‍රී ලංකාව'})`;
+            const accRent = acc.monthlyRent ? `මසකට රු. ${Number(acc.monthlyRent).toLocaleString()}` : acc.priceDisplay || 'සාකච්ඡා කරගත හැක';
+            const accDetails = `ස්ථානය: ${acc.city || acc.address || 'ශ්‍රී ලංකාව'} • ගාස්තුව: ${accRent} • ${acc.description || ''}`;
+            const accImg = acc.imageUrl || (Array.isArray(acc.images) && acc.images[0]) || (Array.isArray(acc.photos) && acc.photos[0]) || undefined;
+            return {
+              id: acc.id,
+              postCode: `#ACC-${String(acc.id).slice(-4)}`,
+              category: 'accommodation',
+              serviceType: 'accommodation',
+              postType: 'accommodation_listing',
+              tagCategory: 'නවාතැන',
+              tagName: '🏠 නවාතැන',
+              headline: accTitle,
+              title: accTitle,
+              whatHappened: accDetails,
+              whatIsNeeded: `ගාස්තුව: ${accRent} • සම්පූර්ණ නවාතැන් විස්තරය බැලීමට ක්ලික් කරන්න.`,
+              content: accDetails,
+              locationName: acc.city || acc.address || 'ශ්‍රී ලංකාව',
+              lat: typeof acc.lat === 'number' ? acc.lat : currentLocation?.lat || 6.9271,
+              lng: typeof acc.lng === 'number' ? acc.lng : currentLocation?.lng || 79.8612,
+              latitude: typeof acc.lat === 'number' ? acc.lat : currentLocation?.lat || 6.9271,
+              longitude: typeof acc.lng === 'number' ? acc.lng : currentLocation?.lng || 79.8612,
+              imageUrl: accImg,
+              photoUrl: accImg,
+              userId: acc.ownerId || acc.userId || 'acc_poster',
+              userName: acc.ownerName || acc.contactName || 'නවාතැන් හිමිකරු',
+              userPhone: acc.contactPhone || acc.phone || '',
+              contactNumber: acc.contactPhone || acc.phone || '',
+              contactPersonName: acc.ownerName || acc.contactName || 'නවාතැන් හිමිකරු',
+              status: 'active',
+              createdAt: acc.createdAt || new Date().toISOString(),
+              createdAtMs: acc.createdAtMs || Date.now(),
+              rawAccommodationListing: acc,
+            } as unknown as HelpPost;
+          })
+      : [];
+
+    let result = [...mappedRedAlertPosts, ...sourceList, ...storedBloodPosts, ...storedDisasterPosts, ...mappedJobPosts, ...mappedAccommodationPosts];
 
     // Apply active feed tab filter
     if (activeFeedTab === 'emergency') {
@@ -725,7 +917,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     } else if (activeFeedTab === 'saved' || boardCategoryFilter === 'saved') {
       // 📌 සුරැකි / ගබඩාකල දැන්වීම්: සියලුම සුරැකි දැන්වීම් සම්පූර්ණයෙන්ම ආරක්ෂිතව පෙන්වීම
       const savedSet = new Set(savedPostIds);
-      result = [...mappedRedAlertPosts, ...(helpPosts || [])].filter(
+      result = [...mappedRedAlertPosts, ...(helpPosts || []), ...mappedJobPosts, ...mappedAccommodationPosts].filter(
         (p) => p && p.id && savedSet.has(p.id) && !isPostPermanentlyDeleted(p.id) && !p.isDeleted && p.status !== 'deleted'
       );
     }
@@ -756,7 +948,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       const timeB = getPostTimestamp(b);
       return timeB - timeA;
     });
-  }, [filteredPosts, activeRedAlerts, activeFeedTab, savedPostIds, currentLocation, boardCategoryFilter, bloodDisasterSyncTick, searchQuery, feedDistanceTab, maxDistanceRadius, user, helpPosts]);
+  }, [filteredPosts, activeRedAlerts, liveJobs, liveAccommodations, activeFeedTab, savedPostIds, currentLocation, boardCategoryFilter, bloodDisasterSyncTick, searchQuery, feedDistanceTab, maxDistanceRadius, user, helpPosts]);
   // Automatic Infinite Scroll: Auto-load next 8 posts as soon as user views the last 2 posts
   useEffect(() => {
     if (visibleCount >= newsFeedSortedPosts.length) return;
@@ -784,36 +976,6 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     };
   }, [visibleCount, newsFeedSortedPosts.length, handleLoadMore]);
 
-  const [liveMarketItemsCount, setLiveMarketItemsCount] = useState(() => getStoredMarketItems().length);
-  const [liveMarketShopsCount, setLiveMarketShopsCount] = useState(() => getStoredMarketShops().length);
-
-  useEffect(() => {
-    const refreshLocalMarket = () => {
-      setLiveMarketItemsCount(getStoredMarketItems().length);
-      setLiveMarketShopsCount(getStoredMarketShops().length);
-    };
-    window.addEventListener('sahaya_marketplace_updated', refreshLocalMarket);
-    const unsubItems = subscribeToMarketplaceItems((remoteItems) => {
-      if (Array.isArray(remoteItems) && remoteItems.length >= 1) {
-        setLiveMarketItemsCount(remoteItems.length);
-      } else {
-        setLiveMarketItemsCount(getStoredMarketItems().length);
-      }
-    });
-    const unsubShops = subscribeToMarketShops((remoteShops) => {
-      if (Array.isArray(remoteShops) && remoteShops.length >= 1) {
-        setLiveMarketShopsCount(remoteShops.length);
-      } else {
-        setLiveMarketShopsCount(getStoredMarketShops().length);
-      }
-    });
-    return () => {
-      window.removeEventListener('sahaya_marketplace_updated', refreshLocalMarket);
-      unsubItems();
-      unsubShops();
-    };
-  }, []);
-
   const categoryCounts = useMemo(() => {
     const isAdminUser = Boolean(user && (user.role === 'admin' ? true : user.role === 'super_admin'));
     const posts = (Array.isArray(helpPosts) ? helpPosts : []).filter((p: any) => {
@@ -836,9 +998,14 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     }).length;
     const extraBloodCount = (getStoredBloodRequests() || []).filter((b: any) => b && b.id && !existingIds.has(String(b.postCode || b.id))).length;
     const extraDisasterCount = (getStoredDisasterReliefItems() || []).filter((d: any) => d && d.id && !existingIds.has(String(d.id))).length;
+    const extraJobsCount = (Array.isArray(liveJobs) ? liveJobs : []).filter((j: any) => j && j.id && !existingIds.has(String(j.id))).length;
+    const extraAccCount = (Array.isArray(liveAccommodations) ? liveAccommodations : []).filter((acc: any) => acc && acc.id && !existingIds.has(String(acc.id))).length;
+    const extraProServicesCount = (Array.isArray(professionalServices) ? professionalServices : []).filter((s: any) => s && s.id && !existingIds.has(String(s.id))).length;
+    const proPostsCount = posts.filter((p) => Boolean(p && (p.category === 'professional_services' ? true : p.serviceType === 'professional_services'))).length;
+    const grpPostsCount = posts.filter((p) => Boolean(p && (p.category === 'group_work' ? true : p.serviceType === 'group_work'))).length;
     const mktPostsCount = posts.filter((p) => Boolean(p && (p.category === 'marketplace' ? true : p.serviceType === 'marketplace'))).length;
     return {
-      all: posts.length + validRedAlertsCount + extraBloodCount + extraDisasterCount,
+      all: posts.length + validRedAlertsCount + extraBloodCount + extraDisasterCount + extraJobsCount + extraAccCount,
       emergency: posts.filter((p) => isEmergencyOrHighPriority(p)).length + validRedAlertsCount + extraBloodCount + extraDisasterCount,
       quick_services: posts.filter((p) => isQuickService(p)).length,
       normal_services: posts.filter((p) => {
@@ -869,14 +1036,14 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
         if (isOtherSpecial) return false;
         return true;
       }).length,
-      professional_services: posts.filter((p) => Boolean(p && (p.category === 'professional_services' ? true : p.serviceType === 'professional_services'))).length,
-      group_work: posts.filter((p) => Boolean(p && (p.category === 'group_work' ? true : p.serviceType === 'group_work'))).length,
+      professional_services: proPostsCount + extraProServicesCount,
+      group_work: grpPostsCount + liveGroupsCount,
       marketplace: mktPostsCount + liveMarketItemsCount + liveMarketShopsCount,
       find_for_me: posts.filter((p) => Boolean(p && (p.category === 'find_for_me' ? true : p.serviceType === 'find_for_me'))).length,
       from_me_to_you: posts.filter((p) => Boolean(p && (p.category === 'from_me_to_you' ? true : p.serviceType === 'from_me_to_you'))).length,
       saved: savedPostIds.length,
     };
-  }, [helpPosts, redAlerts, bloodDisasterSyncTick, savedPostIds, liveMarketItemsCount, liveMarketShopsCount, user]);
+  }, [helpPosts, redAlerts, bloodDisasterSyncTick, savedPostIds, liveMarketItemsCount, liveMarketShopsCount, liveGroupsCount, liveJobs, liveAccommodations, professionalServices, user]);
   // 🚨 Dynamic Cycling Carousel state for multiple Red Alerts
   const [activeAlertIndex, setActiveAlertIndex] = useState(0);
   const [isAlertCarouselPaused, setIsAlertCarouselPaused] = useState(false);
@@ -1618,6 +1785,16 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                           onViewRedAlertDetail((p as any).rawRedAlert);
                           return;
                         }
+                        if ((p as any)?.rawJobListing) {
+                          setBoardCategoryFilter('jobs');
+                          setSelectedCategoryTitle(getLangText('රැකියා', 'Jobs', 'வேலைகள்'));
+                          return;
+                        }
+                        if ((p as any)?.rawAccommodationListing) {
+                          setBoardCategoryFilter('accommodation');
+                          setSelectedCategoryTitle(getLangText('නවාතැන', 'Accommodation', 'தங்குமிடம்'));
+                          return;
+                        }
                         onOfferSupport(p);
                       }}
                       onEditPost={(p) => onEditPost(p)}
@@ -1625,6 +1802,16 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                       onViewPost={(p) => {
                         if ((p as any)?.rawRedAlert && onViewRedAlertDetail) {
                           onViewRedAlertDetail((p as any).rawRedAlert);
+                          return;
+                        }
+                        if ((p as any)?.rawJobListing) {
+                          setBoardCategoryFilter('jobs');
+                          setSelectedCategoryTitle(getLangText('රැකියා', 'Jobs', 'வேலைகள்'));
+                          return;
+                        }
+                        if ((p as any)?.rawAccommodationListing) {
+                          setBoardCategoryFilter('accommodation');
+                          setSelectedCategoryTitle(getLangText('නවාතැන', 'Accommodation', 'தங்குமிடம்'));
                           return;
                         }
                         onViewPost(p);

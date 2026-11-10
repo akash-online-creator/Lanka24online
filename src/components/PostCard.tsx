@@ -3,8 +3,21 @@ import React, { useState, useEffect } from 'react';
 import { Heart, ThumbsDown, MessageSquare, Trash2, Eye, Clock, Pencil, Phone, MessageCircle, HelpCircle, Zap, Bookmark, UserCheck, MapPin, Send, Lock, User as UserIcon, ChevronDown, ChevronUp, Car, Banknote, FileText, ExternalLink, Copy, Check, BarChart3, Calendar, Maximize2, X } from 'lucide-react';
 import { HelpPost, User, Language, LocationOption, PostComment } from '../types';
 import { checkIsPostOwner, checkIsAdmin } from '../utils/postOwnerHelper';
-import { addDeletedPostId } from '../utils/deletedPostsManager';
-import { deleteHelpPostFromFirestore, updateHelpPostInFirestore } from '../lib/firebase';
+import {
+  addDeletedPostId,
+  addDeletedRedAlertId,
+  addDeletedBloodId,
+  addDeletedDisasterId,
+  addDeletedJobId,
+  addDeletedAccommodationId,
+} from '../utils/deletedPostsManager';
+import {
+  deleteHelpPostFromFirestore,
+  updateHelpPostInFirestore,
+  cancelRedAlertByReporter,
+  deleteRedAlertInFirestore,
+  addCommentToRedAlert,
+} from '../lib/firebase';
 import { maskPhone } from '../utils/demoDataMasker';
 import { AudioVoicePlayer } from './AudioVoiceNote';
 import { getFontFamilyById, injectPostFonts } from '../utils/postFontManager';
@@ -78,7 +91,22 @@ const [localPoll, setLocalPoll] = useState(() => post?.pollData ? post.pollData 
 const [showCommentsDrawer, setShowCommentsDrawer] = useState(false);
 const [newCommentText, setNewCommentText] = useState('');
 const [isSubmittingComment, setIsSubmittingComment] = useState(false);
-const [localComments, setLocalComments] = useState(() => Array.isArray(post?.commentsList) ? post.commentsList : []);
+const extractInitialComments = (p: any): PostComment[] => {
+if (Array.isArray(p?.commentsList) && p.commentsList.length > 0) return p.commentsList;
+const rawAlertComments = p?.rawRedAlert?.comments;
+if (Array.isArray(rawAlertComments) && rawAlertComments.length > 0) {
+return rawAlertComments.map((c: any) => ({
+id: c.id || 'cmt_' + Math.random().toString(36).slice(2, 7),
+userId: c.userId || 'user',
+userName: c.userName || 'සහය සාමාජික',
+userPhotoUrl: c.userPhotoUrl || '',
+comment: c.text || c.comment || '',
+createdAt: c.createdAt || new Date().toISOString()
+}));
+}
+return [];
+};
+const [localComments, setLocalComments] = useState<PostComment[]>(() => extractInitialComments(post));
 const myUserId = currentUser?.id ? currentUser.id : currentUser?.userId ? currentUser.userId : 'anonymous_guest';
 const [likesCount, setLikesCount] = useState(post?.likeCount ? post.likeCount : 0);
 const [isLiked, setIsLiked] = useState(() => {
@@ -98,9 +126,7 @@ const [isSaved, setIsSaved] = useState(propIsSaved ? true : Boolean(post?.savedB
 const [savesCount, setSavesCount] = useState(post?.savesCount ? post.savesCount : post?.saveCount ? post.saveCount : propIsSaved ? 1 : 0);
 useEffect(() => {
 if (!post) return;
-if (Array.isArray(post.commentsList)) {
-setLocalComments(post.commentsList);
-}
+setLocalComments(extractInitialComments(post));
 if (post.pollData) {
 setLocalPoll(post.pollData);
 }
@@ -108,7 +134,7 @@ setLikesCount(post.likeCount ? post.likeCount : 0);
 setUnlikesCount(post.unlikesCount ? post.unlikesCount : post.unlikeCount ? post.unlikeCount : 0);
 setIsSaved(propIsSaved ? true : Boolean(post.savedBy?.includes(myUserId)));
 setSavesCount(post.savesCount ? post.savesCount : post.saveCount ? post.saveCount : propIsSaved ? 1 : 0);
-}, [post?.id, post?.commentsList, post?.pollData, post?.likeCount, post?.unlikesCount, post?.unlikeCount, post?.savesCount, post?.saveCount, propIsSaved, myUserId]);
+}, [post?.id, post?.commentsList, post?.rawRedAlert?.comments, post?.pollData, post?.likeCount, post?.unlikesCount, post?.unlikeCount, post?.savesCount, post?.saveCount, propIsSaved, myUserId]);
 if (!post) return null;
 if (isDeletingLocal) return null;
 const isDemo = Boolean(propIsDemo ?? currentUser?.isDemo);
@@ -329,10 +355,20 @@ setNewCommentText('');
 setIsSubmittingComment(false);
 try {
 if (post.id) {
+if ((post as any)?.rawRedAlert || post.category === 'red_alert') {
+await addCommentToRedAlert(post.id, {
+id: newComment.id,
+userId: newComment.userId,
+userName: newComment.userName,
+text: newComment.comment,
+createdAt: newComment.createdAt
+}).catch(() => {});
+} else {
 await updateHelpPostInFirestore(post.id, {
 commentsCount: updatedComments.length,
 commentsList: updatedComments
 });
+}
 }
 } catch (err) {
 console.warn('Comment sync error:', err);
@@ -347,6 +383,42 @@ const targetId = post.id;
 setIsDeletingLocal(true);
 if (targetId) {
 addDeletedPostId(targetId);
+const pCodeStr = String(post.postCode || '');
+const isRedAlertPost = Boolean((post as any)?.rawRedAlert || post.category === 'red_alert' || pCodeStr.startsWith('#RED-'));
+const isBloodPost = Boolean(post.postType === 'blood_request' || pCodeStr.startsWith('#BLD-'));
+const isDisasterPost = Boolean(post.postType === 'disaster_relief' || pCodeStr.startsWith('#EMG-'));
+const isJobPost = Boolean((post as any)?.rawJobListing || post.category === 'jobs');
+const isAccPost = Boolean((post as any)?.rawAccommodationListing || post.category === 'accommodation');
+if (isRedAlertPost) {
+addDeletedRedAlertId(targetId);
+try {
+await cancelRedAlertByReporter(targetId).catch(() => {});
+await deleteRedAlertInFirestore(targetId).catch(() => {});
+} catch {}
+try {
+window.dispatchEvent(new CustomEvent('sahaya_red_alert_deleted', { detail: { alertId: targetId } }));
+} catch {}
+} else if (isBloodPost) {
+addDeletedBloodId(targetId);
+try {
+window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+} catch {}
+} else if (isDisasterPost) {
+addDeletedDisasterId(targetId);
+try {
+window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+} catch {}
+} else if (isJobPost) {
+addDeletedJobId(targetId);
+try {
+window.dispatchEvent(new CustomEvent('sahaya_jobs_updated'));
+} catch {}
+} else if (isAccPost) {
+addDeletedAccommodationId(targetId);
+try {
+window.dispatchEvent(new CustomEvent('sahaya_accommodations_updated'));
+} catch {}
+}
 try {
   removeNotificationsForPost(targetId, post.postCode);
 } catch {}

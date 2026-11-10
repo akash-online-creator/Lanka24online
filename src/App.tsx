@@ -307,7 +307,19 @@ export const App: React.FC = () => {
         });
       }
     };
+    const handleLocalRedAlertDeleted = (e: any) => {
+      const delId = e?.detail?.alertId;
+      if (delId) {
+        setRedAlerts((prev) => {
+          const list = Array.isArray(prev) ? prev : [];
+          const next = filterNonDeletedRedAlerts(list.filter((a) => a && a.id !== delId));
+          saveRedAlertsToStorage(next);
+          return next;
+        });
+      }
+    };
     window.addEventListener('sahaya_red_alert_created', handleLocalRedAlertCreated);
+    window.addEventListener('sahaya_red_alert_deleted', handleLocalRedAlertDeleted);
     const unsubscribeIssues = subscribeToIssuesFromFirestore((dbIssues) => {
       if (Array.isArray(dbIssues)) {
         setIssues(dbIssues);
@@ -323,6 +335,7 @@ export const App: React.FC = () => {
       unsubscribeAlerts?.();
       unsubscribeIssues?.();
       window.removeEventListener('sahaya_red_alert_created', handleLocalRedAlertCreated);
+      window.removeEventListener('sahaya_red_alert_deleted', handleLocalRedAlertDeleted);
     };
   }, []);
 
