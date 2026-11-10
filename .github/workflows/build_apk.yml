@@ -632,7 +632,7 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Support-Service.apk
 
       - name: Upload APK to GitHub Releases
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         if: success()
         with:
           tag_name: v1.1.${{ github.run_number }}
