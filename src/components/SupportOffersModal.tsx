@@ -9,6 +9,8 @@ import {
   Clock,
   Droplet,
   Bell,
+  Building,
+  Navigation,
 } from 'lucide-react';
 import { HelpPost, PostReply, Language, LocationOption } from '../types';
 import { updateHelpPostInFirestore, deduplicatePostReplies } from '../lib/firebase';
@@ -273,6 +275,23 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
       } as any);
     } catch {}
 
+    if (isBloodPost) {
+      try {
+        const rawBlood = localStorage.getItem("sahaya_blood_requests");
+        if (rawBlood) {
+          const parsedBlood = JSON.parse(rawBlood);
+          if (Array.isArray(parsedBlood)) {
+            const updatedBlood = parsedBlood.map((b) =>
+              b && (String(b.id) === String(post.id) || String(b.id) === String(post.postCode || "").replace("#", ""))
+                ? { ...b, replies: updatedReplies, bloodWorkflowStep: 3, confirmedHelperName: reply.responderName }
+                : b
+            );
+            localStorage.setItem("sahaya_blood_requests", JSON.stringify(updatedBlood));
+            window.dispatchEvent(new CustomEvent("sahaya_blood_disaster_updated"));
+          }
+        }
+      } catch {}
+    }
     if (onSelectHelper) {
       onSelectHelper(updatedPost, reply);
     }
@@ -332,6 +351,21 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
       } as any);
     } catch {}
 
+    try {
+      const rawBlood = localStorage.getItem("sahaya_blood_requests");
+      if (rawBlood) {
+        const parsedBlood = JSON.parse(rawBlood);
+        if (Array.isArray(parsedBlood)) {
+          const updatedBlood = parsedBlood.map((b) =>
+            b && (String(b.id) === String(post.id) || String(b.id) === String(post.postCode || "").replace("#", ""))
+              ? { ...b, replies: updatedReplies, bloodWorkflowStep: 4, donorArrivedAtHospital: true, bloodDonatedByHelper: true }
+              : b
+          );
+          localStorage.setItem("sahaya_blood_requests", JSON.stringify(updatedBlood));
+          window.dispatchEvent(new CustomEvent("sahaya_blood_disaster_updated"));
+        }
+      }
+    } catch {}
     onClose();
   };
 
@@ -574,8 +608,30 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                       {currentStep === 3 && (
                         !off.isPostOwner || isMineOffer ? (
                           <div className="space-y-3">
+                            {/* Hospital Details & Navigation Box */}
+                            <div className="p-3.5 rounded-2xl bg-rose-50/90 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-left space-y-2.5">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                  <Building className="w-4 h-4 text-rose-600 shrink-0" />
+                                  <span>{(off.post as any).hospitalName || off.post.locationName || "රෝහල"} {off.post.district ? "(" + off.post.district + ")" : ""}</span>
+                                </div>
+                                <a
+                                  href={"https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(((off.post as any).hospitalName || off.post.locationName || "Hospital") + ", " + (off.post.district || "") + ", Sri Lanka")}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs shadow-md transition-all active:scale-95 cursor-pointer"
+                                  title="Google Maps Navigation හරහා රෝහලට පාර බලන්න"
+                                >
+                                  <Navigation className="w-3.5 h-3.5" />
+                                  <span>📍 රෝහලට Navigation (Maps)</span>
+                                </a>
+                              </div>
+                              <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                                දැන්වීම්කරු ඔබව තෝරාගෙන ඇත. කරුණාකර රෝහලේ රුධිර බැංකුව (Blood Bank) වෙත ගොස් ලේ පරිත්‍යාගය සිදු කළ පසු පහත බොත්තම ඔබන්න.
+                              </p>
+                            </div>
                             <p className="text-sm sm:text-base font-black text-slate-900 dark:text-white leading-snug">
-                              දැන්වීම්කරු ඔබව තෝරාගෙන ඇත. ඔබ ලේ පරිත්‍යාගය සිදු කළාද?
+                              ඔබ රෝහලට ගොස් ලේ පරිත්‍යාගය සිදු කළාද?
                             </p>
                             <button
                               type="button"
@@ -590,7 +646,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                           <div className="space-y-3">
                             <p className="text-sm font-black text-amber-700 dark:text-amber-300 flex items-center justify-center gap-1.5">
                               <Clock className="w-4 h-4 shrink-0" />
-                              <span>"{helperName}" ලේ පරිත්‍යාගය සිදු කරන තෙක් රැඳී සිටින්න.</span>
+                              <span>"{helperName}" රෝහල වෙත ගොස් ලේ පරිත්‍යාගය සිදු කරන තෙක් රැඳී සිටින්න.</span>
                             </p>
                             <button
                               type="button"

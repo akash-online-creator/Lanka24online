@@ -25,7 +25,8 @@ import {
   Trash2,
   Sparkles,
   ArrowRight,
-  MessageCircle
+  MessageCircle,
+  Navigation
 } from 'lucide-react';
 import { BloodDonationRequest, VolunteerDonor, BloodGroup, Language, User as UserType } from '../types';
 import { maskName, maskPhone, maskAddress } from '../utils/demoDataMasker';
@@ -905,10 +906,24 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                           )}
                         </div>
 
-                        <p className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1">
-                          <Building className="w-3.5 h-3.5 text-rose-600" />
-                          <span>{req.hospitalName} ({req.district})</span>
-                        </p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1">
+                            <Building className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                            <span>{req.hospitalName} ({req.district})</span>
+                          </p>
+                          {req.hospitalName && (
+                            <a
+                              href={"https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(req.hospitalName + ", " + (req.district || "") + ", Sri Lanka")}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800 text-[11px] font-bold transition-all hover:scale-105"
+                              title="Google Maps Navigation හරහා රෝහලට Navigation බලන්න"
+                            >
+                              <Navigation className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                              <span>📍 Navigation (Maps)</span>
+                            </a>
+                          )}
+                        </div>
 
                         <div className="flex items-center gap-3 flex-wrap text-[11px] text-slate-500 dark:text-slate-400">
                           <span>
