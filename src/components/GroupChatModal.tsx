@@ -149,27 +149,63 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
     return isNaN(parsed) ? 0 : parsed;
   })();
 
+  const mergeGroupMessages = (remoteArr?: GroupMessage[], localArr?: GroupMessage[]): GroupMessage[] => {
+    const msgMap = new Map<string, GroupMessage>();
+    (localArr || []).forEach((m) => {
+      if (m && m.id) msgMap.set(m.id, m);
+    });
+    (remoteArr || []).forEach((rm) => {
+      if (rm && rm.id) msgMap.set(rm.id, rm);
+    });
+    return Array.from(msgMap.values()).sort(
+      (a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0)
+    );
+  };
+
   // Sync group, messages, and join requests when prop or remote Firestore data changes
   useEffect(() => {
     setGroup(initialGroup);
     if (isOpen && initialGroup?.id) {
       const remoteMsgs = Array.isArray((initialGroup as any).groupMessages)
         ? (initialGroup as any).groupMessages
-        : getStoredGroupMessages(initialGroup.id);
-      setMessages(remoteMsgs);
+        : [];
+      const localMsgs = getStoredGroupMessages(initialGroup.id);
+      setMessages(mergeGroupMessages(remoteMsgs, localMsgs));
       setGroupJoinRequests(
         getStoredGroupJoinRequests().filter((r) => r && r.groupId === initialGroup.id && r.status === 'pending')
       );
     }
   }, [initialGroup, isOpen]);
 
-  // Load group messages on open or group id change
+  // Load group messages on open or group id change and subscribe to real-time updates
   useEffect(() => {
-    if (isOpen && group?.id) {
-      const msgs = getStoredGroupMessages(group.id);
-      setMessages(msgs);
+    if (!isOpen || !group?.id) return;
+    const targetGroupId = group.id;
+    const remoteMsgs = Array.isArray((group as any).groupMessages) ? (group as any).groupMessages : [];
+    const localMsgs = getStoredGroupMessages(targetGroupId);
+    setMessages(mergeGroupMessages(remoteMsgs, localMsgs));
+    refreshJoinRequests();
+
+    const handleGroupMessagesUpdated = (e: any) => {
+      const updatedGroups: GroupItem[] | undefined = e?.detail?.groups;
+      const matchedRemote = Array.isArray(updatedGroups)
+        ? updatedGroups.find((g) => g && g.id === targetGroupId)
+        : getStoredGroups().find((g) => g && g.id === targetGroupId);
+      if (matchedRemote) {
+        setGroup(matchedRemote);
+      }
+      const rMsgs = Array.isArray((matchedRemote as any)?.groupMessages)
+        ? (matchedRemote as any).groupMessages
+        : [];
+      const lMsgs = getStoredGroupMessages(targetGroupId);
+      setMessages(mergeGroupMessages(rMsgs, lMsgs));
       refreshJoinRequests();
-    }
+    };
+
+    window.addEventListener('sahaya_group_messages_updated', handleGroupMessagesUpdated);
+    return () => {
+      window.removeEventListener('sahaya_group_messages_updated', handleGroupMessagesUpdated);
+    };
   }, [isOpen, group?.id]);
 
   // Auto-scroll to bottom on new messages

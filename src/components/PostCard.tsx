@@ -126,7 +126,18 @@ const [isSaved, setIsSaved] = useState(propIsSaved ? true : Boolean(post?.savedB
 const [savesCount, setSavesCount] = useState(post?.savesCount ? post.savesCount : post?.saveCount ? post.saveCount : propIsSaved ? 1 : 0);
 useEffect(() => {
 if (!post) return;
-setLocalComments(extractInitialComments(post));
+const incoming = extractInitialComments(post);
+setLocalComments((prev) => {
+if (!Array.isArray(prev) || prev.length === 0) return incoming;
+const map = new Map<string, PostComment>();
+prev.forEach((c) => {
+if (c && c.id) map.set(c.id, c);
+});
+incoming.forEach((c) => {
+if (c && c.id) map.set(c.id, c);
+});
+return Array.from(map.values());
+});
 if (post.pollData) {
 setLocalPoll(post.pollData);
 }
@@ -134,7 +145,18 @@ setLikesCount(post.likeCount ? post.likeCount : 0);
 setUnlikesCount(post.unlikesCount ? post.unlikesCount : post.unlikeCount ? post.unlikeCount : 0);
 setIsSaved(propIsSaved ? true : Boolean(post.savedBy?.includes(myUserId)));
 setSavesCount(post.savesCount ? post.savesCount : post.saveCount ? post.saveCount : propIsSaved ? 1 : 0);
-}, [post?.id, post?.commentsList, post?.rawRedAlert?.comments, post?.pollData, post?.likeCount, post?.unlikesCount, post?.unlikeCount, post?.savesCount, post?.saveCount, propIsSaved, myUserId]);
+}, [post?.id, post?.commentsList, (post as any)?.rawRedAlert?.comments, post?.pollData, post?.likeCount, post?.unlikesCount, post?.unlikeCount, post?.savesCount, post?.saveCount, propIsSaved, myUserId]);
+
+useEffect(() => {
+if (!post?.id) return;
+const handleCommentEvent = (e: any) => {
+if (e?.detail?.postId === post.id && Array.isArray(e?.detail?.commentsList)) {
+setLocalComments(e.detail.commentsList);
+}
+};
+window.addEventListener('sahaya_post_comment_added', handleCommentEvent);
+return () => window.removeEventListener('sahaya_post_comment_added', handleCommentEvent);
+}, [post?.id]);
 if (!post) return null;
 if (isDeletingLocal) return null;
 const isDemo = Boolean(propIsDemo ?? currentUser?.isDemo);
@@ -353,6 +375,9 @@ const updatedComments = [...localComments, newComment];
 setLocalComments(updatedComments);
 setNewCommentText('');
 setIsSubmittingComment(false);
+try {
+window.dispatchEvent(new CustomEvent('sahaya_post_comment_added', { detail: { postId: post.id, comment: newComment, commentsList: updatedComments } }));
+} catch {}
 try {
 if (post.id) {
 if ((post as any)?.rawRedAlert || post.category === 'red_alert') {

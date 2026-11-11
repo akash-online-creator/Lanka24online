@@ -2188,7 +2188,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       {/* 1.4. Quick Service Detail & Helper Selection Modal (Node 4) */}
       <QuickServiceDetailModal
         isOpen={Boolean(selectedPostForDetail)}
-        post={selectedPostForDetail}
+        post={selectedPostForDetail ? ((helpPosts || []).find((p) => p && p.id === selectedPostForDetail.id) || selectedPostForDetail) : null}
         onClose={() => setSelectedPostForDetail(null)}
         currentUser={user}
         currentLocation={currentLocation}
@@ -2213,7 +2213,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       {/* 1.5. Quick Service Real-time Negotiation Chat Modal (Node 5) */}
       <QuickServiceChatModal
         isOpen={Boolean(selectedPostForChat)}
-        post={selectedPostForChat}
+        post={selectedPostForChat ? ((helpPosts || []).find((p) => p && p.id === selectedPostForChat.id) || selectedPostForChat) : null}
         onClose={() => setSelectedPostForChat(null)}
         currentUser={user}
         lang={language}
@@ -2227,7 +2227,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       {/* 1.6. Quick Service Confirmation & Star Rating Workflow Modal (Node 6) */}
       <QuickServiceConfirmWorkflow
         isOpen={Boolean(selectedPostForConfirm)}
-        post={selectedPostForConfirm}
+        post={selectedPostForConfirm ? ((helpPosts || []).find((p) => p && p.id === selectedPostForConfirm.id) || selectedPostForConfirm) : null}
         onClose={() => setSelectedPostForConfirm(null)}
         onOpenChat={(p) => setSelectedPostForChat(p as any)}
         currentUser={user}
@@ -2300,7 +2300,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       <OfferSupportModal
         isOpen={Boolean(selectedPostForOffer)}
         onClose={() => setSelectedPostForOffer(null)}
-        post={selectedPostForOffer}
+        post={selectedPostForOffer ? ((helpPosts || []).find((p) => p && p.id === selectedPostForOffer.id) || selectedPostForOffer) : null}
         currentUser={user}
         currentLocation={currentLocation}
         lang={language}
@@ -2328,8 +2328,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setIsSupportOffersModalOpen(false);
           setTargetPostForOffers(null);
         }}
-        post={targetPostForOffers}
-        targetPost={targetPostForOffers}
+        post={targetPostForOffers ? ((helpPosts || []).find((p) => p && p.id === targetPostForOffers.id) || targetPostForOffers) : null}
+        targetPost={targetPostForOffers ? ((helpPosts || []).find((p) => p && p.id === targetPostForOffers.id) || targetPostForOffers) : null}
         userPosts={helpPosts}
         currentUser={user}
         viewerLocation={currentLocation}
@@ -2354,7 +2354,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       {/* 7. View Post Full Evidence Modal */}
       <ViewHelpPostModal
         isOpen={Boolean(viewingPost)}
-        post={viewingPost}
+        post={viewingPost ? ((helpPosts || []).find((p) => p && p.id === viewingPost.id) || viewingPost) : null}
         onClose={() => setViewingPost(null)}
         lang={language}
         language={language}
@@ -2720,7 +2720,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       {/* 🚨 Red Alert Detail & Incident Management Modal */}
       <RedAlertDetailModal
         isOpen={!!selectedAlertForDetail}
-        alert={selectedAlertForDetail}
+        alert={selectedAlertForDetail ? ((redAlerts || []).find((a) => a && a.id === selectedAlertForDetail.id) || selectedAlertForDetail) : null}
         onClose={() => setSelectedAlertForDetail(null)}
         currentUser={user}
         currentLocation={currentLocation}

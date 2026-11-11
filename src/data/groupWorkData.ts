@@ -38,7 +38,7 @@ export function saveGroupsToStorage(groups: GroupItem[]): void {
   }
 }
 
-// Background real-time listener so group list & username checks are always synced across devices
+// Background real-time listener so group list, messages & username checks are always synced across devices
 if (typeof window !== 'undefined') {
   try {
     subscribeToGroups((remoteGroups) => {
@@ -52,6 +52,14 @@ if (typeof window !== 'undefined') {
       getStoredGroupJoinRequests().forEach((r) => {
         if (r && r.id) reqMap.set(r.id, r);
       });
+      let allStoredMsgs: Record<string, GroupMessage[]> = {};
+      try {
+        const rawMsgs = localStorage.getItem(GROUP_MESSAGES_STORAGE_KEY);
+        allStoredMsgs = rawMsgs ? JSON.parse(rawMsgs) : {};
+      } catch {
+        allStoredMsgs = {};
+      }
+      let messagesChanged = false;
       remoteGroups.forEach((g: any) => {
         if (g && g.id && !isDummyOrDemoGroup(g.id)) {
           map.set(g.id, {
@@ -65,10 +73,38 @@ if (typeof window !== 'undefined') {
               if (r && r.id) reqMap.set(r.id, r);
             });
           }
+          if (Array.isArray(g.groupMessages)) {
+            const localGroupMsgs = Array.isArray(allStoredMsgs[g.id]) ? allStoredMsgs[g.id] : [];
+            const msgMap = new Map<string, GroupMessage>();
+            localGroupMsgs.forEach((m) => {
+              if (m && m.id) msgMap.set(m.id, m);
+            });
+            g.groupMessages.forEach((rm: GroupMessage) => {
+              if (rm && rm.id) msgMap.set(rm.id, rm);
+            });
+            const mergedMsgs = Array.from(msgMap.values()).sort(
+              (a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0)
+            );
+            allStoredMsgs[g.id] = mergedMsgs;
+            messagesChanged = true;
+          }
         }
       });
-      saveGroupsToStorage(Array.from(map.values()));
+      if (messagesChanged) {
+        try {
+          localStorage.setItem(GROUP_MESSAGES_STORAGE_KEY, JSON.stringify(allStoredMsgs));
+        } catch {}
+      }
+      const syncedGroups = Array.from(map.values());
+      saveGroupsToStorage(syncedGroups);
       saveGroupJoinRequestsToStorage(Array.from(reqMap.values()));
+      try {
+        window.dispatchEvent(
+          new CustomEvent('sahaya_group_messages_updated', {
+            detail: { groups: syncedGroups },
+          })
+        );
+      } catch {}
     });
   } catch {}
 }

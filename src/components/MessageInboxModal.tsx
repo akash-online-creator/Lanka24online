@@ -24,7 +24,7 @@ AlertCircle
 import { HelpPost, PostReply, User as UserType, Language, ChatMessage, TelegramMediaRecord } from '../types';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { translations } from '../data/translations';
-import { subscribeToChatMessages, sendChatMessageToFirestore, deleteChatMessageForEveryone, togglePinChatMessage } from '../lib/firebase';
+import { subscribeToChatMessages, sendChatMessageToFirestore, deleteChatMessageForEveryone, togglePinChatMessage, updateHelpPostInFirestore } from '../lib/firebase';
 import { parseTimeToMs, getAccurateElapsedTime, formatMessageClockTime } from '../utils/dateUtils';
 import {
 inspectAndSanitizeMessage,
@@ -526,7 +526,7 @@ list.sort((a, b) => {
   if (!aPinned && bPinned) return 1;
   return b.lastMessageTimeMs - a.lastMessageTimeMs;
 });
-return list; }, [helpPosts, user, isOpen, directContacts, pinnedThreadIds]);
+return list; }, [helpPosts, user, isOpen, directContacts, pinnedThreadIds, messages]);
 useEffect(() => { if (isOpen && !activeThread && conversationThreads.length !== 0) { setActiveThread(conversationThreads[0]); } }, [isOpen, conversationThreads.length]);
 useEffect(() => {
   seenMessageIdsRef.current.clear();
@@ -589,7 +589,7 @@ const matchesPartner = Boolean( senderKey === partnerKey ? true : fMsg.senderNam
 createdAtMs: fMs, timestamp: formatMessageClockTime(fMsg.timestamp, fMs), }); }); const mergedMap: any = {}; localSaved.forEach((lm: any) => {
 if (lm && lm.id) mergedMap[lm.id] = lm; }); combined.forEach((cm: any) => { if (cm && cm.id) mergedMap[cm.id] = cm; }); const finalArr = Object.values(mergedMap) as ChatMessage[];
 finalArr.sort((a, b) => { const timeA = a.createdAtMs ? a.createdAtMs : parseTimeToMs(a.timestamp); const timeB = b.createdAtMs ? b.createdAtMs : parseTimeToMs(b.timestamp);
-return timeA - timeB; }); if (finalArr.length !== 0) { setMessages(finalArr); } else { const nowMs = Date.now(); const safeDesc = inspectAndSanitizeMessage(
+return timeA - timeB; }); if (finalArr.length !== 0) { saveLocalPartnerMessages(currentPost.id, partnerKey, finalArr); setMessages(finalArr); } else { const nowMs = Date.now(); const safeDesc = inspectAndSanitizeMessage(
 currentPost.whatHappened ? currentPost.whatHappened : 'ඉල්ලීම', Boolean(currentPost.isConfirmed) ).sanitizedText; setMessages([ { id: 'init_1_' + partnerKey,
 senderName: currentPost.userName ? currentPost.userName : 'දැන්වීම්කරු', senderRole: 'seeker', text: 'සුබ උදෑසනක්! #' + (currentPost.postCode ? currentPost.postCode : '') + ' (' + safeDesc + ') සඳහා සංවාදය මෙතැනින් ආරම්භ කරන්න.',
 timestamp: formatMessageClockTime(undefined, nowMs), createdAtMs: nowMs, senderPhone: currentPost.userPhone ? currentPost.userPhone : '',
@@ -731,6 +731,22 @@ setMessages(updatedList);
 setIsSending(true);
 try {
 await sendChatMessageToFirestore(currentPost.id, newMsg);
+if (!activeThread.isDirectUsernameChat && !String(currentPost.id).startsWith('direct_user_chat_')) {
+  const newReply: PostReply = {
+    id: 'reply_' + nowMs,
+    responderName: newMsg.senderName,
+    responderPhone: newMsg.senderPhone || '',
+    responderId: currentUserId,
+    message: messageTextToSave,
+    createdAt: newMsg.timestamp,
+    createdAtMs: nowMs,
+  };
+  const updatedReplies = [...(currentPost.replies || []), newReply];
+  await updateHelpPostInFirestore(currentPost.id, {
+    replies: updatedReplies,
+    repliesCount: updatedReplies.length,
+  }).catch(() => {});
+}
 } catch (err) {
 console.error('Failed to send message to Firestore:', err);
 } finally {
@@ -773,6 +789,22 @@ setIsRecordingVoice(false);
 setIsSending(true);
 try {
 await sendChatMessageToFirestore(currentPost.id, newMsg);
+if (!activeThread.isDirectUsernameChat && !String(currentPost.id).startsWith('direct_user_chat_')) {
+  const newReply: PostReply = {
+    id: 'reply_voice_' + nowMs,
+    responderName: newMsg.senderName,
+    responderPhone: newMsg.senderPhone || '',
+    responderId: currentUserId,
+    message: newMsg.text,
+    createdAt: newMsg.timestamp,
+    createdAtMs: nowMs,
+  };
+  const updatedReplies = [...(currentPost.replies || []), newReply];
+  await updateHelpPostInFirestore(currentPost.id, {
+    replies: updatedReplies,
+    repliesCount: updatedReplies.length,
+  }).catch(() => {});
+}
 } catch (err) {
 console.error('Failed to send voice note to Firestore:', err);
 } finally {

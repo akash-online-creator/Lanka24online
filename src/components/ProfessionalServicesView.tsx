@@ -480,7 +480,7 @@ setShowReputationModal(false);
 setReputationModalService(null);
 },
 user: user,
-service: reputationModalService,
+service: reputationModalService ? (localServices.find((s) => s && s.id === reputationModalService.id) || reputationModalService) : null,
 allServices: localServices,
 language: language,
 onAddReview: (serviceId, review) => {
@@ -499,7 +499,7 @@ onAddService(newSrv);
 }), h(ProfessionalServiceDetailModal, {
 isOpen: Boolean(selectedServiceForDetail),
 onClose: () => setSelectedServiceForDetail(null),
-service: selectedServiceForDetail,
+service: selectedServiceForDetail ? (localServices.find((s) => s && s.id === selectedServiceForDetail.id) || selectedServiceForDetail) : null,
 currentUser: user,
 language: language,
 onDeleteService: handleDeleteService,

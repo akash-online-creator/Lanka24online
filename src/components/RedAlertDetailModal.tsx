@@ -160,27 +160,32 @@ export const RedAlertDetailModal: any = ({
   const commentInputRef = useRef(null as any);
 
   useEffect(() => {
-
     if (alert) {
-
-      setLocalComments(((alert.comments as RedAlertComment[]) || []));
-
+      const incomingComments = Array.isArray(alert.comments) ? (alert.comments as RedAlertComment[]) : [];
+      setLocalComments((prev) => {
+        const map = new Map<string, RedAlertComment>();
+        (prev || []).forEach((c) => {
+          if (c && c.id) map.set(c.id, c);
+        });
+        incomingComments.forEach((c) => {
+          if (c && c.id) map.set(c.id, c);
+        });
+        return Array.from(map.values());
+      });
       setLocalFakeReports(Array.isArray(alert.fakeReports) ? alert.fakeReports : []);
-
       setLocalVotesMap(alert.votesMap && typeof alert.votesMap === 'object' ? { ...alert.votesMap } : {});
+    }
+  }, [alert?.id, alert?.comments, alert?.fakeReports, alert?.votesMap, isOpen]);
 
+  useEffect(() => {
+    if (alert) {
       setVoteErrorMsg(null);
-
       setConfirmDialog(null);
-
       setShowReporterUpdateInput(false);
-
       setActionSuccessMsg(null);
-
       setShowCommentsPanel(true);
 
       try {
-
         const stoppedList = JSON.parse(localStorage.getItem('sahaya_siren_stopped_alerts') || '[]');
         const dismissedList = JSON.parse(localStorage.getItem('sahaya_dismissed_alerts') || '[]');
         const myAlerts = JSON.parse(localStorage.getItem('sahaya_my_created_alerts') || '[]');
@@ -195,16 +200,11 @@ export const RedAlertDetailModal: any = ({
           setEmergencySirenLock(false);
           stopEmergencySiren(true);
         }
-
       } catch {
-
         setSirenStoppedByMe(false);
-
       }
-
     }
-
-  }, [alert, isOpen]);
+  }, [alert?.id, isOpen]);
 
   useEffect(() => {
 
