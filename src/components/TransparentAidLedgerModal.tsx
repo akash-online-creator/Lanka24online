@@ -850,26 +850,21 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
     saveDisasterReliefItemsToStorage(updated);
     saveDisasterReliefToFirestore(newItem).catch((err) => console.warn('saveDisasterReliefToFirestore error:', err));
 
-    broadcastAppNotification({
-      type: 'aid_ledger',
-      title: `📦 හදිසි ආපදා සහන ඉල්ලීමක්: ${reliefTitle.trim()}`,
-      message: `${reliefLocation.trim()} (${reliefDistrict}) - ${reliefDesc.trim() || 'ආපදා සහනාධාර ද්‍රව්‍ය කඩිනමින් අවශ්‍යයි.'}`,
-      locationName: reliefDistrict,
-      badgeText: 'ආපදා සහන',
-      targetModal: 'aid_ledger',
-      targetPostId: newItem.id,
-    });
-
-    broadcastPushNotification({
-      category: 'aid_ledger',
-      title: `📦 හදිසි ආපදා සහන ඉල්ලීමක්: ${reliefTitle.trim()}`,
-      body: `${reliefLocation.trim()} (${reliefDistrict}) - ${reliefDesc.trim() || 'ආපදා සහනාධාර ද්‍රව්‍ය කඩිනමින් අවශ්‍යයි.'}`,
-      postId: newItem.id,
-      locationName: `${reliefLocation.trim()}, ${reliefDistrict}`,
-      urgency: 'high',
-      badgeText: 'ආපදා සහන',
-      targetModal: 'aid_ledger',
-    });
+    // Only dispatch push notification to other users if onSubmitHelpPost is not handling it
+    if (!onSubmitHelpPost) {
+      broadcastPushNotification({
+        category: 'aid_ledger',
+        title: `📦 හදිසි ආපදා සහන ඉල්ලීමක්: ${reliefTitle.trim()}`,
+        body: `${reliefLocation.trim()} (${reliefDistrict}) - ${reliefDesc.trim() || 'ආපදා සහනාධාර ද්‍රව්‍ය කඩිනමින් අවශ්‍යයි.'}`,
+        postId: newItem.id,
+        locationName: `${reliefLocation.trim()}, ${reliefDistrict}`,
+        urgency: 'high',
+        badgeText: 'ආපදා සහන',
+        targetModal: 'aid_ledger',
+        senderId: currentUser?.userId || (currentUser as any)?.id || currentUser?.nicNumber || '',
+        senderName: reliefContactName || currentUser?.name || '',
+      });
+    }
 
     setShowAddDisasterForm(false);
     setSuccessMessage(`✅ ආපදා සහන ඉල්ලීම සාර්ථකව පළකරන ලදී!`);

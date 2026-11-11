@@ -168,7 +168,8 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
       replies: updatedReplies,
       repliesCount: updatedReplies.length,
       helpersCount: updatedReplies.length,
-    };
+      ...(isBloodPost ? { bloodWorkflowStep: Math.max(Number((post as any).bloodWorkflowStep || 1), 2) } : {}),
+    } as any;
 
     if (onUpdatePost) {
       onUpdatePost(updatedPost);
@@ -204,7 +205,8 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
         replies: updatedReplies,
         repliesCount: updatedReplies.length,
         helpersCount: updatedPost.helpersCount,
-      });
+        ...(isBloodPost ? { bloodWorkflowStep: Math.max(Number((post as any).bloodWorkflowStep || 1), 2) } : {}),
+      } as any);
     } catch (_) {}
 
     const step1ChatText = isBloodPost
@@ -234,18 +236,8 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
       });
     } catch (_) {}
 
-    // 🔔 Trigger continuous bell ringtone for the ad creator!
-    try {
-      triggerSupportOfferAlert({
-        postId: post.id,
-        postAuthorId: post.userId || post.authorId || '',
-        postTitle: post.headline || post.whatHappened || post.title || 'දැන්වීම',
-        helperName: name.trim(),
-        helperPhone: phone.trim(),
-        helperMsg: finalMsg,
-        timestamp: nowMs,
-      });
-    } catch (_) {}
+    // Note: Do NOT ring the continuous support bell locally on the helper's own device.
+    // The poster's device automatically detects the new reply via real-time Firestore sync in UserDashboard and rings only for the poster.
 
     setSubmitted(true);
 
@@ -253,10 +245,7 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
       setSubmitted(false);
       setMsg('');
       onClose();
-      if (onOpenChat) {
-        onOpenChat(updatedPost);
-      }
-    }, 900);
+    }, 800);
   };
 
   return h(

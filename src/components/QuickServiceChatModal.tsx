@@ -183,6 +183,7 @@ const [showPolicyModal, setShowPolicyModal] = useState(false);
 const [policyStrikes, setPolicyStrikes] = useState(() => getUserStrikes(userKey));
 const [isBlocked, setIsBlocked] = useState(() => isUserPolicyBlocked(userKey));
 const [detectedViolationTypes, setDetectedViolationTypes] = useState([] as any[]);
+const [activeModalTab, setActiveModalTab] = useState<'chat' | 'steps' | 'partners'>('chat');
 useEffect(() => {
   const saved = loadPermanentUserLang(userKey, activePropLang);
   setUserLangState(saved);
@@ -207,8 +208,9 @@ useEffect(() => {
     setPolicyStrikes(getUserStrikes(userKey));
     setIsBlocked(isUserPolicyBlocked(userKey));
     setPinnedPartnerKeys(loadPinnedPartners(userKey));
+    setActiveModalTab('chat');
   }
-}, [isOpen, userKey]);
+}, [isOpen, userKey, post?.id]);
 
 const handleTogglePinPartner = (partnerKey: string, e?: React.MouseEvent) => {
   if (e) {
@@ -504,10 +506,68 @@ const isBloodPost = Boolean(
   String(post?.postCode || '').toUpperCase().startsWith('#BLD-') ||
   (post?.tagName && (String(post.tagName).includes('ලේ') || String(post.tagName).toLowerCase().includes('blood')))
 );
-const isBloodCompleted = Boolean(post?.isResolved || post?.status === 'resolved' || post?.serviceStage === 'completed');
+
+const hasStep4Msg = activePartnerMessages.some((m: any) => String(m?.text || '').includes('[පියවර 4/4'));
+const hasStep3DonatedMsg = activePartnerMessages.some((m: any) => String(m?.text || '').includes('[පියවර 3/4 - ලේ පරිත්‍යාගය සිදු කළා]'));
+const hasStep2Msg = activePartnerMessages.some((m: any) => String(m?.text || '').includes('[පියවර 2/4'));
+const hasStep1Msg = activePartnerMessages.some((m: any) => String(m?.text || '').includes('[පියවර 1/4') || m?.senderRole === 'helper');
+
+const rawWorkflowStep = Number((post as any)?.bloodWorkflowStep || 0);
+const isBloodCompleted = Boolean(
+  post?.isResolved ||
+  post?.status === 'resolved' ||
+  post?.serviceStage === 'completed' ||
+  rawWorkflowStep >= 5 ||
+  hasStep4Msg
+);
+const isStep3Completed = Boolean(
+  isBloodCompleted ||
+  (post as any)?.bloodDonatedByHelper ||
+  rawWorkflowStep >= 4 ||
+  hasStep3DonatedMsg
+);
+const isStep2Completed = Boolean(
+  isStep3Completed ||
+  post?.isConfirmed ||
+  rawWorkflowStep >= 3 ||
+  hasStep2Msg
+);
+const isStep1Completed = Boolean(
+  isStep2Completed ||
+  (Array.isArray(post?.replies) && post.replies.length > 0) ||
+  rawWorkflowStep >= 2 ||
+  hasStep1Msg
+);
+
+// Strict sequential step: 1 -> 2 -> 3 -> 4 -> 5 (Completed)
+const currentBloodStep: 1 | 2 | 3 | 4 | 5 = isBloodCompleted
+  ? 5
+  : isStep3Completed
+  ? 4
+  : isStep2Completed
+  ? 3
+  : isStep1Completed
+  ? 2
+  : 1;
+
+// Determine whose turn it is right now:
+// Step 1: Donor (!isPostAuthor)
+// Step 2: Poster (isPostAuthor)
+// Step 3: Donor (!isPostAuthor)
+// Step 4: Poster (isPostAuthor)
+const isMyTurnInBloodSteps = isBloodPost && !isBloodCompleted && (
+  (currentBloodStep === 1 && !isPostAuthor) ||
+  (currentBloodStep === 2 && isPostAuthor) ||
+  (currentBloodStep === 3 && !isPostAuthor) ||
+  (currentBloodStep === 4 && isPostAuthor)
+);
+
 const isConfirmed = Boolean(post.isConfirmed || isBloodPost);
 
-const handleSendBloodStageMessage = async (stageText: string, stageAction?: 'confirm_donor' | 'complete_blood') => {
+const handleSendBloodStageMessage = async (
+  stageText: string,
+  stageAction?: 'step1_offer' | 'confirm_donor' | 'step3_donated' | 'complete_blood'
+) => {
   if (!activePartner || isSending) return;
   const nowIso = new Date().toISOString();
   const nowMs = Date.now();
@@ -533,9 +593,32 @@ const handleSendBloodStageMessage = async (stageText: string, stageAction?: 'con
   saveLocalPartnerMessages(post.id, activePartner.key, updatedPartnerMsgs);
   setAllPostMessages((prev) => [...prev, localMsgWithId]);
   setIsSending(true);
+  // Switch back to chat tab so the user immediately sees the sent step message in the conversation
+  setActiveModalTab('chat');
   try {
     await sendChatMessageToFirestore(post.id, newMsg);
-    if (stageAction === 'confirm_donor') {
+    if (stageAction === 'step1_offer') {
+      const existingReplies = Array.isArray(post.replies) ? post.replies : [];
+      const newReply = {
+        id: 'rep_' + nowMs,
+        responderId: currentUserId,
+        responderName: currentUser?.name || 'පරිත්‍යාගශීලියා',
+        responderPhone: currentUser?.phone || (currentUser as any)?.whatsappNumber || '',
+        message: stageText,
+        timestamp: 'දැන්',
+        createdAtMs: nowMs,
+      };
+      const updatedPost: HelpPost = {
+        ...post,
+        replies: [...existingReplies, newReply],
+        bloodWorkflowStep: 2,
+      } as any;
+      if (onUpdatePost) onUpdatePost(updatedPost);
+      await updateHelpPostInFirestore(post.id, {
+        replies: updatedPost.replies,
+        bloodWorkflowStep: 2,
+      } as any);
+    } else if (stageAction === 'confirm_donor') {
       const updatedReplies = Array.isArray(post.replies)
         ? post.replies.map((r: any) =>
             r.responderName === activePartner.name || r.responderPhone === activePartner.phone
@@ -553,7 +636,8 @@ const handleSendBloodStageMessage = async (stageText: string, stageAction?: 'con
         confirmedBy: activePartner.name || post.confirmedBy,
         confirmedAt: nowIso,
         serviceStage: 'in_progress' as any,
-      };
+        bloodWorkflowStep: 3,
+      } as any;
       if (onUpdatePost) onUpdatePost(updatedPost);
       await updateHelpPostInFirestore(post.id, {
         replies: updatedReplies,
@@ -564,7 +648,21 @@ const handleSendBloodStageMessage = async (stageText: string, stageAction?: 'con
         confirmedBy: updatedPost.confirmedBy || '',
         confirmedAt: nowIso,
         serviceStage: 'in_progress' as any,
-      });
+        bloodWorkflowStep: 3,
+      } as any);
+    } else if (stageAction === 'step3_donated') {
+      const updatedPost: HelpPost = {
+        ...post,
+        isConfirmed: true,
+        bloodDonatedByHelper: true,
+        bloodWorkflowStep: 4,
+      } as any;
+      if (onUpdatePost) onUpdatePost(updatedPost);
+      await updateHelpPostInFirestore(post.id, {
+        isConfirmed: true,
+        bloodDonatedByHelper: true,
+        bloodWorkflowStep: 4,
+      } as any);
     } else if (stageAction === 'complete_blood') {
       const updatedPost: HelpPost = {
         ...post,
@@ -572,14 +670,16 @@ const handleSendBloodStageMessage = async (stageText: string, stageAction?: 'con
         isResolved: true,
         status: 'resolved',
         serviceStage: 'completed' as any,
-      };
+        bloodWorkflowStep: 5,
+      } as any;
       if (onUpdatePost) onUpdatePost(updatedPost);
       await updateHelpPostInFirestore(post.id, {
         isConfirmed: true,
         isResolved: true,
         status: 'resolved',
         serviceStage: 'completed' as any,
-      });
+        bloodWorkflowStep: 5,
+      } as any);
       try {
         const rawBlood = localStorage.getItem('sahaya_blood_requests');
         if (rawBlood) {
@@ -719,7 +819,6 @@ if (mine) {
 return { primaryText: rawSanitized, isTranslated: false, originalText: rawSanitized, translatedText: '' };
 }
 
-// 🎯 Requirement 2: දෙපාර්ශවයම එකම භාෂාවකනම් පරිවර්ථනය කිරිම අවශ්ෂ නොවේ. ORIGINAL MSG එකම පෙන්වන්න.
 const senderLang = msg.senderLang || detectedOtherPartyLang;
 const msgDetected = detectLanguageOfText(rawSanitized);
 const isSameLanguage = Boolean(
@@ -737,7 +836,6 @@ if (isSameLanguage) {
   };
 }
 
-// 🎯 Requirement 3: තම භාෂාව පමණක් වෙනස් කලවිට පැමිනෙන පණිවිඩද ඒ භාෂාවට පරිවර්ථනය කර පෙන්වන්න.
 const cacheKey = msg.id + '_' + userLang;
 const exactMatch = instantExactGreetingTranslate(rawSanitized, userLang);
 const fromLive = liveTranslations[cacheKey];
@@ -771,357 +869,1013 @@ const displayPostCode = post?.postCode && typeof post.postCode === 'string'
 ? post.postCode
 : '#' + post.postCode
 : '#POST';
-return h( React.Fragment, null, h( 'div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn' },
-h( 'div', { className: 'w-full max-w-4xl bg-white dark:bg-[#06180f] border-2 border-emerald-500/70 rounded-[2rem] shadow-[0_20px_60px_rgba(0,122,75,0.3)] overflow-hidden flex flex-col md:flex-row h-[90vh] max-h-[760px] relative' },
-h( 'div', { className: 'w-full md:w-72 bg-slate-50 dark:bg-[#04120b] border-b md:border-b-0 md:border-r border-slate-200 dark:border-emerald-900/60 flex flex-col shrink-0 max-h-[195px] md:max-h-full' },
-h( 'div', { className: 'p-3.5 bg-gradient-to-r from-[#0084ff] via-emerald-700 to-teal-800 text-white flex items-center justify-between' },
-h( 'div', { className: 'flex items-center gap-2' }, h(MessageCircle, { className: 'w-5 h-5 text-white' }), h( 'div', null, h('h4', { className: 'text-xs sm:text-sm font-black leading-tight' }, 'Messenger • චැට් ඉතිහාසය'),
-h('p', { className: 'text-[10px] text-emerald-100' }, 'පුද්ගලයින් (' + partnersList.length + ')') ) ), h('span', { className: 'text-[10px] font-mono font-black bg-white/20 px-2 py-0.5 rounded-lg' }, displayPostCode)
-), h( 'div', { className: 'p-2 border-b border-slate-200 dark:border-emerald-900/40' }, h( 'div', { className: 'relative' }, h(Search, { className: 'w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2' }),
-h('input', { type: 'text', value: partnerSearch, onChange: (e: any) => setPartnerSearch(e.target.value), placeholder: 'පුද්ගලයා සොයන්න...',
-className: 'w-full pl-8 pr-3 py-1.5 rounded-full bg-white dark:bg-[#071d12] border border-slate-200 dark:border-emerald-800/70 text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500'
-}) ) ), h( 'div', { className: 'flex-1 overflow-y-auto p-2 space-y-1.5' }, filteredPartners.map((partner: any) => { const isSelected = Boolean(activePartner && activePartner.key === partner.key);
-const isPinnedPartner = Boolean(pinnedPartnerKeys.includes(partner.key));
-const previewTrans = instantExactGreetingTranslate(partner.lastMessage, userLang) ? instantExactGreetingTranslate(partner.lastMessage, userLang)
-: translateChatMessage(partner.lastMessage ? partner.lastMessage : '', userLang).translatedText; return h( 'div', { key: partner.key,
-className: 'w-full p-2.5 rounded-2xl flex items-center gap-2.5 text-left transition-all relative group ' +
-(isSelected ? 'bg-emerald-600 text-white shadow-md' : isPinnedPartner ? 'bg-amber-50/80 dark:bg-[#122216] border border-amber-400/50 shadow-xs' : 'bg-white dark:bg-[#071c12] hover:bg-emerald-50 dark:hover:bg-[#0c2b1c] text-slate-800 dark:text-slate-100 border border-slate-200/70 dark:border-emerald-900/40')
-}, h( 'div', { className: 'relative shrink-0 cursor-pointer', onClick: () => setSelectedPartnerKey(partner.key) }, h( 'div', { className: 'w-10 h-10 rounded-full font-black text-sm flex items-center justify-center shadow-xs ' +
-(isSelected ? 'bg-white text-emerald-800' : 'bg-gradient-to-br from-[#0084ff] to-emerald-600 text-white') }, (partner.name ? partner.name : 'U').charAt(0).toUpperCase()
-), h('span', { className: 'w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-white dark:border-slate-900 absolute bottom-0 right-0' })
-), h( 'div', { className: 'min-w-0 flex-1 cursor-pointer', onClick: () => setSelectedPartnerKey(partner.key) }, h( 'div', { className: 'flex items-center justify-between gap-1' },
-  h('div', { className: 'flex items-center gap-1.5 min-w-0' },
-    h('span', { className: 'text-xs font-black truncate' }, partner.name),
-    isPinnedPartner ? h('span', { className: 'text-[9px] px-1.5 py-0.2 rounded font-black bg-amber-400/25 text-amber-700 dark:text-amber-300 border border-amber-400/40 flex items-center gap-0.5 shrink-0', title: 'Pinned Chat' }, h(Pin, { className: 'w-2.5 h-2.5 fill-amber-400 text-amber-500' }), h('span', null, 'PINNED')) : null
-  ),
-  h( 'span', { className: 'text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0 ' + (isSelected ? 'bg-white/20 text-white' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300')
-  }, partner.role === 'seeker' ? 'දැන්වීම්කරු' : 'සහායක' )
-), h( 'p', { className: 'text-[11px] truncate mt-0.5 ' + (isSelected ? 'text-emerald-100 font-medium' : 'text-slate-500 dark:text-slate-400') },
-previewTrans ? previewTrans : partner.lastMessage ) ),
-h('button', {
-  type: 'button',
-  onClick: (e: any) => handleTogglePinPartner(partner.key, e),
-  title: isPinnedPartner ? 'Unpin කරන්න' : 'නිතර පණිවිඩ යවන අය අතරට Pin කරන්න',
-  className: 'p-1 rounded-md hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors cursor-pointer ' + (isPinnedPartner ? 'text-amber-500' : 'text-slate-300 dark:text-slate-600 hover:text-amber-500')
-}, h(Pin, { className: 'w-3.5 h-3.5 ' + (isPinnedPartner ? 'fill-amber-400' : '') }))
-); }) ) ), h( 'div', { className: 'flex-1 flex flex-col min-w-0 h-full overflow-hidden' },
-h( 'div', { className: 'bg-gradient-to-r from-emerald-800 via-teal-800 to-emerald-950 p-3 sm:p-4 text-white border-b border-emerald-600/50 shrink-0 space-y-2' },
-h( 'div', { className: 'flex items-center justify-between gap-2' }, h( 'div', { className: 'flex items-center gap-2.5 min-w-0' }, h(
-'div', { className: 'relative shrink-0' }, h( 'div', { className: 'w-10 h-10 rounded-full bg-gradient-to-br from-[#0084ff] to-emerald-500 border-2 border-white/40 flex items-center justify-center text-white font-black text-sm shadow-inner' },
-(activePartner?.name ? activePartner.name : 'U').charAt(0).toUpperCase() ), h('span', { className: 'w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-emerald-950 absolute bottom-0 right-0' })
-), h( 'div', { className: 'min-w-0' }, h( 'div', { className: 'flex items-center gap-1.5 flex-wrap' }, h('h3', { className: 'text-sm sm:text-base font-black text-white truncate' }, activePartner?.name ? activePartner.name : post.userName),
-h( 'span', { className: 'text-[9px] bg-emerald-400/20 text-emerald-200 border border-emerald-400/30 px-1.5 py-0.5 rounded font-bold shrink-0' },
-activePartner?.role === 'seeker' ? '🏥 දැන්වීම්කරු' : isBloodPost ? '🩸 ලේ පරිත්‍යාගශීලියා (සහයක)' : 'සහායක' ) ), h( 'p', { className: 'text-[11px] text-emerald-100/90 font-medium truncate max-w-xs sm:max-w-md' },
-'📌 ' + inspectAndSanitizeMessage(post.whatHappened ? post.whatHappened : '', isConfirmed).sanitizedText ) ) ), h( 'div', { className: 'flex items-center gap-2 shrink-0' },
-activePartner ? h('button', {
-  type: 'button',
-  onClick: (e: any) => handleTogglePinPartner(activePartner.key, e),
-  className: 'px-2.5 py-1 rounded-xl text-xs font-black flex items-center gap-1 border transition-all cursor-pointer ' +
-    (pinnedPartnerKeys.includes(activePartner.key)
-      ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-sm'
-      : 'bg-white/15 hover:bg-white/25 text-white border-white/25'),
-  title: pinnedPartnerKeys.includes(activePartner.key) ? 'Chat එක Unpin කරන්න' : 'නිතර පණිවිඩ යවන අය අතරට Pin කර තබාගන්න'
-},
-  h(Pin, { className: 'w-3.5 h-3.5 ' + (pinnedPartnerKeys.includes(activePartner.key) ? 'fill-slate-950 text-slate-950' : 'text-white') }),
-  h('span', { className: 'hidden sm:inline' }, pinnedPartnerKeys.includes(activePartner.key) ? 'Pinned Chat' : 'Pin Chat')
-) : null,
-isBloodPost
-  ? isBloodCompleted
-    ? h('span', { className: 'text-[10px] bg-emerald-500 text-white px-2.5 py-1 rounded-lg font-black flex items-center gap-1 shadow-xs' },
-        h(CheckCircle, { className: 'w-3.5 h-3.5' }),
-        h('span', null, 'ලේ ලැබුණා • අවසන්')
-      )
-    : isPostAuthor
-      ? h('button', {
-          type: 'button',
-          onClick: () => handleSendBloodStageMessage(
-            `🎉 [පියවර 4/4 - ගනුදෙනුව සාර්ථකව අවසන්]\n🩸 රෝගියා සඳහා අවශ්‍ය රුධිරය සාර්ථකව ලැබුණි. උතුම් ජීවිතයක් බේරාගැනීමට දායක වූ "${activePartner?.name || 'පරිත්‍යාගශීලියා'}" වෙත හදපිරි ස්තූතිය පුද කරමු! 🙏❤️`,
-            'complete_blood'
-          ),
-          className: 'px-3 py-1 bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600 text-slate-950 font-black text-xs rounded-xl shadow-md flex items-center gap-1 transition-all active:scale-95 cursor-pointer'
-        }, h(CheckCircle, { className: 'w-3.5 h-3.5' }), h('span', null, 'ලේ ලැබුණා • අවසන් කරන්න'))
-      : h('span', { className: 'text-[10px] bg-rose-500/80 text-white px-2.5 py-1 rounded-lg font-black flex items-center gap-1 shadow-xs' },
-          h('span', null, '🩸 ලේ පරිත්‍යාග සංවාදය')
+
+const renderPartnersSidebar = (isMobileFullPage: boolean) =>
+  h(
+    'div',
+    {
+      className: isMobileFullPage
+        ? 'flex-1 bg-slate-50 dark:bg-[#04120b] flex flex-col min-h-0 overflow-hidden'
+        : 'hidden md:flex md:w-72 bg-slate-50 dark:bg-[#04120b] border-r border-slate-200 dark:border-emerald-900/60 flex-col shrink-0 h-full',
+    },
+    h(
+      'div',
+      { className: 'p-3 bg-gradient-to-r from-[#0084ff] via-emerald-700 to-teal-800 text-white flex items-center justify-between shrink-0' },
+      h(
+        'div',
+        { className: 'flex items-center gap-2' },
+        h(MessageCircle, { className: 'w-4 h-4 text-white' }),
+        h(
+          'div',
+          null,
+          h('h4', { className: 'text-xs font-black leading-tight' }, 'සංවාද ලැයිස්තුව (Partners)'),
+          h('p', { className: 'text-[10px] text-emerald-100' }, 'පුද්ගලයින් (' + partnersList.length + ')')
         )
-  : isConfirmed ? h( 'span', { className: 'text-[10px] bg-emerald-500 text-white px-2.5 py-1 rounded-lg font-black font-mono flex items-center gap-1 shadow-xs' },
-h(CheckCircle, { className: 'w-3 h-3' }), h('span', null, 'CONFIRMED') ) : handleConfirm ? h( 'button', { type: 'button', onClick: () => {
-onClose(); handleConfirm(post); }, className: 'px-3 py-1 bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 hover:from-amber-500 text-slate-950 font-black text-xs rounded-xl shadow-md flex items-center gap-1 transition-all active:scale-95 cursor-pointer'
-}, h('span', null, 'Confirm') ) : null, h( 'button', { type: 'button', onClick: onClose, className: 'w-8 h-8 rounded-full bg-white/10 hover:bg-rose-600 text-white flex items-center justify-center font-bold text-xs transition-all cursor-pointer shadow-xs',
-title: 'වසන්න' }, '✕' ) ) ), !isConfirmed ? h( 'div', { className: 'bg-amber-400/20 border border-amber-400/30 rounded-xl px-2.5 py-1 text-[10px] text-amber-100 flex items-center gap-1.5' },
-h(ShieldAlert, { className: 'w-3 h-3 text-amber-300 shrink-0' }), h('span', null, 'සහය තහවුරු (Confirm) කරන තුරු පෞද්ගලික දුරකථන අංක හා ලිපින හුවමාරුව තහනම්ය.')
-) : null ), h( 'div', { className: 'bg-slate-900 dark:bg-[#03120a] border-b border-emerald-800/60 px-3 py-2 text-white flex flex-wrap items-center justify-between gap-2 shrink-0' },
-h( 'div', { className: 'flex items-center gap-2 flex-wrap' }, 
-  h( 'div', { className: 'flex items-center gap-1.5 bg-emerald-950/90 border border-emerald-500/60 px-2.5 py-1 rounded-xl shadow-inner text-xs' },
-    h('span', { className: 'text-[10px] text-emerald-300 font-bold' }, 'ඔබගේ භාෂාව:'), 
-    h( 'select', { 
-      value: userLang, 
-      onChange: (e: any) => handleSelectOwnLanguage(e.target.value as Language),
-      className: 'bg-emerald-900 text-white font-black text-xs rounded-lg px-2 py-0.5 border border-emerald-400/40 focus:outline-none cursor-pointer'
-    }, 
-      h('option', { value: 'si' }, 'සිංහල 🇱🇰'), 
-      h('option', { value: 'ta' }, 'தமிழ் 🇱🇰'), 
-      h('option', { value: 'en' }, 'English 🇬🇧')
-    ) 
-  ), 
-  // 🎯 Requirement 3: අනෙක් පාර්ශවයේ භාෂාව පෙන්වුවද එය වෙනස් කිරිමට නොහැකි ලෙස සකසන්න.
-  h( 'div', { className: 'flex items-center gap-1.5 bg-teal-950/90 border border-teal-500/60 px-2.5 py-1 rounded-xl shadow-inner text-xs' },
-    h('span', { className: 'text-[10px] text-teal-300 font-bold flex items-center gap-1' }, 
-      h(Lock, { className: 'w-2.5 h-2.5 opacity-80' }),
-      'අනෙක් පාර්ශ්වය:'
-    ),
-    h('span', { 
-      className: 'bg-teal-900/90 text-amber-300 font-black text-xs rounded-lg px-2 py-0.5 border border-teal-400/40 select-none shadow-xs flex items-center gap-1',
-      title: 'අනෙක් පාර්ශ්වයේ භාෂාව (වෙනස් කළ නොහැක / ස්වයංක්‍රීයව හඳුනාගැනේ)'
-    }, otherLangInfo.badge)
-  ) 
-), 
-h( 'div', { 
-  className: 'flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-xl font-bold border ' + 
-    (detectedOtherPartyLang === userLang 
-      ? 'bg-slate-800/80 text-emerald-300 border-emerald-500/40' 
-      : 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40') 
-},
-  detectedOtherPartyLang === userLang 
-    ? h('span', null, '✓ භාෂා සමානයි (Original Message)')
-    : [
-        h(Sparkles, { className: 'w-3 h-3 text-amber-300', key: 'spk' }), 
-        h('span', { key: 'txt' }, 'Auto-Translate (' + userLangInfo.nativeName + ')')
-      ]
-) ),
-isBloodPost ? h('div', {
-  className: 'bg-rose-50/90 dark:bg-[#190a0e] border-b border-rose-200 dark:border-rose-900/60 px-3 py-2 shrink-0 space-y-1.5'
-},
-  h('div', { className: 'flex flex-wrap items-center justify-between gap-2 text-[11px]' },
-    h('div', { className: 'flex items-center gap-2 flex-wrap' },
-      h('span', { className: 'px-2 py-0.5 rounded-lg bg-white dark:bg-rose-950/80 border border-rose-300 dark:border-rose-800 font-black text-slate-800 dark:text-rose-200' },
-        '🏥 දැන්වීම්කරු: ' + (isPostAuthor ? (currentUser?.name || 'ඔබ') + ' (ඔබ)' : (post.userName || 'දැන්වීම්කරු'))
       ),
-      h('span', { className: 'px-2 py-0.5 rounded-lg bg-rose-600 text-white font-black' },
-        '🩸 සහයක (පරිත්‍යාගශීලියා): ' + (!isPostAuthor ? (currentUser?.name || 'ඔබ') + ' (ඔබ)' : (activePartner?.name || 'පරිත්‍යාගශීලියා'))
+      h('span', { className: 'text-[10px] font-mono font-black bg-white/20 px-2 py-0.5 rounded-lg' }, displayPostCode)
+    ),
+    h(
+      'div',
+      { className: 'p-2 border-b border-slate-200 dark:border-emerald-900/40 shrink-0' },
+      h(
+        'div',
+        { className: 'relative' },
+        h(Search, { className: 'w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2' }),
+        h('input', {
+          type: 'text',
+          value: partnerSearch,
+          onChange: (e: any) => setPartnerSearch(e.target.value),
+          placeholder: 'පුද්ගලයා සොයන්න...',
+          className:
+            'w-full pl-8 pr-3 py-1.5 rounded-full bg-white dark:bg-[#071d12] border border-slate-200 dark:border-emerald-800/70 text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500',
+        })
       )
     ),
-    post.userPhone ? h('a', {
-      href: 'tel:' + post.userPhone,
-      className: 'px-2 py-0.5 rounded-lg bg-emerald-600 text-white font-mono font-black text-[10px] flex items-center gap-1'
-    }, h(Phone, { className: 'w-3 h-3' }), h('span', null, post.userPhone)) : null
-  ),
-  h('div', { className: 'grid grid-cols-4 gap-1 text-[10px] font-black text-center' },
-    h('div', { className: 'py-1 px-1 rounded-lg bg-emerald-600 text-white' }, '① ඉදිරිපත් වීම ✓'),
-    h('div', { className: 'py-1 px-1 rounded-lg ' + (post.isConfirmed ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-slate-950') }, post.isConfirmed ? '② තෝරාගැනීම ✓' : '② තෝරාගැනීම'),
-    h('div', { className: 'py-1 px-1 rounded-lg ' + (post.isConfirmed ? 'bg-sky-600 text-white' : 'bg-white/70 dark:bg-slate-800 text-slate-500') }, '③ රෝහලට පැමිණීම'),
-    h('div', { className: 'py-1 px-1 rounded-lg ' + (isBloodCompleted ? 'bg-emerald-600 text-white' : 'bg-white/70 dark:bg-slate-800 text-slate-500') }, isBloodCompleted ? '④ අවසන් ✓' : '④ අවසන් කිරීම')
-  )
-) : null,
-pinnedMessage ? h('div', {
-  className: 'bg-gradient-to-r from-amber-500/20 via-amber-400/15 to-emerald-500/15 dark:from-amber-950/60 dark:to-[#071c12] border-b border-amber-400/40 px-3.5 py-2 flex items-center justify-between gap-2 text-xs shrink-0 animate-fadeIn'
-},
-  h('div', {
-    className: 'flex items-center gap-2 min-w-0 cursor-pointer flex-1',
-    onClick: () => handleScrollToMessage(pinnedMessage.id),
-    title: 'පණිවිඩය වෙත යන්න (Click to jump to message)'
-  },
-    h(Pin, { className: 'w-4 h-4 text-amber-500 shrink-0 fill-amber-500' }),
-    h('div', { className: 'min-w-0' },
-      h('div', { className: 'flex items-center gap-1.5 text-[10px] font-bold text-amber-700 dark:text-amber-300' },
-        h('span', null, '📌 සුරැකි පණිවිඩය (Pinned Message)'),
-        h('span', null, '•'),
-        h('span', { className: 'font-semibold text-slate-600 dark:text-slate-300 truncate' }, pinnedMessage.senderName)
+    h(
+      'div',
+      { className: 'flex-1 overflow-y-auto p-2 space-y-1.5' },
+      filteredPartners.map((partner: any) => {
+        const isSelected = Boolean(activePartner && activePartner.key === partner.key);
+        const isPinnedPartner = Boolean(pinnedPartnerKeys.includes(partner.key));
+        const previewTrans = instantExactGreetingTranslate(partner.lastMessage, userLang)
+          ? instantExactGreetingTranslate(partner.lastMessage, userLang)
+          : translateChatMessage(partner.lastMessage ? partner.lastMessage : '', userLang).translatedText;
+        return h(
+          'div',
+          {
+            key: partner.key,
+            className:
+              'w-full p-2.5 rounded-2xl flex items-center gap-2.5 text-left transition-all relative group ' +
+              (isSelected
+                ? 'bg-emerald-600 text-white shadow-md'
+                : isPinnedPartner
+                ? 'bg-amber-50/80 dark:bg-[#122216] border border-amber-400/50 shadow-xs'
+                : 'bg-white dark:bg-[#071c12] hover:bg-emerald-50 dark:hover:bg-[#0c2b1c] text-slate-800 dark:text-slate-100 border border-slate-200/70 dark:border-emerald-900/40'),
+          },
+          h(
+            'div',
+            {
+              className: 'relative shrink-0 cursor-pointer',
+              onClick: () => {
+                setSelectedPartnerKey(partner.key);
+                setActiveModalTab('chat');
+              },
+            },
+            h(
+              'div',
+              {
+                className:
+                  'w-10 h-10 rounded-full font-black text-sm flex items-center justify-center shadow-xs ' +
+                  (isSelected ? 'bg-white text-emerald-800' : 'bg-gradient-to-br from-[#0084ff] to-emerald-600 text-white'),
+              },
+              (partner.name ? partner.name : 'U').charAt(0).toUpperCase()
+            ),
+            h('span', { className: 'w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-white dark:border-slate-900 absolute bottom-0 right-0' })
+          ),
+          h(
+            'div',
+            {
+              className: 'min-w-0 flex-1 cursor-pointer',
+              onClick: () => {
+                setSelectedPartnerKey(partner.key);
+                setActiveModalTab('chat');
+              },
+            },
+            h(
+              'div',
+              { className: 'flex items-center justify-between gap-1' },
+              h(
+                'div',
+                { className: 'flex items-center gap-1.5 min-w-0' },
+                h('span', { className: 'text-xs font-black truncate' }, partner.name),
+                isPinnedPartner
+                  ? h(
+                      'span',
+                      {
+                        className:
+                          'text-[9px] px-1.5 py-0.2 rounded font-black bg-amber-400/25 text-amber-700 dark:text-amber-300 border border-amber-400/40 flex items-center gap-0.5 shrink-0',
+                        title: 'Pinned Chat',
+                      },
+                      h(Pin, { className: 'w-2.5 h-2.5 fill-amber-400 text-amber-500' }),
+                      h('span', null, 'PINNED')
+                    )
+                  : null
+              ),
+              h(
+                'span',
+                {
+                  className:
+                    'text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0 ' +
+                    (isSelected ? 'bg-white/20 text-white' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'),
+                },
+                partner.role === 'seeker' ? 'දැන්වීම්කරු' : 'සහායක'
+              )
+            ),
+            h(
+              'p',
+              { className: 'text-[11px] truncate mt-0.5 ' + (isSelected ? 'text-emerald-100 font-medium' : 'text-slate-500 dark:text-slate-400') },
+              previewTrans ? previewTrans : partner.lastMessage
+            )
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              onClick: (e: any) => handleTogglePinPartner(partner.key, e),
+              title: isPinnedPartner ? 'Unpin කරන්න' : 'නිතර පණිවිඩ යවන අය අතරට Pin කරන්න',
+              className:
+                'p-1 rounded-md hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors cursor-pointer ' +
+                (isPinnedPartner ? 'text-amber-500' : 'text-slate-300 dark:text-slate-600 hover:text-amber-500'),
+            },
+            h(Pin, { className: 'w-3.5 h-3.5 ' + (isPinnedPartner ? 'fill-amber-400' : '') })
+          )
+        );
+      })
+    )
+  );
+
+// Dedicated Blood Donation 4-Step Sequential Page (Only rendered when activeModalTab === 'steps')
+const renderBloodDonationStepsPage = () => {
+  const posterDisplayName = isPostAuthor ? (currentUser?.name || 'ඔබ') + ' (ඔබ)' : post.userName || 'දැන්වීම්කරු';
+  const donorDisplayName = !isPostAuthor ? (currentUser?.name || 'ඔබ') + ' (ඔබ)' : activePartner?.name || 'පරිත්‍යාගශීලියා';
+
+  const stepBadge = (stepNum: 1 | 2 | 3 | 4) => {
+    if (currentBloodStep > stepNum) {
+      return h('span', { className: 'px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-black' }, '✓ සම්පූර්ණයි');
+    }
+    if (currentBloodStep === stepNum) {
+      return h('span', { className: 'px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black animate-pulse' }, '👉 දැන් ක්‍රියාත්මකයි');
+    }
+    return h('span', { className: 'px-2.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-500 text-[10px] font-bold' }, '🔒 පෙර පියවරෙන් පසු');
+  };
+
+  return h(
+    'div',
+    { className: 'flex-1 overflow-y-auto p-3.5 sm:p-5 bg-rose-50/50 dark:bg-[#0d0608] space-y-4 min-h-0' },
+    // Party Identification Card
+    h(
+      'div',
+      { className: 'p-3.5 rounded-2xl bg-white dark:bg-[#190a0e] border-2 border-rose-200 dark:border-rose-900/60 shadow-xs space-y-2.5' },
+      h(
+        'div',
+        { className: 'flex items-center justify-between gap-2 flex-wrap' },
+        h('span', { className: 'text-xs font-black text-rose-700 dark:text-rose-300' }, '🩸 ලේ පරිත්‍යාග ගනුදෙනුවේ දෙපාර්ශ්වය'),
+        h('span', { className: 'text-[11px] font-mono font-black px-2 py-0.5 rounded-lg bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300' }, displayPostCode)
       ),
-      h('p', { className: 'text-xs text-slate-800 dark:text-slate-100 font-medium truncate max-w-lg' },
-        pinnedMessage.text ? pinnedMessage.text : '🎙️ හඬ පණිවිඩය'
+      h(
+        'div',
+        { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs' },
+        h(
+          'div',
+          { className: 'p-2.5 rounded-xl bg-slate-50 dark:bg-rose-950/40 border border-slate-200 dark:border-rose-800/60 flex items-center justify-between gap-2' },
+          h(
+            'div',
+            null,
+            h('p', { className: 'text-[10px] font-bold text-slate-500 dark:text-rose-300/80' }, '🏥 දැන්වීම්කරු (රෝගියාගේ පාර්ශ්වය)'),
+            h('p', { className: 'font-black text-slate-900 dark:text-white mt-0.5' }, posterDisplayName)
+          ),
+          post.userPhone
+            ? h(
+                'a',
+                {
+                  href: 'tel:' + post.userPhone,
+                  className: 'px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-mono font-black text-[11px] flex items-center gap-1 shrink-0',
+                },
+                h(Phone, { className: 'w-3 h-3' }),
+                h('span', null, post.userPhone)
+              )
+            : null
+        ),
+        h(
+          'div',
+          { className: 'p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800/60 flex items-center justify-between gap-2' },
+          h(
+            'div',
+            null,
+            h('p', { className: 'text-[10px] font-bold text-rose-600 dark:text-rose-300' }, '🩸 සහයක (ලේ පරිත්‍යාගශීලියා)'),
+            h('p', { className: 'font-black text-rose-900 dark:text-rose-100 mt-0.5' }, donorDisplayName)
+          ),
+          activePartner?.phone
+            ? h(
+                'a',
+                {
+                  href: 'tel:' + activePartner.phone,
+                  className: 'px-2.5 py-1 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-mono font-black text-[11px] flex items-center gap-1 shrink-0',
+                },
+                h(Phone, { className: 'w-3 h-3' }),
+                h('span', null, activePartner.phone)
+              )
+            : null
+        )
+      )
+    ),
+
+    // Sequential 4-Step Cards
+    h(
+      'div',
+      { className: 'space-y-3' },
+      // STEP 1: Donor offers blood
+      h(
+        'div',
+        {
+          className:
+            'p-3.5 rounded-2xl border-2 transition-all ' +
+            (currentBloodStep > 1
+              ? 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-400/60'
+              : 'bg-white dark:bg-[#190a0e] border-amber-400 shadow-md'),
+        },
+        h(
+          'div',
+          { className: 'flex items-center justify-between gap-2' },
+          h('span', { className: 'text-xs sm:text-sm font-black text-slate-900 dark:text-white' }, '① පියවර 1: ලේ ලබාදීමට ඉදිරිපත් වීම (සහයක)'),
+          stepBadge(1)
+        ),
+        currentBloodStep === 1
+          ? !isPostAuthor
+            ? h(
+                'div',
+                { className: 'mt-3 space-y-2' },
+                h('p', { className: 'text-xs text-slate-600 dark:text-slate-300' }, 'ඔබ ලේ පරිත්‍යාග කිරීමට සූදානම් බව දැන්වීම්කරුට දන්වන්න:'),
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    onClick: () =>
+                      handleSendBloodStageMessage(
+                        `🩸 [පියවර 1/4 - ලේ ලබාදීමට ඉදිරිපත් වීම]\nමම මෙම රෝගියා වෙනුවෙන් ලේ පරිත්‍යාග කිරීමට සූදානම්. කරුණාකර මාව තහවුරු කර රෝහලේ විස්තර දන්වන්න.`,
+                        'step1_offer'
+                      ),
+                    className:
+                      'w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs sm:text-sm shadow-md cursor-pointer active:scale-95 transition-all',
+                  },
+                  '🩸 1. මම ලේ පරිත්‍යාග කිරීමට සූදානම් (දැන්වීම්කරුට දන්වන්න)'
+                )
+              )
+            : h(
+                'p',
+                { className: 'mt-2 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-300/60' },
+                '⏳ සහයකයෙකු ලේ ලබාදීමට ඉදිරිපත් වන තෙක් කරුණාකර රැඳී සිටින්න.'
+              )
+          : h('p', { className: 'mt-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300' }, '✓ පරිත්‍යාගශීලියා ලේ ලබාදීමට ඉදිරිපත් වී ඇත.')
+      ),
+
+      // STEP 2: Poster selects & confirms Donor
+      h(
+        'div',
+        {
+          className:
+            'p-3.5 rounded-2xl border-2 transition-all ' +
+            (currentBloodStep > 2
+              ? 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-400/60'
+              : currentBloodStep === 2
+              ? 'bg-white dark:bg-[#190a0e] border-amber-400 shadow-md'
+              : 'bg-slate-100/70 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-75'),
+        },
+        h(
+          'div',
+          { className: 'flex items-center justify-between gap-2' },
+          h('span', { className: 'text-xs sm:text-sm font-black text-slate-900 dark:text-white' }, '② පියවර 2: පරිත්‍යාගශීලියා තෝරාගෙන තහවුරු කිරීම (දැන්වීම්කරු)'),
+          stepBadge(2)
+        ),
+        currentBloodStep === 2
+          ? isPostAuthor
+            ? h(
+                'div',
+                { className: 'mt-3 space-y-2' },
+                h('p', { className: 'text-xs text-slate-600 dark:text-slate-300' }, 'මෙම පරිත්‍යාගශීලියා තෝරාගෙන රෝහලට පැමිණෙන ලෙස තහවුරු කරන්න:'),
+                h(
+                  'div',
+                  { className: 'flex flex-col sm:flex-row gap-2' },
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      onClick: () =>
+                        handleSendBloodStageMessage(
+                          `✅ [පියවර 2/4 - පරිත්‍යාගශීලියා තහවුරු කිරීම]\n"${activePartner?.name || 'පරිත්‍යාගශීලියා'}", ඔබව ලේ පරිත්‍යාගය සඳහා තෝරාගෙන තහවුරු කරන ලදී. කරුණාකර ${post.locationName || 'රෝහල'} වෙත පැමිණෙන්න. දුරකථන: ${post.userPhone || ''}`,
+                          'confirm_donor'
+                        ),
+                      className:
+                        'flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs sm:text-sm shadow-md cursor-pointer active:scale-95 transition-all',
+                    },
+                    '✅ 2. පරිත්‍යාගශීලියා තහවුරු කරන්න (ඊළඟ පියවරට →)'
+                  ),
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      onClick: () =>
+                        handleSendBloodStageMessage(
+                          `📍 [රෝහල හා වාට්ටු විස්තර]\nරෝහල / ස්ථානය: ${post.locationName || 'රෝහල'}\nඅවශ්‍යතාවය: ${post.whatHappened || ''}\nදුරකථන: ${post.userPhone || ''}\nඔබ පැමිණෙන වේලාව දන්වන්න.`
+                        ),
+                      className:
+                        'py-2.5 px-3 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-black text-xs shadow-xs cursor-pointer active:scale-95 transition-all',
+                    },
+                    '📍 රෝහල / වාට්ටු විස්තර යවන්න'
+                  )
+                )
+              )
+            : h(
+                'p',
+                { className: 'mt-2 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-300/60' },
+                '⏳ දැන්වීම්කරු ඔබව ලේ පරිත්‍යාගය සඳහා තෝරාගෙන තහවුරු කරන තෙක් කරුණාකර රැඳී සිටින්න.'
+              )
+          : currentBloodStep > 2
+          ? h('p', { className: 'mt-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300' }, '✓ දැන්වීම්කරු විසින් පරිත්‍යාගශීලියා තහවුරු කර ඇත.')
+          : h('p', { className: 'mt-1 text-[11px] text-slate-500' }, 'පළමු පියවර අවසන් වූ පසු මෙය සක්‍රීය වේ.')
+      ),
+
+      // STEP 3: Donor goes to hospital & donates blood
+      h(
+        'div',
+        {
+          className:
+            'p-3.5 rounded-2xl border-2 transition-all ' +
+            (currentBloodStep > 3
+              ? 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-400/60'
+              : currentBloodStep === 3
+              ? 'bg-white dark:bg-[#190a0e] border-amber-400 shadow-md'
+              : 'bg-slate-100/70 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-75'),
+        },
+        h(
+          'div',
+          { className: 'flex items-center justify-between gap-2' },
+          h('span', { className: 'text-xs sm:text-sm font-black text-slate-900 dark:text-white' }, '③ පියවර 3: රෝහලට පැමිණ ලේ පරිත්‍යාග කිරීම (සහයක)'),
+          stepBadge(3)
+        ),
+        currentBloodStep === 3
+          ? !isPostAuthor
+            ? h(
+                'div',
+                { className: 'mt-3 space-y-2' },
+                h('p', { className: 'text-xs text-slate-600 dark:text-slate-300' }, 'රෝහලට පැමිණීම සහ ලේ පරිත්‍යාග කිරීම පිළිබඳව දැන්වීම්කරු දැනුවත් කරන්න:'),
+                h(
+                  'div',
+                  { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2' },
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      onClick: () =>
+                        handleSendBloodStageMessage(
+                          `🚗 [පියවර 3/4 - පැමිණෙමින් සිටී]\nමම දැන් ${post.locationName || 'රෝහල'} වෙත ලේ ලබාදීම සඳහා පැමිණෙමින් සිටිමි.`
+                        ),
+                      className: 'py-2 px-3 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-black text-xs cursor-pointer active:scale-95',
+                    },
+                    '🚗 මම රෝහල වෙත පැමිණෙමින් සිටිමි'
+                  ),
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      onClick: () =>
+                        handleSendBloodStageMessage(
+                          `🏥 [පියවර 3/4 - රෝහලට පැමිණියා]\nමම දැන් ${post.locationName || 'රෝහල'} / ලේ බැංකුව වෙත පැමිණ සිටිමි. කරුණාකර මාව සම්බන්ධ කරගන්න.`
+                        ),
+                      className: 'py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs cursor-pointer active:scale-95',
+                    },
+                    '🏥 මම රෝහලට පැමිණියෙමි'
+                  )
+                ),
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    onClick: () =>
+                      handleSendBloodStageMessage(
+                        `🩸 [පියවර 3/4 - ලේ පරිත්‍යාගය සිදු කළා]\nමම රෝගියා වෙනුවෙන් ලේ පරිත්‍යාගය සාර්ථකව සිදු කළෙමි. රෝගියාට ඉක්මන් සුවය ප්‍රාර්ථනා කරමි! 🙏`,
+                        'step3_donated'
+                      ),
+                    className:
+                      'w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs sm:text-sm shadow-md cursor-pointer active:scale-95 transition-all',
+                  },
+                  '🩸 3. මම ලේ පරිත්‍යාගය සිදු කළෙමි (4 වන පියවරට යොමු කරන්න →)'
+                )
+              )
+            : h(
+                'p',
+                { className: 'mt-2 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-300/60' },
+                '⏳ පරිත්‍යාගශීලියා රෝහලට පැමිණ ලේ පරිත්‍යාග කළ බව තහවුරු කරන තෙක් කරුණාකර රැඳී සිටින්න.'
+              )
+          : currentBloodStep > 3
+          ? h('p', { className: 'mt-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300' }, '✓ පරිත්‍යාගශීලියා විසින් ලේ පරිත්‍යාගය සිදු කර ඇත.')
+          : h('p', { className: 'mt-1 text-[11px] text-slate-500' }, 'දෙවන පියවර (තෝරාගැනීම) අවසන් වූ පසු මෙය සක්‍රීය වේ.')
+      ),
+
+      // STEP 4: Poster confirms blood received & completes workflow
+      h(
+        'div',
+        {
+          className:
+            'p-3.5 rounded-2xl border-2 transition-all ' +
+            (currentBloodStep > 4
+              ? 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-400/60'
+              : currentBloodStep === 4
+              ? 'bg-white dark:bg-[#190a0e] border-amber-400 shadow-md'
+              : 'bg-slate-100/70 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-75'),
+        },
+        h(
+          'div',
+          { className: 'flex items-center justify-between gap-2' },
+          h('span', { className: 'text-xs sm:text-sm font-black text-slate-900 dark:text-white' }, '④ පියවර 4: ලේ ලැබුණු බව තහවුරු කර අවසන් කිරීම (දැන්වීම්කරු)'),
+          stepBadge(4)
+        ),
+        currentBloodStep === 4
+          ? isPostAuthor
+            ? h(
+                'div',
+                { className: 'mt-3 space-y-2' },
+                h('p', { className: 'text-xs text-slate-600 dark:text-slate-300' }, 'රෝගියා වෙනුවෙන් රුධිරය ලැබුණු බව තහවුරු කර පරිත්‍යාගශීලියාට ස්තූති කරමින් ගනුදෙනුව අවසන් කරන්න:'),
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    onClick: () =>
+                      handleSendBloodStageMessage(
+                        `🎉 [පියවර 4/4 - ගනුදෙනුව සාර්ථකව අවසන්]\n🩸 රෝගියා සඳහා අවශ්‍ය රුධිරය සාර්ථකව ලැබුණි. උතුම් ජීවිතයක් බේරාගැනීමට දායක වූ "${activePartner?.name || 'පරිත්‍යාගශීලියා'}" වෙත හදපිරි ස්තූතිය පුද කරමු! 🙏❤️`,
+                        'complete_blood'
+                      ),
+                    className:
+                      'w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm shadow-md cursor-pointer active:scale-95 transition-all',
+                  },
+                  '🎉 4. ලේ ලැබුණා • ස්තූති කර ගනුදෙනුව අවසන් කරන්න'
+                )
+              )
+            : h(
+                'p',
+                { className: 'mt-2 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-300/60' },
+                '⏳ ඔබ ලේ පරිත්‍යාග කළ බව දන්වා ඇත. දැන්වීම්කරු විසින් අවසන් තහවුරු කිරීම සිදු කරන තෙක් රැඳී සිටින්න.'
+              )
+          : currentBloodStep > 4
+          ? h('p', { className: 'mt-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300' }, '🎉 රුධිර පරිත්‍යාග ගනුදෙනුව සාර්ථකව අවසන් වී ඇත! බොහෝම ස්තූතියි.')
+          : h('p', { className: 'mt-1 text-[11px] text-slate-500' }, 'තුන්වන පියවර (ලේ පරිත්‍යාග කිරීම) අවසන් වූ පසු මෙය සක්‍රීය වේ.')
+      )
+    ),
+
+    // Button to go back to Chat Page
+    h(
+      'div',
+      { className: 'pt-2 flex justify-center' },
+      h(
+        'button',
+        {
+          type: 'button',
+          onClick: () => setActiveModalTab('chat'),
+          className:
+            'px-5 py-2.5 rounded-full bg-slate-900 dark:bg-emerald-700 text-white font-black text-xs flex items-center gap-2 shadow-md cursor-pointer active:scale-95',
+        },
+        h(MessageCircle, { className: 'w-4 h-4' }),
+        h('span', null, '💬 නැවත Chat පණිවිඩ පිටුවට යන්න')
+      )
+    )
+  );
+};
+
+return h(
+  React.Fragment,
+  null,
+  h(
+    'div',
+    { className: 'fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn' },
+    h(
+      'div',
+      {
+        className:
+          'w-full max-w-4xl bg-white dark:bg-[#06180f] border-2 border-emerald-500/70 rounded-[1.75rem] shadow-[0_20px_60px_rgba(0,122,75,0.3)] overflow-hidden flex flex-col md:flex-row h-[92vh] max-h-[780px] relative',
+      },
+      // Desktop Left Sidebar (hidden on mobile so it never crushes the chat view)
+      renderPartnersSidebar(false),
+
+      // Right / Main Column
+      h(
+        'div',
+        { className: 'flex-1 flex flex-col min-w-0 h-full overflow-hidden' },
+        // Clean Top Header (never overlaps buttons)
+        h(
+          'div',
+          { className: 'bg-gradient-to-r from-emerald-800 via-teal-800 to-emerald-950 px-3.5 py-2.5 text-white border-b border-emerald-600/50 shrink-0' },
+          h(
+            'div',
+            { className: 'flex items-center justify-between gap-2' },
+            h(
+              'div',
+              { className: 'flex items-center gap-2.5 min-w-0 flex-1' },
+              h(
+                'div',
+                { className: 'relative shrink-0' },
+                h(
+                  'div',
+                  {
+                    className:
+                      'w-9 h-9 rounded-full bg-gradient-to-br from-[#0084ff] to-emerald-500 border-2 border-white/40 flex items-center justify-center text-white font-black text-xs shadow-inner',
+                  },
+                  (activePartner?.name ? activePartner.name : 'U').charAt(0).toUpperCase()
+                ),
+                h('span', { className: 'w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-emerald-950 absolute bottom-0 right-0' })
+              ),
+              h(
+                'div',
+                { className: 'min-w-0 flex-1' },
+                h(
+                  'div',
+                  { className: 'flex items-center gap-1.5 flex-wrap' },
+                  h('h3', { className: 'text-xs sm:text-sm font-black text-white truncate max-w-[150px] sm:max-w-[240px]' }, activePartner?.name ? activePartner.name : post.userName),
+                  h(
+                    'span',
+                    { className: 'text-[9px] bg-emerald-400/20 text-emerald-200 border border-emerald-400/30 px-1.5 py-0.5 rounded font-bold shrink-0' },
+                    activePartner?.role === 'seeker' ? '🏥 දැන්වීම්කරු' : isBloodPost ? '🩸 පරිත්‍යාගශීලියා' : 'සහායක'
+                  ),
+                  h('span', { className: 'text-[9px] font-mono font-black bg-white/15 px-1.5 py-0.5 rounded shrink-0' }, displayPostCode)
+                ),
+                h(
+                  'p',
+                  { className: 'text-[10px] text-emerald-100/90 font-medium truncate' },
+                  '📌 ' + inspectAndSanitizeMessage(post.whatHappened ? post.whatHappened : '', isConfirmed).sanitizedText
+                )
+              )
+            ),
+            h(
+              'div',
+              { className: 'flex items-center gap-1.5 shrink-0' },
+              activePartner
+                ? h(
+                    'button',
+                    {
+                      type: 'button',
+                      onClick: (e: any) => handleTogglePinPartner(activePartner.key, e),
+                      className:
+                        'p-1.5 rounded-xl text-xs font-black flex items-center gap-1 border transition-all cursor-pointer ' +
+                        (pinnedPartnerKeys.includes(activePartner.key)
+                          ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-sm'
+                          : 'bg-white/15 hover:bg-white/25 text-white border-white/25'),
+                      title: pinnedPartnerKeys.includes(activePartner.key) ? 'Chat එක Unpin කරන්න' : 'Pin Chat',
+                    },
+                    h(Pin, { className: 'w-3.5 h-3.5 ' + (pinnedPartnerKeys.includes(activePartner.key) ? 'fill-slate-950 text-slate-950' : 'text-white') })
+                  )
+                : null,
+              !isBloodPost && !isConfirmed && handleConfirm
+                ? h(
+                    'button',
+                    {
+                      type: 'button',
+                      onClick: () => {
+                        onClose();
+                        handleConfirm(post);
+                      },
+                      className:
+                        'px-2.5 py-1 bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-black text-[11px] rounded-xl shadow-xs cursor-pointer',
+                    },
+                    'Confirm'
+                  )
+                : null,
+              h(
+                'button',
+                {
+                  type: 'button',
+                  onClick: onClose,
+                  className:
+                    'w-8 h-8 rounded-full bg-white/15 hover:bg-rose-600 text-white flex items-center justify-center font-bold text-xs transition-all cursor-pointer shadow-xs shrink-0',
+                  title: 'වසන්න',
+                },
+                '✕'
+              )
+            )
+          )
+        ),
+
+        // Top Navigation Tab Bar: Separates Chat Page, Donation Steps Page, and Mobile Partner List!
+        h(
+          'div',
+          { className: 'bg-slate-900 dark:bg-[#04140c] border-b border-emerald-800/60 px-2.5 py-1.5 flex items-center gap-1.5 shrink-0 overflow-x-auto' },
+          h(
+            'button',
+            {
+              type: 'button',
+              onClick: () => setActiveModalTab('chat'),
+              className:
+                'px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ' +
+                (activeModalTab === 'chat'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-white/10 hover:bg-white/15 text-slate-300'),
+            },
+            h(MessageCircle, { className: 'w-3.5 h-3.5' }),
+            h('span', null, '💬 පණිවිඩ (Chat පිටුව)')
+          ),
+          isBloodPost
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  onClick: () => setActiveModalTab('steps'),
+                  className:
+                    'px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ' +
+                    (activeModalTab === 'steps'
+                      ? 'bg-rose-600 text-white shadow-sm'
+                      : isMyTurnInBloodSteps
+                      ? 'bg-amber-500 text-slate-950 animate-pulse'
+                      : 'bg-rose-950/80 hover:bg-rose-900/80 text-rose-200 border border-rose-700/50'),
+                },
+                h(
+                  'span',
+                  null,
+                  isBloodCompleted
+                    ? '🩸 පරිත්‍යාග පියවර (4/4 ✓)'
+                    : '🩸 පරිත්‍යාග පියවර (' + currentBloodStep + '/4)' + (isMyTurnInBloodSteps ? ' • ඔබේ වාරයයි' : '')
+                )
+              )
+            : null,
+          h(
+            'button',
+            {
+              type: 'button',
+              onClick: () => setActiveModalTab('partners'),
+              className:
+                'md:hidden px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ' +
+                (activeModalTab === 'partners'
+                  ? 'bg-sky-600 text-white shadow-sm'
+                  : 'bg-white/10 hover:bg-white/15 text-slate-300'),
+            },
+            h('span', null, '👥 පුද්ගලයින් (' + partnersList.length + ')')
+          )
+        ),
+
+        // TAB CONTENT: Show ONLY the selected page so nothing overlaps!
+        activeModalTab === 'partners'
+          ? renderPartnersSidebar(true)
+          : activeModalTab === 'steps' && isBloodPost
+          ? renderBloodDonationStepsPage()
+          : h(
+              React.Fragment,
+              null,
+              // Compact 1-line Language & Blood Step Summary Bar
+              h(
+                'div',
+                { className: 'bg-slate-950/95 dark:bg-[#03120a] border-b border-emerald-800/50 px-3 py-1.5 text-white flex items-center justify-between gap-2 shrink-0 flex-wrap' },
+                h(
+                  'div',
+                  { className: 'flex items-center gap-1.5 flex-wrap' },
+                  h(
+                    'div',
+                    { className: 'flex items-center gap-1 bg-emerald-950/90 border border-emerald-500/50 px-2 py-0.5 rounded-lg text-[11px]' },
+                    h('span', { className: 'text-[10px] text-emerald-300 font-bold' }, 'භාෂාව:'),
+                    h(
+                      'select',
+                      {
+                        value: userLang,
+                        onChange: (e: any) => handleSelectOwnLanguage(e.target.value as Language),
+                        className: 'bg-emerald-900 text-white font-black text-[11px] rounded px-1.5 py-0.2 border border-emerald-400/40 focus:outline-none cursor-pointer',
+                      },
+                      h('option', { value: 'si' }, 'සිංහල 🇱🇰'),
+                      h('option', { value: 'ta' }, 'தமிழ் 🇱🇰'),
+                      h('option', { value: 'en' }, 'English 🇬🇧')
+                    )
+                  ),
+                  h(
+                    'div',
+                    { className: 'flex items-center gap-1 bg-teal-950/90 border border-teal-500/50 px-2 py-0.5 rounded-lg text-[10px]' },
+                    h(Lock, { className: 'w-2.5 h-2.5 text-teal-300' }),
+                    h('span', { className: 'text-amber-300 font-black' }, otherLangInfo.badge)
+                  )
+                ),
+                isBloodPost
+                  ? h(
+                      'button',
+                      {
+                        type: 'button',
+                        onClick: () => setActiveModalTab('steps'),
+                        className:
+                          'px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer transition-all ' +
+                          (isBloodCompleted
+                            ? 'bg-emerald-600 text-white'
+                            : isMyTurnInBloodSteps
+                            ? 'bg-amber-500 text-slate-950 shadow-xs'
+                            : 'bg-rose-600 text-white'),
+                      },
+                      h(
+                        'span',
+                        null,
+                        isBloodCompleted
+                          ? '✓ ලේ පරිත්‍යාගය අවසන් (4/4)'
+                          : isMyTurnInBloodSteps
+                          ? '👉 පියවර ' + currentBloodStep + '/4 ක්‍රියාත්මක කරන්න →'
+                          : '⏳ පියවර ' + currentBloodStep + '/4 තත්ත්වය බලන්න →'
+                      )
+                    )
+                  : null
+              ),
+
+              pinnedMessage
+                ? h(
+                    'div',
+                    {
+                      className:
+                        'bg-gradient-to-r from-amber-500/20 via-amber-400/15 to-emerald-500/15 dark:from-amber-950/60 dark:to-[#071c12] border-b border-amber-400/40 px-3.5 py-1.5 flex items-center justify-between gap-2 text-xs shrink-0 animate-fadeIn',
+                    },
+                    h(
+                      'div',
+                      {
+                        className: 'flex items-center gap-2 min-w-0 cursor-pointer flex-1',
+                        onClick: () => handleScrollToMessage(pinnedMessage.id),
+                        title: 'පණිවිඩය වෙත යන්න (Click to jump to message)',
+                      },
+                      h(Pin, { className: 'w-3.5 h-3.5 text-amber-500 shrink-0 fill-amber-500' }),
+                      h(
+                        'p',
+                        { className: 'text-xs text-slate-800 dark:text-slate-100 font-medium truncate max-w-lg' },
+                        pinnedMessage.text ? pinnedMessage.text : '🎙️ හඬ පණිවිඩය'
+                      )
+                    ),
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        onClick: () => handleTogglePinMessage(pinnedMessage),
+                        className: 'p-1 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-white/10 cursor-pointer',
+                        title: 'Unpin කරන්න',
+                      },
+                      h(X, { className: 'w-3.5 h-3.5' })
+                    )
+                  )
+                : null,
+
+              // Full-height Chat Messages Container
+              h(
+                'div',
+                { className: 'flex-1 min-h-0 p-3.5 sm:p-4 overflow-y-auto space-y-3 bg-[#f0f2f5] dark:bg-[#040e08]' },
+                activePartnerMessages.map((msg: any, msgIdx: number) => {
+                  const mine = isMeMessage(msg);
+                  const isRedacted = Boolean(msg.text && msg.text.includes('[🔒'));
+                  const isDeleted = Boolean(msg.isDeletedForEveryone);
+                  const isMsgPinned = Boolean(msg.isPinned && !isDeleted);
+                  const otherRepliesAfterCount = countOtherPartyRepliesAfter(msgIdx, activePartnerMessages);
+                  const canDelete = mine && !isDeleted && otherRepliesAfterCount < 3;
+                  const isDeleteLocked = mine && !isDeleted && otherRepliesAfterCount >= 3;
+                  const resolved = resolveDisplayedMessageText(msg, mine);
+                  const formattedPhone = msg.senderPhone ? msg.senderPhone.replace(/^0/, '94').replace(/\D/g, '') : '';
+                  const showOrig = Boolean(toggledOriginals[msg.id]);
+                  return h(
+                    'div',
+                    {
+                      id: 'chat-msg-' + msg.id,
+                      key: (msg.id ? msg.id : 'm') + '_' + msgIdx,
+                      className: 'flex items-end gap-2 group ' + (mine ? 'justify-end' : 'justify-start'),
+                    },
+                    !mine
+                      ? h(
+                          'div',
+                          {
+                            className:
+                              'w-8 h-8 rounded-full bg-gradient-to-br from-[#0084ff] to-emerald-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-xs',
+                          },
+                          (msg.senderName ? msg.senderName : 'U').charAt(0).toUpperCase()
+                        )
+                      : null,
+                    h(
+                      'div',
+                      { className: 'flex flex-col max-w-[85%] sm:max-w-[78%] ' + (mine ? 'items-end' : 'items-start') },
+                      h(
+                        'div',
+                        { className: 'flex items-center gap-1.5 mb-0.5 px-1 text-[10px] text-slate-500 dark:text-slate-400 flex-wrap' },
+                        h('span', { className: 'font-bold' }, mine ? 'ඔබ (You)' : msg.senderName),
+                        h('span', null, '•'),
+                        h('span', { className: 'font-mono text-[9px]' }, msg.timestamp),
+                        isMsgPinned
+                          ? h(
+                              'span',
+                              {
+                                className:
+                                  'px-1.5 py-0.2 rounded font-black text-[9px] bg-amber-400/25 text-amber-700 dark:text-amber-300 border border-amber-400/40 flex items-center gap-0.5',
+                              },
+                              h(Pin, { className: 'w-2.5 h-2.5 fill-amber-400 text-amber-500' }),
+                              h('span', null, 'PINNED')
+                            )
+                          : null,
+                        isDeleted
+                          ? h(
+                              'span',
+                              {
+                                className: 'px-1.5 py-0.2 rounded font-bold text-[9px] bg-slate-200 dark:bg-slate-800 text-slate-500',
+                              },
+                              'DELETED'
+                            )
+                          : null
+                      ),
+                      h(
+                        'div',
+                        {
+                          className:
+                            'px-4 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-xs transition-all ' +
+                            (isDeleted
+                              ? 'bg-slate-100 dark:bg-[#07160e] text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-800 italic rounded-2xl'
+                              : mine
+                              ? 'bg-gradient-to-r from-[#0084ff] via-emerald-600 to-teal-600 text-white rounded-br-xs'
+                              : isRedacted
+                              ? 'bg-amber-50 dark:bg-amber-950/50 text-slate-900 dark:text-slate-100 border border-amber-300 rounded-bl-xs'
+                              : 'bg-white dark:bg-[#0c2217] text-slate-900 dark:text-slate-100 border border-slate-200/80 dark:border-[#19422d] rounded-bl-xs'),
+                        },
+                        isDeleted
+                          ? h(
+                              'div',
+                              { className: 'flex items-center gap-1.5 py-0.5 not-italic' },
+                              h(Trash2, { className: 'w-3.5 h-3.5 opacity-60 text-slate-400 shrink-0' }),
+                              h(
+                                'span',
+                                { className: 'italic text-xs font-medium text-slate-500 dark:text-slate-400' },
+                                '🚫 මෙම පණිවිඩය මකා දමන ලදී (This message was deleted)'
+                              )
+                            )
+                          : msg.audioUrl
+                          ? h(AudioVoicePlayer, { audioUrl: msg.audioUrl, durationSec: msg.audioDurationSec ? msg.audioDurationSec : 5, isMe: mine })
+                          : h(
+                              'div',
+                              null,
+                              h('p', { className: 'whitespace-pre-wrap break-words font-semibold' }, resolved.primaryText),
+                              !mine && resolved.isTranslated
+                                ? h(
+                                    'div',
+                                    {
+                                      className:
+                                        'mt-1.5 pt-1 border-t border-slate-200/70 dark:border-emerald-900/50 flex items-center justify-between gap-2 text-[10px] text-slate-500 dark:text-slate-400',
+                                    },
+                                    h(
+                                      'span',
+                                      { className: 'flex items-center gap-1 truncate' },
+                                      h(Globe, { className: 'w-3 h-3 text-emerald-600 shrink-0' }),
+                                      h('span', { className: 'truncate' }, showOrig ? 'මුල් පණිවිඩය (Original)' : userLangInfo.nativeName + ' බසට පරිවර්තනය විය')
+                                    ),
+                                    h(
+                                      'button',
+                                      {
+                                        type: 'button',
+                                        onClick: () => toggleShowOriginal(msg.id),
+                                        className: 'font-black text-emerald-600 dark:text-emerald-400 hover:underline shrink-0 cursor-pointer',
+                                      },
+                                      showOrig ? 'පරිවර්තනය බලන්න' : 'මුල් පණිවිඩය'
+                                    )
+                                  )
+                                : null
+                            ),
+                        !isDeleted && isConfirmed && post.revealContactConsent !== false && !mine && msg.senderPhone
+                          ? h(
+                              'div',
+                              { className: 'mt-2 pt-1.5 border-t border-slate-200/60 dark:border-white/10 flex items-center justify-between gap-2 text-[10px]' },
+                              h(
+                                'span',
+                                { className: 'text-slate-600 dark:text-slate-300 font-mono flex items-center gap-1' },
+                                h(Phone, { className: 'w-3 h-3 text-emerald-600' }),
+                                h('span', null, msg.senderPhone)
+                              ),
+                              h(
+                                'a',
+                                {
+                                  href: 'https://wa.me/' + formattedPhone,
+                                  target: '_blank',
+                                  rel: 'noopener noreferrer',
+                                  className: 'px-2 py-0.5 bg-[#25D366] hover:bg-[#1EBE5D] text-white rounded-lg font-black',
+                                },
+                                'WhatsApp'
+                              )
+                            )
+                          : null,
+                        mine && !isDeleted
+                          ? h(
+                              'div',
+                              { className: 'mt-1 flex items-center justify-end gap-1 text-[9px] text-emerald-100/90' },
+                              h(Check, { className: 'w-3 h-3' }),
+                              h('span', null, 'Sent')
+                            )
+                          : null
+                      ),
+                      !isDeleted
+                        ? h(
+                            'div',
+                            { className: 'flex items-center gap-1 mt-1 px-1 ' + (mine ? 'justify-end' : 'justify-start') },
+                            h(
+                              'button',
+                              {
+                                type: 'button',
+                                onClick: () => handleTogglePinMessage(msg),
+                                title: isMsgPinned ? 'පණිවිඩය Unpin කරන්න' : 'මෙම පණිවිඩය Pin කරන්න',
+                                className:
+                                  'px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer ' +
+                                  (isMsgPinned
+                                    ? 'bg-amber-400/25 text-amber-700 dark:text-amber-300 border border-amber-400/40'
+                                    : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/40'),
+                              },
+                              h(Pin, { className: 'w-3 h-3 ' + (isMsgPinned ? 'fill-amber-400 text-amber-500' : '') }),
+                              h('span', null, isMsgPinned ? 'Pinned' : 'Pin')
+                            ),
+                            mine
+                              ? canDelete
+                                ? h(
+                                    'button',
+                                    {
+                                      type: 'button',
+                                      onClick: () => handleInitiateDelete(msg, msgIdx),
+                                      title: 'දෙපිරිසටම නොපෙනෙන ලෙස මකා දමන්න (Delete for Everyone)',
+                                      className:
+                                        'px-2 py-0.5 rounded-lg text-[10px] font-bold text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-transparent hover:border-rose-200 dark:hover:border-rose-800 transition-all flex items-center gap-1 cursor-pointer',
+                                    },
+                                    h(Trash2, { className: 'w-3 h-3 text-rose-500' }),
+                                    h('span', null, 'Delete')
+                                  )
+                                : isDeleteLocked
+                                ? h(
+                                    'span',
+                                    {
+                                      title: 'අනෙක් පාර්ශ්වයෙන් පණිවිඩ ලැබී ඇති බැවින් මකා දැමිය නොහැක',
+                                      className:
+                                        'px-2 py-0.5 rounded-lg text-[10px] font-medium text-slate-400 dark:text-slate-600 flex items-center gap-1 select-none cursor-not-allowed opacity-60',
+                                    },
+                                    h(Lock, { className: 'w-3 h-3' }),
+                                    h(Trash2, { className: 'w-3 h-3' }),
+                                    h('span', null, 'Locked')
+                                  )
+                                : null
+                              : null
+                          )
+                        : null
+                    )
+                  );
+                }),
+                h('div', { ref: chatBottomRef })
+              ),
+
+              // Message Input Bar (Clean, single bar at the bottom of the Chat tab)
+              h(
+                'div',
+                { className: 'p-2.5 sm:p-3 bg-white dark:bg-[#06180f] border-t border-slate-200 dark:border-[#0e3a24] shrink-0' },
+                isRecordingVoice
+                  ? h(AudioVoiceRecorder, { onSendAudio: handleSendVoiceAudio, onCancel: () => setIsRecordingVoice(false) })
+                  : h(
+                      'form',
+                      { onSubmit: handleSend, className: 'flex items-center gap-2' },
+                      h(
+                        'button',
+                        {
+                          type: 'button',
+                          onClick: () => setIsRecordingVoice(true),
+                          className:
+                            'w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0 transition-all active:scale-95 cursor-pointer',
+                          title: 'හඬ පණිවිඩයක් (Voice Note)',
+                        },
+                        h(Mic, { className: 'w-4 h-4' })
+                      ),
+                      h(
+                        'div',
+                        { className: 'flex-1 relative' },
+                        h('input', {
+                          type: 'text',
+                          value: inputText,
+                          onChange: (e: any) => setInputText(e.target.value),
+                          placeholder:
+                            userLang === 'en'
+                              ? 'Type a message...'
+                              : userLang === 'ta'
+                              ? 'செய்தியை தட்டச்சு செய்யவும்...'
+                              : 'පණිවිඩය ලියන්න...',
+                          className:
+                            'w-full px-3.5 py-2 bg-[#f0f2f5] dark:bg-[#040e08] border border-slate-300 dark:border-emerald-800/80 rounded-full text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 font-medium pr-8',
+                        }),
+                        h('div', { className: 'absolute right-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none' }, userLangInfo.flag)
+                      ),
+                      h(
+                        'button',
+                        {
+                          type: 'submit',
+                          disabled: !inputText.trim() ? true : isSending,
+                          className:
+                            'px-4 py-2 bg-gradient-to-r from-[#0084ff] via-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 text-white font-black text-xs sm:text-sm rounded-full shadow-md flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shrink-0',
+                        },
+                        h('span', null, userLang === 'en' ? 'Send' : userLang === 'ta' ? 'அனுப்புக' : 'යවන්න'),
+                        h(Send, { className: 'w-3.5 h-3.5' })
+                      )
+                    )
+              )
+            )
       )
     )
   ),
-  h('div', { className: 'flex items-center gap-1 shrink-0' },
-    h('button', {
-      type: 'button',
-      onClick: () => handleScrollToMessage(pinnedMessage.id),
-      className: 'px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-800 dark:text-amber-200 text-[10px] font-black cursor-pointer'
-    }, 'බලන්න (View)'),
-    h('button', {
-      type: 'button',
-      onClick: () => handleTogglePinMessage(pinnedMessage),
-      className: 'p-1 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-white/10 cursor-pointer',
-      title: 'Unpin කරන්න'
-    }, h(X, { className: 'w-3.5 h-3.5' }))
-  )
-) : null,
-h( 'div',
-{ className: 'flex-1 p-3.5 sm:p-4 overflow-y-auto space-y-3 bg-[#f0f2f5] dark:bg-[#040e08]' }, activePartnerMessages.map((msg: any, msgIdx: number) => {
-const mine = isMeMessage(msg);
-const isRedacted = Boolean(msg.text && msg.text.includes('[🔒'));
-const isDeleted = Boolean(msg.isDeletedForEveryone);
-const isMsgPinned = Boolean(msg.isPinned && !isDeleted);
-const otherRepliesAfterCount = countOtherPartyRepliesAfter(msgIdx, activePartnerMessages);
-const canDelete = mine && !isDeleted && otherRepliesAfterCount < 3;
-const isDeleteLocked = mine && !isDeleted && otherRepliesAfterCount >= 3;
-const resolved = resolveDisplayedMessageText(msg, mine);
-const formattedPhone = msg.senderPhone ? msg.senderPhone.replace(/^0/, '94').replace(/\D/g, '') : '';
-const showOrig = Boolean(toggledOriginals[msg.id]);
-return h( 'div', {
-  id: 'chat-msg-' + msg.id,
-  key: (msg.id ? msg.id : 'm') + '_' + msgIdx,
-  className: 'flex items-end gap-2 group ' + (mine ? 'justify-end' : 'justify-start')
-}, !mine ? h( 'div', { className: 'w-8 h-8 rounded-full bg-gradient-to-br from-[#0084ff] to-emerald-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-xs' },
-(msg.senderName ? msg.senderName : 'U').charAt(0).toUpperCase() ) : null,
-h( 'div', { className: 'flex flex-col max-w-[85%] sm:max-w-[78%] ' + (mine ? 'items-end' : 'items-start') },
-h( 'div', { className: 'flex items-center gap-1.5 mb-0.5 px-1 text-[10px] text-slate-500 dark:text-slate-400 flex-wrap' },
-  h('span', { className: 'font-bold' }, mine ? 'ඔබ (You)' : msg.senderName),
-  h('span', null, '•'),
-  h('span', { className: 'font-mono text-[9px]' }, msg.timestamp),
-  isMsgPinned ? h('span', {
-    className: 'px-1.5 py-0.2 rounded font-black text-[9px] bg-amber-400/25 text-amber-700 dark:text-amber-300 border border-amber-400/40 flex items-center gap-0.5'
-  }, h(Pin, { className: 'w-2.5 h-2.5 fill-amber-400 text-amber-500' }), h('span', null, 'PINNED')) : null,
-  isDeleted ? h('span', {
-    className: 'px-1.5 py-0.2 rounded font-bold text-[9px] bg-slate-200 dark:bg-slate-800 text-slate-500'
-  }, 'DELETED') : null
-),
-h( 'div', { className: 'px-4 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-xs transition-all ' +
-(isDeleted
-  ? 'bg-slate-100 dark:bg-[#07160e] text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-800 italic rounded-2xl'
-  : mine
-    ? 'bg-gradient-to-r from-[#0084ff] via-emerald-600 to-teal-600 text-white rounded-br-xs'
-    : isRedacted
-      ? 'bg-amber-50 dark:bg-amber-950/50 text-slate-900 dark:text-slate-100 border border-amber-300 rounded-bl-xs'
-      : 'bg-white dark:bg-[#0c2217] text-slate-900 dark:text-slate-100 border border-slate-200/80 dark:border-[#19422d] rounded-bl-xs') },
-isDeleted
-  ? h('div', { className: 'flex items-center gap-1.5 py-0.5 not-italic' },
-      h(Trash2, { className: 'w-3.5 h-3.5 opacity-60 text-slate-400 shrink-0' }),
-      h('span', { className: 'italic text-xs font-medium text-slate-500 dark:text-slate-400' },
-        '🚫 මෙම පණිවිඩය මකා දමන ලදී (This message was deleted)'
-      )
-    )
-  : msg.audioUrl ? h(AudioVoicePlayer, { audioUrl: msg.audioUrl, durationSec: msg.audioDurationSec ? msg.audioDurationSec : 5, isMe: mine
-}) : h( 'div', null, h('p', { className: 'whitespace-pre-wrap break-words font-semibold' }, resolved.primaryText), !mine && resolved.isTranslated
-? h( 'div', { className: 'mt-1.5 pt-1 border-t border-slate-200/70 dark:border-emerald-900/50 flex items-center justify-between gap-2 text-[10px] text-slate-500 dark:text-slate-400' },
-h( 'span', { className: 'flex items-center gap-1 truncate' }, h(Globe, { className: 'w-3 h-3 text-emerald-600 shrink-0' }), h('span', { className: 'truncate' }, showOrig ? 'මුල් පණිවිඩය (Original)' : userLangInfo.nativeName + ' බසට පරිවර්තනය විය')
-), h( 'button', { type: 'button', onClick: () => toggleShowOriginal(msg.id), className: 'font-black text-emerald-600 dark:text-emerald-400 hover:underline shrink-0 cursor-pointer'
-}, showOrig ? 'පරිවර්තනය බලන්න' : 'මුල් පණිවිඩය' ) ) : null ),
-!isDeleted && isConfirmed && post.revealContactConsent !== false && !mine && msg.senderPhone
-? h( 'div', { className: 'mt-2 pt-1.5 border-t border-slate-200/60 dark:border-white/10 flex items-center justify-between gap-2 text-[10px]' },
-h( 'span', { className: 'text-slate-600 dark:text-slate-300 font-mono flex items-center gap-1' }, h(Phone, { className: 'w-3 h-3 text-emerald-600' }),
-h('span', null, msg.senderPhone) ), h( 'a', { href: 'https://wa.me/' + formattedPhone, target: '_blank', rel: 'noopener noreferrer',
-className: 'px-2 py-0.5 bg-[#25D366] hover:bg-[#1EBE5D] text-white rounded-lg font-black' }, 'WhatsApp' ) ) : null,
-mine && !isDeleted ? h( 'div', { className: 'mt-1 flex items-center justify-end gap-1 text-[9px] text-emerald-100/90' },
-h(Check, { className: 'w-3 h-3' }), h('span', null, 'Sent')
-) : null ),
-
-// Action Toolbar (Pin & Delete for Everyone)
-!isDeleted ? h('div', {
-  className: 'flex items-center gap-1 mt-1 px-1 ' + (mine ? 'justify-end' : 'justify-start')
-},
-  h('button', {
-    type: 'button',
-    onClick: () => handleTogglePinMessage(msg),
-    title: isMsgPinned ? 'පණිවිඩය Unpin කරන්න' : 'මෙම පණිවිඩය Pin කරන්න',
-    className: 'px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer ' +
-      (isMsgPinned
-        ? 'bg-amber-400/25 text-amber-700 dark:text-amber-300 border border-amber-400/40'
-        : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/40')
-  },
-    h(Pin, { className: 'w-3 h-3 ' + (isMsgPinned ? 'fill-amber-400 text-amber-500' : '') }),
-    h('span', null, isMsgPinned ? 'Pinned' : 'Pin')
-  ),
-
-  mine ? (
-    canDelete ? h('button', {
-      type: 'button',
-      onClick: () => handleInitiateDelete(msg, msgIdx),
-      title: 'දෙපිරිසටම නොපෙනෙන ලෙස මකා දමන්න (Delete for Everyone)',
-      className: 'px-2 py-0.5 rounded-lg text-[10px] font-bold text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-transparent hover:border-rose-200 dark:hover:border-rose-800 transition-all flex items-center gap-1 cursor-pointer'
-    },
-      h(Trash2, { className: 'w-3 h-3 text-rose-500' }),
-      h('span', null, 'Delete')
-    ) : isDeleteLocked ? h('span', {
-      title: 'අනෙක් පාර්ශ්වයෙන් පණිවිඩ ලැබී ඇති බැවින් මකා දැමිය නොහැක',
-      className: 'px-2 py-0.5 rounded-lg text-[10px] font-medium text-slate-400 dark:text-slate-600 flex items-center gap-1 select-none cursor-not-allowed opacity-60'
-    },
-      h(Lock, { className: 'w-3 h-3' }),
-      h(Trash2, { className: 'w-3 h-3' }),
-      h('span', null, 'Locked')
-    ) : null
-  ) : null
-) : null
-) ); }), h('div', { ref: chatBottomRef }) ),
-isBloodPost && !isBloodCompleted ? h('div', {
-  className: 'px-3 py-2 bg-rose-50/90 dark:bg-[#14080b] border-t border-rose-200 dark:border-rose-900/60 shrink-0 space-y-1.5'
-},
-  h('div', { className: 'text-[10px] font-black text-rose-800 dark:text-rose-300 flex items-center justify-between' },
-    h('span', null, isPostAuthor
-      ? '🏥 දැන්වීම්කරුගේ පියවර පණිවිඩ (1-Click යවන්න):'
-      : '🩸 ලේ පරිත්‍යාගශීලියාගේ (සහයක) පියවර පණිවිඩ (1-Click යවන්න):'
-    ),
-    h('span', { className: 'font-mono text-[9px] opacity-80' }, displayPostCode)
-  ),
-  h('div', { className: 'flex items-center gap-1.5 overflow-x-auto pb-0.5' },
-    ...(isPostAuthor
-      ? [
-          h('button', {
-            key: 'poster_step2',
-            type: 'button',
-            onClick: () => handleSendBloodStageMessage(
-              `✅ [පියවර 2/4 - පරිත්‍යාගශීලියා තහවුරු කිරීම]\n"${activePartner?.name || 'පරිත්‍යාගශීලියා'}", ඔබව ලේ පරිත්‍යාගය සඳහා තෝරාගෙන තහවුරු කරන ලදී. කරුණාකර ${post.locationName || 'රෝහල'} වෙත පැමිණෙන්න. දුරකථන: ${post.userPhone || ''}`,
-              'confirm_donor'
-            ),
-            className: 'px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black shrink-0 cursor-pointer shadow-xs active:scale-95'
-          }, '✅ 2. පරිත්‍යාගශීලියා තහවුරු කරන්න'),
-          h('button', {
-            key: 'poster_hosp',
-            type: 'button',
-            onClick: () => handleSendBloodStageMessage(
-              `📍 [රෝහල හා වාට්ටු විස්තර]\nරෝහල / ස්ථානය: ${post.locationName || 'රෝහල'}\nඅවශ්‍යතාවය: ${post.whatHappened || ''}\nදුරකථන: ${post.userPhone || ''}\nඔබ පැමිණෙන වේලාව දන්වන්න.`
-            ),
-            className: 'px-2.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-black shrink-0 cursor-pointer shadow-xs active:scale-95'
-          }, '📍 රෝහල / වාට්ටු විස්තර යවන්න'),
-          h('button', {
-            key: 'poster_step4',
-            type: 'button',
-            onClick: () => handleSendBloodStageMessage(
-              `🎉 [පියවර 4/4 - ගනුදෙනුව සාර්ථකව අවසන්]\n🩸 රෝගියා සඳහා අවශ්‍ය රුධිරය සාර්ථකව ලැබුණි. උතුම් ජීවිතයක් බේරාගැනීමට දායක වූ "${activePartner?.name || 'පරිත්‍යාගශීලියා'}" වෙත හදපිරි ස්තූතිය පුද කරමු! 🙏❤️`,
-              'complete_blood'
-            ),
-            className: 'px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-[11px] font-black shrink-0 cursor-pointer shadow-xs active:scale-95'
-          }, '🎉 4. ලේ ලැබුණා • ගනුදෙනුව අවසන් කරන්න')
-        ]
-      : [
-          h('button', {
-            key: 'donor_onway',
-            type: 'button',
-            onClick: () => handleSendBloodStageMessage(
-              `🚗 [පියවර 3/4 - පැමිණෙමින් සිටී]\nමම දැන් ${post.locationName || 'රෝහල'} වෙත ලේ ලබාදීම සඳහා පැමිණෙමින් සිටිමි.`
-            ),
-            className: 'px-2.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-black shrink-0 cursor-pointer shadow-xs active:scale-95'
-          }, '🚗 3. මම රෝහල වෙත පැමිණෙමින් සිටිමි'),
-          h('button', {
-            key: 'donor_arrived',
-            type: 'button',
-            onClick: () => handleSendBloodStageMessage(
-              `🏥 [පියවර 3/4 - රෝහලට පැමිණියා]\nමම දැන් ${post.locationName || 'රෝහල'} / ලේ බැංකුව වෙත පැමිණ සිටිමි. කරුණාකර මාව සම්බන්ධ කරගන්න.`
-            ),
-            className: 'px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black shrink-0 cursor-pointer shadow-xs active:scale-95'
-          }, '🏥 3. මම රෝහලට පැමිණියෙමි'),
-          h('button', {
-            key: 'donor_donated',
-            type: 'button',
-            onClick: () => handleSendBloodStageMessage(
-              `🩸 [පියවර 3/4 - ලේ පරිත්‍යාගය සිදු කළා]\nමම රෝගියා වෙනුවෙන් ලේ පරිත්‍යාගය සාර්ථකව සිදු කළෙමි. රෝගියාට ඉක්මන් සුවය ප්‍රාර්ථනා කරමි! 🙏`
-            ),
-            className: 'px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black shrink-0 cursor-pointer shadow-xs active:scale-95'
-          }, '🩸 3. ලේ පරිත්‍යාගය සිදු කළෙමි')
-        ])
-  )
-) : null,
-h( 'div', { className: 'p-3 bg-white dark:bg-[#06180f] border-t border-slate-200 dark:border-[#0e3a24] shrink-0' },
-isRecordingVoice ? h(AudioVoiceRecorder, { onSendAudio: handleSendVoiceAudio, onCancel: () => setIsRecordingVoice(false) }) : h( 'form',
-{ onSubmit: handleSend, className: 'flex items-center gap-2' }, h( 'button', { type: 'button', onClick: () => setIsRecordingVoice(true),
-className: 'w-10 h-10 rounded-full bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0 transition-all active:scale-95 cursor-pointer',
-title: 'හඬ පණිවිඩයක් (Voice Note)' }, h(Mic, { className: 'w-4 h-4' }) ), h( 'div', { className: 'flex-1 relative' }, h('input', { type: 'text',
-value: inputText, onChange: (e: any) => setInputText(e.target.value), placeholder: userLang === 'en' ? 'Type a message in English (Auto-translates)...'
-: userLang === 'ta' ? 'உங்கள் செய்தியை தட்டச்சு செய்யவும்...' : 'පණිවිඩය ලියන්න (අනෙක් පාර්ශ්වයේ භාෂාවට ස්වයංක්‍රීයව හැරවේ)...', className: 'w-full px-4 py-2.5 bg-[#f0f2f5] dark:bg-[#040e08] border border-slate-300 dark:border-emerald-800/80 rounded-full text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 font-medium pr-9'
-}), h( 'div', { className: 'absolute right-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none' }, userLangInfo.flag ) ), h( 'button',
-{ type: 'submit', disabled: !inputText.trim() ? true : isSending, className: 'px-4 sm:px-5 py-2.5 bg-gradient-to-r from-[#0084ff] via-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 text-white font-black text-xs sm:text-sm rounded-full shadow-md flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer'
-}, h('span', null, userLang === 'en' ? 'Send' : userLang === 'ta' ? 'அනුப்புக' : 'යවන්න'), h(Send, { className: 'w-3.5 h-3.5' }) ) )
-) ) ) ),
 deleteConfirmMsg ? h('div', {
   className: 'fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-fadeIn'
 },

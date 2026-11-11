@@ -165,7 +165,8 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
       confirmedBy: reply.responderName || post.confirmedBy,
       confirmedAt: nowIso,
       serviceStage: 'in_progress' as any,
-    };
+      ...(isBloodPost ? { bloodWorkflowStep: 3 } : {}),
+    } as any;
 
     if (onUpdatePost) {
       onUpdatePost(updatedPost);
@@ -181,14 +182,15 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         confirmedBy: updatedPost.confirmedBy || '',
         confirmedAt: nowIso,
         serviceStage: 'in_progress' as any,
-      });
+        ...(isBloodPost ? { bloodWorkflowStep: 3 } : {}),
+      } as any);
     } catch (err) {
       console.warn('Firestore helper confirmation update note:', err);
     }
 
     // 1. Send automatic Step 2 helper selection notification message
     const notificationText = isBloodPost
-      ? `✅ [පියවර 2/4 - පරිත්‍යාගශීලියා තෝරාගැනීම]\n🏥 දැන්වීම්කරු (${postOwnerName}) විසින් "${reply.responderName || 'පරිත්‍යාගශීලියා'}" ලේ පරිත්‍යාගය සඳහා තෝරාගෙන තහවුරු කරන ලදී.\n📍 ස්ථානය / රෝහල: ${post.locationName || 'රෝහල'}\n📞 දැන්වීම්කරුගේ දුරකථන: ${post.userPhone || ''}\nකරුණාකර රෝහල වෙත පැමිණෙන වේලාව පිළිබඳව මෙහි පණිවිඩයක් තබන්න. බොහොම ස්තූතියි!`
+      ? `✅ [පියවර 2/4 - පරිත්‍යාගශීලියා තෝරාගැනීම]\n🏥 දැන්වීම්කරු (${postOwnerName}) විසින් "${reply.responderName || 'පරිත්‍යාගශීලියා'}" ලේ පරිත්‍යාගය සඳහා තෝරාගෙන තහවුරු කරන ලදී.\n📍 ස්ථානය / රෝහල: ${post.locationName || 'රෝහල'}\n📞 දැන්වීම්කරුගේ දුරකථන: ${post.userPhone || ''}\n👉 දැන් පියවර 3 යටතේ පරිත්‍යාගශීලියාට රෝහලට පැමිණ ලේ ලබාදීම තහවුරු කළ හැක.`
       : `✅ "${postOwnerName}" සහය සදහා ඔබ තෝරාගෙන ඇත. ඔබ දෙදෙනා අතර ගැටලුවක් ඇති නොවන පරිදි සුහදශීලීව සහය වීමට වගබලාගන්න. ස්තුතියි!`;
 
     try {
@@ -216,20 +218,12 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
     if (isQuickService && onOpenConfirm) {
       onOpenConfirm(updatedPost, reply);
-    } else if (onOpenChat) {
-      setSuccessToast(
-        isBloodPost
-          ? `✅ "${reply.responderName || 'පරිත්‍යාගශීලියා'}" තෝරාගන්නා ලදී! දැන් පණිවිඩ හුවමාරුව (Chat) විවෘත වේ...`
-          : `✅ "${reply.responderName || 'සහායකයා'}" තෝරාගන්නා ලදී! (${totalAccepted}/${neededHelpers})`
-      );
-      setTimeout(() => {
-        onClose();
-        onOpenChat(updatedPost);
-      }, 650);
       return;
     }
 
-    if (isComplete) {
+    if (isBloodPost) {
+      setSuccessToast(`✅ [පියවර 2 සම්පූර්ණයි] "${reply.responderName || 'පරිත්‍යාගශීලියා'}" තෝරාගන්නා ලදී! පණිවිඩ හුවමාරුව සඳහා "පණිවිඩ (Chat)" බොත්තම ඔබන්න.`);
+    } else if (isComplete) {
       setSuccessToast(`"${reply.responderName || 'සහායකයා'}" තෝරාගන්නා ලදී! අවශ්‍ය සහායකයින් ප්‍රමාණය සම්පූර්ණයි.`);
     } else {
       setSuccessToast(`"${reply.responderName || 'සහායකයා'}" තෝරාගන්නා ලදී! (සහායකයින් ${totalAccepted}/${neededHelpers} තෝරාගෙන ඇත)`);

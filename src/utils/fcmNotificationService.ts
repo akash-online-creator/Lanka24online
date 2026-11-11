@@ -415,8 +415,76 @@ export async function registerFcmToken(currentUserId?: string) {
 }
 
 const processedRedAlertPushIds = new Set<string>();
+const processedGeneralPushIds = new Set<string>();
+
+export function markPostCreatedLocally(postId?: string) {
+  if (!postId || typeof localStorage === 'undefined') return;
+  try {
+    const raw = localStorage.getItem('sahaya_my_created_post_ids');
+    const list: string[] = raw ? JSON.parse(raw) : [];
+    const cleanId = String(postId).trim();
+    if (cleanId && Array.isArray(list) && !list.includes(cleanId)) {
+      const next = [cleanId, ...list].slice(0, 200);
+      localStorage.setItem('sahaya_my_created_post_ids', JSON.stringify(next));
+    }
+  } catch {}
+}
+
+export function isCreatedByLocalUser(postId?: string, senderId?: string, senderPhone?: string, senderName?: string, fallbackUserId?: string): boolean {
+  if (typeof localStorage === 'undefined') return false;
+  try {
+    if (postId) {
+      const rawCreated = localStorage.getItem('sahaya_my_created_post_ids');
+      const createdList: string[] = rawCreated ? JSON.parse(rawCreated) : [];
+      if (Array.isArray(createdList) && createdList.includes(String(postId).trim())) {
+        return true;
+      }
+    }
+    const rawUser = localStorage.getItem('sahaya_current_user');
+    const currentUser = rawUser ? JSON.parse(rawUser) : null;
+    const myIds = new Set(
+      [
+        fallbackUserId,
+        currentUser?.userId,
+        currentUser?.id,
+        currentUser?.uid,
+        currentUser?.nicNumber,
+        currentUser?.nic,
+      ]
+        .filter(Boolean)
+        .map((v) => String(v).trim().toLowerCase())
+    );
+    if (senderId && myIds.has(String(senderId).trim().toLowerCase())) {
+      return true;
+    }
+    const myPhone = String(currentUser?.phone || currentUser?.whatsappPhone || currentUser?.whatsappNumber || '').replace(/\D/g, '');
+    const sPhone = String(senderPhone || '').replace(/\D/g, '');
+    if (myPhone.length >= 9 && sPhone.length >= 9 && myPhone.slice(-9) === sPhone.slice(-9)) {
+      return true;
+    }
+    const myName = String(currentUser?.name || '').trim().toLowerCase();
+    const sName = String(senderName || '').trim().toLowerCase();
+    if (myName && sName && myName === sName && (!senderId || myIds.size === 0)) {
+      return true;
+    }
+  } catch {}
+  return false;
+}
 
 export function processIncomingPushAlert(payload: FcmPayloadData) {
+  if (!payload) return;
+
+  // Never play announcement notification sound on the device of the user who created/published the post
+  if (
+    isCreatedByLocalUser(
+      payload.postId || payload.alertId,
+      payload.senderId,
+      (payload as any).senderPhone,
+      payload.senderName
+    )
+  ) {
+    return;
+  }
 
   const category = payload.category || 'admin_broadcast';
 
@@ -426,7 +494,7 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
 
   const locationName = payload.locationName || '';
 
-  const notifId = payload.alertId ? `red-alert-${payload.alertId}` : `push-${Date.now()}`;
+  const notifId = payload.alertId ? `red-alert-${payload.alertId}` : payload.postId ? `notif-${payload.postId}` : `push-${Date.now()}`;
 
   if (category === 'red_alert') {
 
@@ -577,9 +645,16 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
     } catch {}
   }
 
+  const generalDedupeKey = payload.postId || payload.alertId || `${category}_${title}_${message}`;
+  if (generalDedupeKey && processedGeneralPushIds.has(generalDedupeKey)) {
+    return;
+  }
+  if (generalDedupeKey) {
+    processedGeneralPushIds.add(generalDedupeKey);
+  }
+
   switch (category) {
     case 'sos_live': {
-      playNotificationSound('emergency_blood');
       const notif: AppNotification = {
         id: notifId,
         type: 'emergency_blood',
@@ -599,7 +674,6 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
 
     case 'emergency_blood':
     case 'blood': {
-      playNotificationSound('emergency_blood');
       const notif: AppNotification = {
         id: notifId,
         type: 'emergency_blood',
@@ -619,7 +693,6 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
 
     case 'aid_ledger':
     case 'disaster_relief': {
-      playNotificationSound('emergency_blood');
       const notif: AppNotification = {
         id: notifId,
         type: 'aid_ledger',
@@ -639,7 +712,6 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
 
     case 'quick_service':
     case 'quick_services': {
-      playNotificationSound('quick_service');
       const notif: AppNotification = {
         id: notifId,
         type: 'quick_service',
@@ -659,7 +731,6 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
 
     case 'help_request':
     case 'normal_services': {
-      playNotificationSound('quick_service');
       const notif: AppNotification = {
         id: notifId,
         type: 'quick_service',
@@ -678,7 +749,6 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
     }
 
     default: {
-      playNotificationSound('admin_broadcast');
       const notif: AppNotification = {
         id: notifId,
         type: 'admin_broadcast',
@@ -787,7 +857,13 @@ export function initFcmNotificationService(currentUserId?: string) {
 
             const data = change.doc.data() as FcmPayloadData;
 
-            const isSelf = data.senderId && currentUserId && data.senderId === currentUserId;
+            const isSelf = isCreatedByLocalUser(
+              data.postId || data.alertId,
+              data.senderId,
+              (data as any).senderPhone,
+              data.senderName,
+              currentUserId
+            );
 
             if (!isSelf) {
 
@@ -847,10 +923,32 @@ export function initFcmNotificationService(currentUserId?: string) {
 }
 
 export async function broadcastPushNotification(payload: FcmPayloadData) {
+  let localSenderId = payload.senderId;
+  let localSenderName = payload.senderName;
+  let localSenderPhone = (payload as any).senderPhone;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const rawUser = localStorage.getItem('sahaya_current_user');
+      if (rawUser) {
+        const u = JSON.parse(rawUser);
+        if (!localSenderId) localSenderId = u?.userId || u?.id || u?.nicNumber || '';
+        if (!localSenderName) localSenderName = u?.name || '';
+        if (!localSenderPhone) localSenderPhone = u?.phone || u?.whatsappPhone || '';
+      }
+    }
+  } catch {}
 
-  const enrichedPayload: FcmPayloadData = {
+  markPostCreatedLocally(payload.postId || payload.alertId);
+
+  const enrichedPayload: any = {
 
     ...payload,
+
+    senderId: localSenderId || '',
+
+    senderName: localSenderName || '',
+
+    senderPhone: localSenderPhone || '',
 
     radiusKm: payload.radiusKm || 15.0,
 

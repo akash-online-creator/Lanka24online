@@ -1,5 +1,5 @@
 import { getStoredHelpPosts, saveHelpPostsToStorage } from "../utils/storage";
-import { startContinuousSupportBell, stopContinuousSupportBell, isSupportBellRinging, SupportAlertInfo } from '../utils/supportBellRingtone';
+import { startContinuousSupportBell, stopContinuousSupportBell, isSupportBellRinging, triggerSupportOfferAlert, SupportAlertInfo } from '../utils/supportBellRingtone';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { User, Language, LocationOption, HelpPost, PostReply, Theme, CategoryItem, TagItem, ProfessionalService, ServiceReview, RedAlertItem, Issue } from '../types';
 import { translations } from '../data/translations';
@@ -75,7 +75,7 @@ import { MarketShop } from '../types';
 import { OmniAssistantChatBox } from './OmniAssistantChatBox';
 import { LiveNotificationToast } from './LiveNotificationToast';
 import { broadcastAppNotification, AppNotification, removeNotificationsForPost } from '../utils/notificationManager';
-import { broadcastPushNotification } from '../utils/fcmNotificationService';
+import { broadcastPushNotification, isCreatedByLocalUser, markPostCreatedLocally } from '../utils/fcmNotificationService';
 import { getUserCreditBalance, deductPostingFee, getCategoryFee, awardServiceReward, resolveCategoryKeyForPost, getCategoryFeeDetail } from '../utils/creditManager';
 import { awardSPoints, getUserSPoints } from '../utils/sPointManager';
 import { 
@@ -226,6 +226,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   }, [user]);
 
   const lastSeenChatTimestampsRef = useRef<Map<string, number>>(new Map());
+  const seenPostIdsRef = useRef<Set<string>>(new Set());
+  const seenReplyCountsRef = useRef<Map<string, number>>(new Map());
   const isFirstPostsSnapshotRef = useRef(true);
 
   const t = translations[language];
@@ -382,11 +384,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setHelpPosts(filtered);
         }
 
-        // 🔔 Real-time incoming chat message notification
+        // 🔔 Real-time incoming post, support offer, and chat message notifications
         if (isFirstPostsSnapshotRef.current) {
           isFirstPostsSnapshotRef.current = false;
           filtered.forEach((p: any) => {
-            if (p && p.id && p.lastMessageTimeMs) {
+            if (!p || !p.id) return;
+            seenPostIdsRef.current.add(String(p.id));
+            seenReplyCountsRef.current.set(String(p.id), Array.isArray(p.replies) ? p.replies.length : 0);
+            if (p.lastMessageTimeMs) {
               lastSeenChatTimestampsRef.current.set(p.id, Number(p.lastMessageTimeMs));
             }
           });
@@ -396,7 +401,71 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           const currentUserPhone = (currentU?.whatsappPhone || currentU?.phone || '').replace(/\D/g, '');
 
           filtered.forEach((p: any) => {
-            if (!p || !p.id || !p.lastMessageTimeMs || !p.lastMessage) return;
+            if (!p || !p.id) return;
+            const pid = String(p.id);
+            const isOwner = checkIsPostOwner(currentU, p);
+            const isSelfCreated = isOwner || isCreatedByLocalUser(pid, p.userId || p.authorId, p.userPhone, p.userName, currentUserId);
+
+            // 1. New Announcement published by ANOTHER user -> Play notification sound for other users (never for the creator)
+            if (!seenPostIdsRef.current.has(pid)) {
+              seenPostIdsRef.current.add(pid);
+              seenReplyCountsRef.current.set(pid, Array.isArray(p.replies) ? p.replies.length : 0);
+              if (!isSelfCreated) {
+                const pCode = String(p.postCode || '');
+                const pTitle = String(p.headline || p.title || p.whatHappened || 'නව දැන්වීමක්');
+                const pBody = String(p.whatIsNeeded || p.whatHappened || pTitle).slice(0, 120);
+                const pLoc = String(p.locationName || p.district || 'ශ්‍රී ලංකාව');
+                const isBlood = pCode.startsWith('#BLD-') || p.postType === 'blood_request' || p.category === 'blood_disaster';
+                const isAid = pCode.startsWith('#EMG-') || p.postType === 'disaster_relief';
+                const isQuick = p.postType === 'quick_service' || p.category === 'quick_services';
+
+                broadcastAppNotification({
+                  id: `notif-${pid}`,
+                  type: isBlood ? 'emergency_blood' : isAid ? 'aid_ledger' : 'quick_service',
+                  title: isBlood
+                    ? (pTitle.startsWith('🩸') ? pTitle : `🩸 හදිසි ලේ ඉල්ලීමක්: ${pTitle}`)
+                    : isAid
+                    ? (pTitle.startsWith('📦') ? pTitle : `📦 ආපදා සහන ඉල්ලීමක්: ${pTitle}`)
+                    : isQuick
+                    ? (pTitle.startsWith('⚡') ? pTitle : `⚡ ඉක්මන් සේවා ඉල්ලීමක්: ${pTitle}`)
+                    : `🤝 නව සහන සේවා දැන්වීමක්: ${pTitle}`,
+                  message: pBody,
+                  locationName: pLoc,
+                  badgeText: isBlood ? 'හදිසි ලේ' : isAid ? 'ආපදා සහන' : isQuick ? 'ඉක්මන් සේවා' : 'සහන සේවා',
+                  targetModal: isBlood ? 'blood' : isAid ? 'aid_ledger' : isQuick ? 'quick_service' : 'detail',
+                  targetPostId: pid,
+                });
+              }
+            } else {
+              // 2. Existing post owned by current user received a new Support Offer / Donor Reply -> Ring Support Bell for the Poster!
+              const currentReplies = Array.isArray(p.replies) ? p.replies : [];
+              const prevReplyCount = seenReplyCountsRef.current.get(pid) || 0;
+              if (currentReplies.length !== prevReplyCount) {
+                seenReplyCountsRef.current.set(pid, currentReplies.length);
+                if (isOwner && currentReplies.length > prevReplyCount) {
+                  const latestRep = currentReplies[currentReplies.length - 1];
+                  const repPhone = String(latestRep?.responderPhone || '').replace(/\D/g, '');
+                  const isRepFromMe = Boolean(
+                    (latestRep?.responderId && currentUserId && String(latestRep.responderId) === String(currentUserId)) ||
+                    (repPhone.length >= 9 && currentUserPhone.length >= 9 && repPhone.slice(-9) === currentUserPhone.slice(-9))
+                  );
+                  if (latestRep && !isRepFromMe) {
+                    triggerSupportOfferAlert({
+                      postId: pid,
+                      postAuthorId: currentUserId,
+                      postTitle: p.headline || p.whatHappened || p.title || 'දැන්වීම',
+                      helperName: latestRep.responderName || 'සහයකයා',
+                      helperPhone: latestRep.responderPhone || '',
+                      helperMsg: latestRep.message || '',
+                      timestamp: Date.now(),
+                    });
+                  }
+                }
+              }
+            }
+
+            // 3. Incoming Chat Message Notification
+            if (!p.lastMessageTimeMs || !p.lastMessage) return;
             const newTime = Number(p.lastMessageTimeMs);
             const prevTime = lastSeenChatTimestampsRef.current.get(p.id) || 0;
 
@@ -408,7 +477,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               const isFromOther = !senderId || senderId !== currentUserId;
 
               // Check if current user is involved in this post
-              const isOwner = checkIsPostOwner(currentU, p);
               const isHelper = p.confirmedHelperId === currentUserId ||
                 (p.confirmedHelperPhone && currentUserPhone && p.confirmedHelperPhone.replace(/\D/g, '') === currentUserPhone);
               const isApplicant = Array.isArray(p.applicants) && p.applicants.some((a: any) => 
@@ -418,7 +486,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               );
               const isReplier = Array.isArray(p.replies) && p.replies.some((r: any) => 
                 (r.userId && r.userId === currentUserId) || 
-                (r.phone && currentUserPhone && r.phone.replace(/\D/g, '') === currentUserPhone)
+                (r.responderId && r.responderId === currentUserId) ||
+                (r.phone && currentUserPhone && r.phone.replace(/\D/g, '') === currentUserPhone) ||
+                (r.responderPhone && currentUserPhone && r.responderPhone.replace(/\D/g, '') === currentUserPhone)
               );
 
               if (isFromOther && (isOwner || isHelper || isApplicant || isReplier)) {
@@ -896,7 +966,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       console.warn('Post saved locally, cloud sync notice:', err);
     }
 
-    // 📢 Dispatch Background Push Notification & App Notification for Quick Services, Blood, Relief, and Help Requests
+    // Mark post as created by this local user so we NEVER play the announcement alert sound on the publisher's own device
+    markPostCreatedLocally(fullPost.id);
+    seenPostIdsRef.current.add(String(fullPost.id));
+
+    // 📢 Dispatch Background Push Notification to OTHER users (without playing local notification sound for the publisher)
     try {
       const pCode = String(fullPost.postCode || '');
       const pTitle = String((fullPost as any).headline || fullPost.title || fullPost.whatHappened || 'නව සහන සේවා ඉල්ලීමක්');
@@ -916,6 +990,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           latitude: pLat,
           longitude: pLng,
           senderId: senderUid,
+          senderName: fullPost.userName || user?.name || '',
           targetModal: 'blood',
         });
       } else if (pCode.startsWith('#EMG-') || resolvedPostCategory === 'emergency') {
@@ -928,21 +1003,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           latitude: pLat,
           longitude: pLng,
           senderId: senderUid,
+          senderName: fullPost.userName || user?.name || '',
           targetModal: 'aid_ledger',
         });
       } else if (resolvedPostCategory === 'quick_services' || fullPost.postType === 'quick_service') {
-        broadcastAppNotification({
-          id: `notif-qs-${fullPost.id}`,
-          type: 'quick_service',
-          title: pTitle.startsWith('⚡') ? pTitle : `⚡ ඉක්මන් සේවා ඉල්ලීමක්: ${pTitle}`,
-          message: pBody,
-          locationName: pLoc,
-          lat: pLat,
-          lng: pLng,
-          badgeText: 'ඉක්මන් සේවා',
-          targetModal: 'quick_service',
-          targetPostId: fullPost.id,
-        });
         broadcastPushNotification({
           category: 'quick_service',
           title: pTitle.startsWith('⚡') ? pTitle : `⚡ ඉක්මන් සේවා ඉල්ලීමක්: ${pTitle}`,
@@ -952,21 +1016,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           latitude: pLat,
           longitude: pLng,
           senderId: senderUid,
+          senderName: fullPost.userName || user?.name || '',
           targetModal: 'quick_service',
         });
       } else {
-        broadcastAppNotification({
-          id: `notif-help-${fullPost.id}`,
-          type: 'quick_service',
-          title: `🤝 සහන සේවා ඉල්ලීමක්: ${pTitle}`,
-          message: pBody,
-          locationName: pLoc,
-          lat: pLat,
-          lng: pLng,
-          badgeText: 'සහන සේවා',
-          targetModal: 'detail',
-          targetPostId: fullPost.id,
-        });
         broadcastPushNotification({
           category: 'help_request',
           title: `🤝 සහන සේවා ඉල්ලීමක්: ${pTitle}`,
@@ -976,6 +1029,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           latitude: pLat,
           longitude: pLng,
           senderId: senderUid,
+          senderName: fullPost.userName || user?.name || '',
           targetModal: 'detail',
         });
       }

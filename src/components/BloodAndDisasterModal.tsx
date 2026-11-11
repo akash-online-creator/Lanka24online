@@ -234,28 +234,23 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     setBloodRequests(updated);
     saveBloodRequestsToStorage(updated);
     saveBloodRequestToFirestore(newRequest).catch((err) => console.warn('saveBloodRequestToFirestore error:', err));
-    
-    // 🚨 PickMe-style background alert broadcast & Cross-device Push Queue
-    broadcastAppNotification({
-      type: 'emergency_blood',
-      title: `🩸 හදිසි ${newBloodGroup} ලේ අවශ්‍යතාවයක්!`,
-      message: `${newHospitalName} - ${newPatientName} වෙනුවෙන් ${newBloodGroup} ලේ ඒකක ${newUnitsNeeded}ක් හදිසියේ අවශ්‍යයි.`,
-      locationName: newDistrict,
-      badgeText: 'හදිසි',
-      targetModal: 'blood',
-      targetPostId: newRequest.id,
-    });
 
-    broadcastPushNotification({
-      category: 'emergency_blood',
-      title: `🩸 හදිසි ${newBloodGroup} ලේ ඉල්ලීමක්!`,
-      body: `${newHospitalName} (${newDistrict}) - ${newPatientName} වෙනුවෙන් ${newBloodGroup} ලේ ඒකක ${newUnitsNeeded}ක් හදිසියේ අවශ්‍යයි.`,
-      postId: newRequest.id,
-      locationName: `${newHospitalName}, ${newDistrict}`,
-      urgency: 'critical',
-      badgeText: `ලේ (${newBloodGroup})`,
-      targetModal: 'blood',
-    });
+    // Do NOT call broadcastAppNotification locally on the publisher's own device (so the publisher does not hear the alert sound).
+    // If onSubmitHelpPost is not provided, dispatch push notification to other users with senderId.
+    if (!onSubmitHelpPost) {
+      broadcastPushNotification({
+        category: 'emergency_blood',
+        title: `🩸 හදිසි ${newBloodGroup} ලේ ඉල්ලීමක්!`,
+        body: `${newHospitalName} (${newDistrict}) - ${newPatientName} වෙනුවෙන් ${newBloodGroup} ලේ ඒකක ${newUnitsNeeded}ක් හදිසියේ අවශ්‍යයි.`,
+        postId: newRequest.id,
+        locationName: `${newHospitalName}, ${newDistrict}`,
+        urgency: 'critical',
+        badgeText: `ලේ (${newBloodGroup})`,
+        targetModal: 'blood',
+        senderId: currentUser?.userId || (currentUser as any)?.id || currentUser?.nicNumber || '',
+        senderName: newContactName || currentUser?.name || '',
+      });
+    }
 
     setShowAddBloodRequestForm(false);
     setActiveTab('blood_requests');
