@@ -36,6 +36,7 @@ getLanguageDisplayInfo
 } from '../utils/chatTranslator';
 import { translateWithGoogle } from '../utils/googleTranslator';
 import { playNotificationSound, triggerBrowserNotification } from '../utils/notificationManager';
+import { startContinuousSupportBell, stopContinuousSupportBell } from '../utils/supportBellRingtone';
 import { PolicyViolationModal } from './PolicyViolationModal';
 import { AudioVoiceRecorder, AudioVoicePlayer } from './AudioVoiceNote';
 const h = React.createElement;
@@ -267,6 +268,12 @@ useEffect(() => { if (!isOpen ? true : !post?.id) return; const unsubscribe = su
         seenMessageIdsRef.current.add(m.id);
         const mine = isMeMessage(m);
         if (!mine) {
+          startContinuousSupportBell({
+            postId: post.id,
+            postTitle: m.text || 'නව පණිවිඩයක් ලැබුණි',
+            helperName: m.senderName || 'පරිශීලක',
+            timestamp: Date.now(),
+          });
           playNotificationSound('chat_message');
           try {
             if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -1356,10 +1363,15 @@ return h(
   null,
   h(
     'div',
-    { className: 'fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn' },
+    {
+      onClick: () => stopContinuousSupportBell(),
+      onTouchStart: () => stopContinuousSupportBell(),
+      className: 'fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn',
+    },
     h(
       'div',
       {
+        onClick: () => stopContinuousSupportBell(),
         className:
           'w-full max-w-4xl bg-white dark:bg-[#06180f] border-2 border-emerald-500/70 rounded-[1.75rem] shadow-[0_20px_60px_rgba(0,122,75,0.3)] overflow-hidden flex flex-col md:flex-row h-[92vh] max-h-[780px] relative',
       },

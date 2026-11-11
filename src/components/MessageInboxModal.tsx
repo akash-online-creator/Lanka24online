@@ -40,6 +40,7 @@ getLanguageDisplayInfo
 } from '../utils/chatTranslator';
 import { translateWithGoogle } from '../utils/googleTranslator';
 import { playNotificationSound, triggerBrowserNotification } from '../utils/notificationManager';
+import { startContinuousSupportBell, stopContinuousSupportBell } from '../utils/supportBellRingtone';
 import { PolicyViolationModal } from './PolicyViolationModal';
 import { AudioVoiceRecorder, AudioVoicePlayer } from './AudioVoiceNote';
 const h = React.createElement;
@@ -548,7 +549,14 @@ const unsubscribe = subscribeToChatMessages(currentPost.id, (firestoreMsgs) => {
         seenMessageIdsRef.current.add(m.id);
         const mine = isMeMessage(m);
         if (!mine) {
-          // 🔔 Message from other party arrived! Notify with sound and vibration
+          // 🔔 Message from other party arrived! Ring continuous bell until viewed
+          startContinuousSupportBell({
+            postId: currentPost.id,
+            postTitle: m.text || 'නව පණිවිඩයක් ලැබුණි',
+            helperName: m.senderName || activeThread?.respondentName || 'පරිශීලක',
+            helperMsg: 'CHAT_MSG',
+            timestamp: Date.now(),
+          });
           playNotificationSound('chat_message');
           try {
             if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -731,22 +739,6 @@ setMessages(updatedList);
 setIsSending(true);
 try {
 await sendChatMessageToFirestore(currentPost.id, newMsg);
-if (!activeThread.isDirectUsernameChat && !String(currentPost.id).startsWith('direct_user_chat_')) {
-  const newReply: PostReply = {
-    id: 'reply_' + nowMs,
-    responderName: newMsg.senderName,
-    responderPhone: newMsg.senderPhone || '',
-    responderId: currentUserId,
-    message: messageTextToSave,
-    createdAt: newMsg.timestamp,
-    createdAtMs: nowMs,
-  };
-  const updatedReplies = [...(currentPost.replies || []), newReply];
-  await updateHelpPostInFirestore(currentPost.id, {
-    replies: updatedReplies,
-    repliesCount: updatedReplies.length,
-  }).catch(() => {});
-}
 } catch (err) {
 console.error('Failed to send message to Firestore:', err);
 } finally {
@@ -789,22 +781,6 @@ setIsRecordingVoice(false);
 setIsSending(true);
 try {
 await sendChatMessageToFirestore(currentPost.id, newMsg);
-if (!activeThread.isDirectUsernameChat && !String(currentPost.id).startsWith('direct_user_chat_')) {
-  const newReply: PostReply = {
-    id: 'reply_voice_' + nowMs,
-    responderName: newMsg.senderName,
-    responderPhone: newMsg.senderPhone || '',
-    responderId: currentUserId,
-    message: newMsg.text,
-    createdAt: newMsg.timestamp,
-    createdAtMs: nowMs,
-  };
-  const updatedReplies = [...(currentPost.replies || []), newReply];
-  await updateHelpPostInFirestore(currentPost.id, {
-    replies: updatedReplies,
-    repliesCount: updatedReplies.length,
-  }).catch(() => {});
-}
 } catch (err) {
 console.error('Failed to send voice note to Firestore:', err);
 } finally {
@@ -865,8 +841,8 @@ translatedText: translatedCandidate,
 };
 const userLangInfo = getLanguageDisplayInfo(userLang);
 const otherLangInfo = getLanguageDisplayInfo(detectedOtherPartyLang);
-return h( React.Fragment, null, h( 'div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn' },
-h( 'div', { className: 'w-full max-w-5xl bg-white dark:bg-[#06180f] border-2 border-emerald-500/70 rounded-[2rem] shadow-[0_25px_70px_rgba(0,122,75,0.35)] overflow-hidden flex flex-col md:flex-row h-[90vh] max-h-[780px] relative' },
+return h( React.Fragment, null, h( 'div', { onClick: () => stopContinuousSupportBell(), onTouchStart: () => stopContinuousSupportBell(), className: 'fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn' },
+h( 'div', { onClick: () => stopContinuousSupportBell(), className: 'w-full max-w-5xl bg-white dark:bg-[#06180f] border-2 border-emerald-500/70 rounded-[2rem] shadow-[0_25px_70px_rgba(0,122,75,0.35)] overflow-hidden flex flex-col md:flex-row h-[90vh] max-h-[780px] relative' },
 h( 'div', { className: (activeThread ? 'hidden md:flex ' : 'flex ') + 'w-full md:w-80 lg:w-96 flex-col border-r border-slate-200 dark:border-emerald-900/60 bg-white dark:bg-[#05140c] h-full shrink-0'
 }, h( 'div', { className: 'bg-gradient-to-r from-[#0084ff] via-emerald-700 to-teal-800 p-4 text-white flex items-center justify-between shrink-0' },
 h( 'div', { className: 'flex items-center gap-2.5' }, h( 'div', { className: 'w-10 h-10 rounded-2xl bg-white/15 border border-white/25 flex items-center justify-center text-white shadow-inner' },

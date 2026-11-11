@@ -228,6 +228,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const lastSeenChatTimestampsRef = useRef<Map<string, number>>(new Map());
   const seenPostIdsRef = useRef<Set<string>>(new Set());
   const seenReplyCountsRef = useRef<Map<string, number>>(new Map());
+  const seenWorkflowStepsRef = useRef<Map<string, number>>(new Map());
   const isFirstPostsSnapshotRef = useRef(true);
 
   const t = translations[language];
@@ -384,13 +385,36 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setHelpPosts(filtered);
         }
 
-        // 🔔 Real-time incoming post, support offer, and chat message notifications
+        const getPostStepNumber = (p: any): number => {
+          if (!p) return 1;
+          if (p.isResolved || p.status === 'resolved' || p.serviceStage === 'completed' || Number(p.bloodWorkflowStep) >= 5) return 5;
+          if (
+            p.bloodDonatedByHelper ||
+            Number(p.bloodWorkflowStep) >= 4 ||
+            (Array.isArray(p.replies) && p.replies.some((r: any) => r?.bloodDonatedByHelper || Number(r?.workflowStep) >= 4))
+          ) {
+            return 4;
+          }
+          if (
+            p.isConfirmed ||
+            Number(p.bloodWorkflowStep) >= 3 ||
+            (Array.isArray(p.replies) && p.replies.some((r: any) => r?.isConfirmed || r?.isAccepted || Number(r?.workflowStep) >= 3))
+          ) {
+            return 3;
+          }
+          if ((Array.isArray(p.replies) && p.replies.length > 0) || Number(p.bloodWorkflowStep) >= 2) return 2;
+          return 1;
+        };
+
+        // 🔔 Real-time incoming post, support offer, step progression, and chat message notifications
         if (isFirstPostsSnapshotRef.current) {
           isFirstPostsSnapshotRef.current = false;
           filtered.forEach((p: any) => {
             if (!p || !p.id) return;
-            seenPostIdsRef.current.add(String(p.id));
-            seenReplyCountsRef.current.set(String(p.id), Array.isArray(p.replies) ? p.replies.length : 0);
+            const pid = String(p.id);
+            seenPostIdsRef.current.add(pid);
+            seenReplyCountsRef.current.set(pid, Array.isArray(p.replies) ? p.replies.length : 0);
+            seenWorkflowStepsRef.current.set(pid, getPostStepNumber(p));
             if (p.lastMessageTimeMs) {
               lastSeenChatTimestampsRef.current.set(p.id, Number(p.lastMessageTimeMs));
             }
@@ -399,6 +423,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           const currentU = currentUserRef.current;
           const currentUserId = currentU?.userId || currentU?.id || '';
           const currentUserPhone = (currentU?.whatsappPhone || currentU?.phone || '').replace(/\D/g, '');
+          const currentUserNameNorm = String(currentU?.name || '').trim().toLowerCase();
 
           filtered.forEach((p: any) => {
             if (!p || !p.id) return;
@@ -410,6 +435,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             if (!seenPostIdsRef.current.has(pid)) {
               seenPostIdsRef.current.add(pid);
               seenReplyCountsRef.current.set(pid, Array.isArray(p.replies) ? p.replies.length : 0);
+              seenWorkflowStepsRef.current.set(pid, getPostStepNumber(p));
               if (!isSelfCreated) {
                 const pCode = String(p.postCode || '');
                 const pTitle = String(p.headline || p.title || p.whatHappened || 'නව දැන්වීමක්');
@@ -437,34 +463,99 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 });
               }
             } else {
-              // 2. Existing post owned by current user received a new Support Offer / Donor Reply -> Ring Support Bell for the Poster!
+              // 2. Step Progression & Support Offer Top-Up + Continuous Bell for the Other Party!
               const currentReplies = Array.isArray(p.replies) ? p.replies : [];
               const prevReplyCount = seenReplyCountsRef.current.get(pid) || 0;
-              if (currentReplies.length !== prevReplyCount) {
-                seenReplyCountsRef.current.set(pid, currentReplies.length);
-                if (isOwner && currentReplies.length > prevReplyCount) {
-                  const latestRep = currentReplies[currentReplies.length - 1];
-                  const repPhone = String(latestRep?.responderPhone || '').replace(/\D/g, '');
-                  const isRepFromMe = Boolean(
-                    (latestRep?.responderId && currentUserId && String(latestRep.responderId) === String(currentUserId)) ||
-                    (repPhone.length >= 9 && currentUserPhone.length >= 9 && repPhone.slice(-9) === currentUserPhone.slice(-9))
-                  );
-                  if (latestRep && !isRepFromMe) {
-                    triggerSupportOfferAlert({
-                      postId: pid,
-                      postAuthorId: currentUserId,
-                      postTitle: p.headline || p.whatHappened || p.title || 'දැන්වීම',
-                      helperName: latestRep.responderName || 'සහයකයා',
-                      helperPhone: latestRep.responderPhone || '',
-                      helperMsg: latestRep.message || '',
-                      timestamp: Date.now(),
-                    });
-                  }
+              const newStep = getPostStepNumber(p);
+              const prevStep = seenWorkflowStepsRef.current.get(pid) || 1;
+
+              seenReplyCountsRef.current.set(pid, currentReplies.length);
+              seenWorkflowStepsRef.current.set(pid, newStep);
+
+              const myReply = !isOwner && currentU
+                ? currentReplies.find((r: any) => {
+                    if (!r) return false;
+                    const rPhone = String(r.responderPhone || '').replace(/\D/g, '');
+                    const rName = String(r.responderName || '').trim().toLowerCase();
+                    return Boolean(
+                      (r.responderId && currentUserId && String(r.responderId) === String(currentUserId)) ||
+                      (rPhone.length >= 9 && currentUserPhone.length >= 9 && rPhone.slice(-9) === currentUserPhone.slice(-9)) ||
+                      (rName && currentUserNameNorm && rName === currentUserNameNorm)
+                    );
+                  })
+                : null;
+
+              // Step 1 completed by Helper/Donor -> Auto Pop-Up on Poster's screen for Step 2!
+              if (isOwner && (currentReplies.length > prevReplyCount || (newStep === 2 && prevStep < 2))) {
+                const latestRep = currentReplies[currentReplies.length - 1];
+                const repPhone = String(latestRep?.responderPhone || '').replace(/\D/g, '');
+                const isRepFromMe = Boolean(
+                  (latestRep?.responderId && currentUserId && String(latestRep.responderId) === String(currentUserId)) ||
+                  (repPhone.length >= 9 && currentUserPhone.length >= 9 && repPhone.slice(-9) === currentUserPhone.slice(-9))
+                );
+                if (latestRep && !isRepFromMe) {
+                  setTargetPostForOffers(p);
+                  setIsSupportOffersModalOpen(true);
+                  triggerSupportOfferAlert({
+                    postId: pid,
+                    postAuthorId: currentUserId,
+                    postTitle: `"${latestRep.responderName || 'සහයකයා'}" සහය ලබාදීමට ඉදිරිපත් වී ඇත. තෝරාගන්නවාද?`,
+                    helperName: latestRep.responderName || 'සහයකයා',
+                    helperPhone: latestRep.responderPhone || '',
+                    helperMsg: latestRep.message || '',
+                    timestamp: Date.now(),
+                  });
                 }
+              }
+
+              // Step 2 completed by Poster -> Auto Pop-Up on Donor/Helper's screen for Step 3!
+              if (!isOwner && Boolean(myReply) && newStep === 3 && prevStep < 3) {
+                setTargetPostForOffers(p);
+                setIsSupportOffersModalOpen(true);
+                triggerSupportOfferAlert({
+                  postId: pid,
+                  postAuthorId: currentUserId,
+                  postTitle: 'දැන්වීම්කරු ඔබව තෝරාගෙන ඇත. ඔබ ලේ පරිත්‍යාගය සිදු කළාද?',
+                  helperName: p.userName || 'දැන්වීම්කරු',
+                  helperPhone: p.userPhone || '',
+                  helperMsg: '',
+                  timestamp: Date.now(),
+                });
+              }
+
+              // Step 3 completed by Donor -> Auto Pop-Up on Poster's screen for Step 4!
+              if (isOwner && newStep === 4 && prevStep < 4) {
+                const activeRep = currentReplies.find((r: any) => r?.bloodDonatedByHelper || r?.isConfirmed) || currentReplies[0];
+                setTargetPostForOffers(p);
+                setIsSupportOffersModalOpen(true);
+                triggerSupportOfferAlert({
+                  postId: pid,
+                  postAuthorId: currentUserId,
+                  postTitle: `"${activeRep?.responderName || 'පරිත්‍යාගශීලියා'}" ලේ පරිත්‍යාග කළ බව දන්වා ඇත. රුධිරය ලැබුණාද?`,
+                  helperName: activeRep?.responderName || 'පරිත්‍යාගශීලියා',
+                  helperPhone: activeRep?.responderPhone || '',
+                  helperMsg: '',
+                  timestamp: Date.now(),
+                });
+              }
+
+              // Step 4 completed by Poster -> Auto Pop-Up final completion notice on Donor's screen!
+              if (!isOwner && Boolean(myReply) && newStep === 5 && prevStep < 5) {
+                setTargetPostForOffers(p);
+                setIsSupportOffersModalOpen(true);
+                triggerSupportOfferAlert({
+                  postId: pid,
+                  postAuthorId: currentUserId,
+                  postTitle: '🎉 ලේ පරිත්‍යාග කටයුත්ත සාර්ථකව අවසන් විය! බොහෝම ස්තූතියි.',
+                  helperName: p.userName || 'දැන්වීම්කරු',
+                  helperPhone: p.userPhone || '',
+                  helperMsg: '',
+                  timestamp: Date.now(),
+                });
               }
             }
 
-            // 3. Incoming Chat Message Notification
+            // 3. Incoming Chat Message Notification -> Continuous Bell Tone until viewed!
             if (!p.lastMessageTimeMs || !p.lastMessage) return;
             const newTime = Number(p.lastMessageTimeMs);
             const prevTime = lastSeenChatTimestampsRef.current.get(p.id) || 0;
@@ -472,34 +563,43 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             if (newTime > prevTime) {
               lastSeenChatTimestampsRef.current.set(p.id, newTime);
 
-              // Check if sender is someone else
               const senderId = p.lastMessageSenderId;
-              const isFromOther = !senderId || senderId !== currentUserId;
+              const senderNameNorm = String(p.lastMessageSenderName || '').trim().toLowerCase();
+              const isFromOther =
+                (!senderId || senderId !== currentUserId) &&
+                (!senderNameNorm || !currentUserNameNorm || senderNameNorm !== currentUserNameNorm);
 
-              // Check if current user is involved in this post
-              const isHelper = p.confirmedHelperId === currentUserId ||
-                (p.confirmedHelperPhone && currentUserPhone && p.confirmedHelperPhone.replace(/\D/g, '') === currentUserPhone);
-              const isApplicant = Array.isArray(p.applicants) && p.applicants.some((a: any) => 
-                (a.userId && a.userId === currentUserId) || 
-                (a.id && a.id === currentUserId) || 
-                (a.phone && currentUserPhone && a.phone.replace(/\D/g, '') === currentUserPhone)
-              );
-              const isReplier = Array.isArray(p.replies) && p.replies.some((r: any) => 
-                (r.userId && r.userId === currentUserId) || 
-                (r.responderId && r.responderId === currentUserId) ||
-                (r.phone && currentUserPhone && r.phone.replace(/\D/g, '') === currentUserPhone) ||
-                (r.responderPhone && currentUserPhone && r.responderPhone.replace(/\D/g, '') === currentUserPhone)
-              );
+              const isHelper =
+                p.confirmedHelperId === currentUserId ||
+                (p.confirmedHelperPhone && currentUserPhone && p.confirmedHelperPhone.replace(/\D/g, '').slice(-9) === currentUserPhone.slice(-9));
+              const isApplicant =
+                Array.isArray(p.applicants) &&
+                p.applicants.some(
+                  (a: any) =>
+                    (a.userId && a.userId === currentUserId) ||
+                    (a.id && a.id === currentUserId) ||
+                    (a.phone && currentUserPhone && a.phone.replace(/\D/g, '').slice(-9) === currentUserPhone.slice(-9))
+                );
+              const isReplier =
+                Array.isArray(p.replies) &&
+                p.replies.some(
+                  (r: any) =>
+                    (r.userId && r.userId === currentUserId) ||
+                    (r.responderId && r.responderId === currentUserId) ||
+                    (r.phone && currentUserPhone && r.phone.replace(/\D/g, '').slice(-9) === currentUserPhone.slice(-9)) ||
+                    (r.responderPhone && currentUserPhone && r.responderPhone.replace(/\D/g, '').slice(-9) === currentUserPhone.slice(-9))
+                );
 
               if (isFromOther && (isOwner || isHelper || isApplicant || isReplier)) {
-                const senderName = p.lastMessageSenderName || 'පරිශීලක (User)';
-                broadcastAppNotification({
-                  type: 'chat_message',
-                  title: `නව පණිවිඩයක්: ${senderName}`,
-                  message: p.lastMessage || 'ඔබට නව පණිවිඩයක් ලැබී ඇත',
-                  targetModal: 'message_inbox',
-                  targetPostId: p.id,
-                  relatedPostId: p.id,
+                const senderName = p.lastMessageSenderName || 'පරිශීලක';
+                triggerSupportOfferAlert({
+                  postId: p.id,
+                  postAuthorId: currentUserId,
+                  postTitle: p.lastMessage || 'ඔබට නව පණිවිඩයක් ලැබී ඇත',
+                  helperName: senderName,
+                  helperPhone: '',
+                  helperMsg: 'CHAT_MSG',
+                  timestamp: newTime,
                 });
               }
             }
@@ -1687,50 +1787,40 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
       {/* 🚨 Red Alert Ticker Banner removed */}
 
-      {/* 🔔 Incoming Support Offer Bell Banner (Rings continuously until clicked!) */}
+      {/* 🔔 Minimal Incoming Message / Step Bell Banner (Rings continuously until viewed!) */}
       {ringingSupportAlert && (
-        <div className="w-full rounded-3xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 p-4 sm:p-5 text-slate-950 shadow-2xl border-2 border-white flex flex-col sm:flex-row items-center justify-between gap-4 animate-in slide-in-from-top-3 duration-300 ring-4 ring-amber-400/50">
-          <div className="flex items-center gap-3.5 min-w-0 w-full sm:w-auto">
-            <div className="w-12 h-12 rounded-2xl bg-white text-amber-600 flex items-center justify-center shrink-0 shadow-lg animate-bounce">
-              <Bell className="w-6 h-6 animate-pulse" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="px-2.5 py-0.5 rounded-full bg-slate-950 text-amber-300 font-mono text-[10px] font-black uppercase">
-                  🔔 නව සහය පිරිනැමීමක් (Incoming Support Offer)
-                </span>
-                <span className="text-xs font-bold text-slate-900 bg-white/40 px-2 py-0.5 rounded-md">
-                  නාද වෙමින් පවතී...
-                </span>
-              </div>
-              <h4 className="text-sm sm:text-base font-black truncate text-slate-950 mt-1">
-                {ringingSupportAlert.helperName} ඔබගේ දැන්වීමට සහය දැක්වීමට ඉදිරිපත් විය!
-              </h4>
-              <p className="text-xs font-bold text-slate-900 truncate">
-                "{ringingSupportAlert.postTitle}"
-              </p>
-            </div>
+        <div className="w-full rounded-2xl bg-amber-500 p-3.5 text-slate-950 shadow-xl border-2 border-white flex items-center justify-between gap-3 animate-in slide-in-from-top-3 duration-200">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Bell className="w-5 h-5 text-slate-950 shrink-0 animate-bounce" />
+            <p className="text-xs sm:text-sm font-black text-slate-950 truncate">
+              {ringingSupportAlert.helperMsg === 'CHAT_MSG'
+                ? `💬 ${ringingSupportAlert.helperName}: "${ringingSupportAlert.postTitle}"`
+                : ringingSupportAlert.postTitle}
+            </p>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
-            <button
-              type="button"
-              onClick={() => {
-                stopContinuousSupportBell();
-                const matchingPost = (helpPosts || []).find((p: any) => p && p.id === ringingSupportAlert.postId) ||
-                                     targetPostForOffers;
+          <button
+            type="button"
+            onClick={() => {
+              stopContinuousSupportBell();
+              const matchingPost =
+                (helpPosts || []).find((p: any) => p && p.id === ringingSupportAlert.postId) || targetPostForOffers;
+              if (ringingSupportAlert.helperMsg === 'CHAT_MSG') {
+                if (matchingPost) {
+                  setSelectedPostForChat(matchingPost);
+                }
+              } else {
                 if (matchingPost) {
                   setTargetPostForOffers(matchingPost);
                 }
                 setIsSupportOffersModalOpen(true);
-                setRingingSupportAlert(null);
-              }}
-              className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-slate-950 hover:bg-slate-900 text-amber-300 font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 transition-transform active:scale-95 cursor-pointer border border-amber-400"
-            >
-              <span>සහායකයාගේ විස්තර බලන්න</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
+              }
+              setRingingSupportAlert(null);
+            }}
+            className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-amber-300 font-black text-xs shrink-0 cursor-pointer"
+          >
+            {ringingSupportAlert.helperMsg === 'CHAT_MSG' ? 'පණිවිඩය බලන්න' : 'බලන්න'}
+          </button>
         </div>
       )}
 
