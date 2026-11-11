@@ -1,0 +1,14 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+.sahaya_session_secret
+.sahaya_vapid_keys.json
+*.jks
+*.keystore
+*service-account*.json
+*firebase-adminsdk*.json

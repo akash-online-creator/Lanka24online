@@ -1,0 +1,86 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ===============================================================
+    // 🛡️ 0. Global Default-Deny Safety Net (Never allow blanket writes)
+    // ===============================================================
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // 🛡️ 1. Core Security & MIME / Size Validation Helpers
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+             request.auth.token.email_verified == true &&
+             (request.auth.token.admin == true || request.auth.token.role in ['admin', 'super_admin']);
+    }
+
+    function isValidFileName(fileName) {
+      return fileName is string &&
+             fileName.size() >= 3 &&
+             fileName.size() <= 128 &&
+             fileName.matches('^[a-zA-Z0-9._\\-]+\\.(jpg|jpeg|png|webp|gif|webm|ogg|mp3|wav|m4a|mp4|mov|pdf)$');
+    }
+
+    function isSafeImageUpload(maxSizeBytes) {
+      return request.resource != null &&
+             request.resource.size > 0 &&
+             request.resource.size <= maxSizeBytes &&
+             request.resource.contentType.matches('image/(jpeg|jpg|png|webp|gif)');
+    }
+
+    function isSafeMediaUpload(maxSizeBytes) {
+      return request.resource != null &&
+             request.resource.size > 0 &&
+             request.resource.size <= maxSizeBytes &&
+             request.resource.contentType.matches('(image/(jpeg|jpg|png|webp|gif)|audio/(webm|ogg|mpeg|mp3|wav|mp4|aac|x-m4a)|video/(mp4|webm|quicktime)|application/pdf)');
+    }
+
+    // ===============================================================
+    // 🔒 2. Private User Verification Documents (NIC Front Photo)
+    // Owner or verified Admin only — NEVER public!
+    // ===============================================================
+    match /users/{userId}/verification/{fileName} {
+      allow get: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isAuthenticated() &&
+                               (request.auth.uid == userId || isAdmin()) &&
+                               isValidFileName(fileName) &&
+                               isSafeImageUpload(5 * 1024 * 1024);
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // 🚨 3. Red Alert Evidence Photos (Max 5MB, EXIF-stripped JPEGs/WebP)
+    // ===============================================================
+    match /red_alerts/{alertId}/{fileName} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create: if isAuthenticated() &&
+                       isValidFileName(fileName) &&
+                       isSafeImageUpload(5 * 1024 * 1024);
+      allow update: if isAdmin() && isValidFileName(fileName) && isSafeImageUpload(5 * 1024 * 1024);
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // 📢 4. Community Posts, Marketplace & Accommodation Media
+    // ===============================================================
+    match /posts/{userId}/{fileName} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create, update: if isAuthenticated() &&
+                               (request.auth.uid == userId || isAdmin()) &&
+                               isValidFileName(fileName) &&
+                               isSafeMediaUpload(15 * 1024 * 1024);
+      allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+    }
+  }
+}

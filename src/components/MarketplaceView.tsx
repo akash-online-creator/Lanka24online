@@ -1,0 +1,1115 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { User, TagItem, Language, MarketItem, MarketShop, MarketSection, MarketSellerSubTab } from '../types';
+import { getStoredMarketItems, saveMarketItemsToStorage, getStoredMarketShops, saveMarketShopsToStorage } from '../data/marketplaceData';
+import { subscribeToMarketplaceItems, addMarketplaceItemToFirestore, deleteMarketplaceItemFromFirestore, subscribeToMarketShops, addMarketShopToFirestore, deleteMarketplaceShopFromFirestore } from '../lib/firebase';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
+import { addDeletedMarketplaceId, addDeletedMarketShopId, filterNonDeletedMarketItems, filterNonDeletedMarketShops } from '../utils/deletedPostsManager';
+import { validate100mGeoFencePermission } from '../utils/geoFenceValidator';
+import { getEntitySerialNumber } from '../utils/entitySerialNumberHelper';
+import { MarketplaceNewsTicker } from './MarketplaceNewsTicker';
+import { MarketplaceAddSellerItemModal } from './MarketplaceAddSellerItemModal';
+import { MarketplaceAddBuyerRequestModal } from './MarketplaceAddBuyerRequestModal';
+import { MarketplaceAddShopModal } from './MarketplaceAddShopModal';
+import { MarketShopPreviewModal } from './MarketShopPreviewModal';
+import { MarketplaceLowestPricesModal } from './MarketplaceLowestPricesModal';
+import { MarketplaceItemDetailModal } from './MarketplaceItemDetailModal';
+import { MarketplaceGuideModal } from './MarketplaceGuideModal';
+import { GroupChatMapViewerModal } from './GroupChatMapViewerModal';
+import { getVillageOrTownDisplay } from '../utils/geoUtils';
+import { findSynonymSuggestionPrompt, getExpandedSearchKeywords } from '../data/searchDictionary';
+import { SmartSearchSynonymPrompt } from './SmartSearchSynonymPrompt';
+import { DemoRegistrationPromptModal } from './DemoRegistrationPromptModal';
+import { Search, Store, Building2, ShoppingCart, Plus, ArrowLeft, MapPin, Phone, MessageSquare, ShieldCheck, AlertCircle, Truck, Package, Eye, Edit3, Trash2, SlidersHorizontal, HelpCircle, Lock } from 'lucide-react';
+export interface MarketplaceViewProps {
+currentUser: User;
+language: Language;
+allTags: TagItem[];
+currentLocationName?: string;
+onBackToBoard: () => void;
+onAddNewTag?: (tag: TagItem) => void;
+onStartDirectChat?: (targetUserId: string, targetUserName: string, targetPhone: string) => void;
+onRequireRegistration?: () => void;
+}
+export const MarketplaceView = ({
+currentUser,
+language,
+allTags,
+currentLocationName = 'කඩවත',
+onBackToBoard,
+onAddNewTag,
+onRequireRegistration
+}: MarketplaceViewProps) => {
+const [items, setItems] = useState(() => getStoredMarketItems());
+const [shops, setShops] = useState(() => getStoredMarketShops());
+const [activeSection, setActiveSection] = useState('sellers' as MarketSection);
+const [searchQuery, setSearchQuery] = useState('');
+const [dismissedSynonyms, setDismissedSynonyms] = useState([] as string[]);
+const marketplaceSynonymPrompt = useMemo(() => {
+const q = searchQuery.trim().toLowerCase();
+if (!q) return null;
+if (!(q.length >= 2)) return null;
+if (dismissedSynonyms.includes(q)) return null;
+return (findSynonymSuggestionPrompt as any)(
+searchQuery,
+items,
+(it: MarketItem) => `${it.title} ${it.tagName} ${it.userName} ${it.barterNeeds ? it.barterNeeds : ''}`
+);
+}, [searchQuery, items, dismissedSynonyms]);
+const [sellerSubTab, setSellerSubTab] = useState('all' as MarketSellerSubTab);
+const [myShopsOnly, setMyShopsOnly] = useState(false);
+const [distanceFilterKm, setDistanceFilterKm] = useState(50);
+const [selectedCategoryTag, setSelectedCategoryTag] = useState('all');
+const [priceSortOrder, setPriceSortOrder] = useState('default');
+const [isAddSellerModalOpen, setIsAddSellerModalOpen] = useState(false);
+const [isAddBuyerModalOpen, setIsAddBuyerModalOpen] = useState(false);
+const [isAddShopModalOpen, setIsAddShopModalOpen] = useState(false);
+const [shopModalType, setShopModalType] = useState('shop' as any);
+const [editingShop, setEditingShop] = useState(null as any);
+const [isLowestPricesModalOpen, setIsLowestPricesModalOpen] = useState(false);
+const [selectedLowestPriceItem, setSelectedLowestPriceItem] = useState(null as any);
+const [selectedDetailItem, setSelectedDetailItem] = useState(null as any);
+const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
+const [guideModalInitialSection, setGuideModalInitialSection] = useState('sellers' as MarketSection);
+const [previewingShop, setPreviewingShop] = useState(null as any);
+const [shopToDelete, setShopToDelete] = useState(null as any);
+const [itemToDelete, setItemToDelete] = useState(null as any);
+const [showDemoRegisterPrompt, setShowDemoRegisterPrompt] = useState(false);
+const [viewingLocation, setViewingLocation] = useState(null as any);
+const isDemo = Boolean(currentUser && currentUser.isDemo);
+const isAdmin = checkIsAdmin(currentUser);
+const handleGatedAction = (action: () => void) => {
+if (isDemo) {
+setShowDemoRegisterPrompt(true);
+return;
+}
+action();
+};
+const canDeleteItem = (item: MarketItem) => {
+if (isAdmin) return true;
+if (!currentUser) return false;
+if (currentUser.isDemo) return false;
+if (item.userId && (item.userId === currentUser.userId ? true : item.userId === currentUser.id)) return true;
+if (item.userPhone && currentUser.phone && item.userPhone.replace(/\D/g, '') === currentUser.phone.replace(/\D/g, '')) return true;
+return false;
+};
+const canDeleteShop = (shop: MarketShop) => {
+if (isAdmin) return true;
+if (!currentUser) return false;
+if (currentUser.isDemo) return false;
+if (shop.userId && (shop.userId === currentUser.userId ? true : shop.userId === currentUser.id)) return true;
+const sPhone = shop.userPhone ? shop.userPhone : shop.whatsappNumber ? shop.whatsappNumber : '';
+if (sPhone && currentUser.phone && sPhone.replace(/\D/g, '') === currentUser.phone.replace(/\D/g, '')) return true;
+return false;
+};
+useEffect(() => {
+const refreshFromLocal = () => {
+setItems(getStoredMarketItems());
+setShops(getStoredMarketShops());
+};
+window.addEventListener('sahaya_marketplace_updated', refreshFromLocal);
+const unsubItems = subscribeToMarketplaceItems((remoteItems) => {
+if (Array.isArray(remoteItems) && remoteItems.length >= 1) {
+const localItems = getStoredMarketItems();
+const mergedMap = new Map();
+for (const it of [...remoteItems, ...localItems]) {
+if (it && it.id && !mergedMap.has(it.id)) {
+mergedMap.set(it.id, it);
+}
+}
+const cleaned = filterNonDeletedMarketItems(Array.from(mergedMap.values()));
+setItems(cleaned);
+saveMarketItemsToStorage(cleaned);
+} else {
+setItems(getStoredMarketItems());
+}
+});
+const unsubShops = subscribeToMarketShops((remoteShops) => {
+if (Array.isArray(remoteShops) && remoteShops.length >= 1) {
+const localShops = getStoredMarketShops();
+const mergedMap = new Map();
+for (const sh of [...remoteShops, ...localShops]) {
+if (sh && sh.id && !mergedMap.has(sh.id)) {
+mergedMap.set(sh.id, sh);
+}
+}
+const cleaned = filterNonDeletedMarketShops(Array.from(mergedMap.values()));
+setShops(cleaned);
+saveMarketShopsToStorage(cleaned);
+} else {
+setShops(getStoredMarketShops());
+}
+});
+return () => {
+window.removeEventListener('sahaya_marketplace_updated', refreshFromLocal);
+unsubItems();
+unsubShops();
+};
+}, []);
+useEffect(() => {
+saveMarketItemsToStorage(items);
+}, [items]);
+useEffect(() => {
+saveMarketShopsToStorage(shops);
+}, [shops]);
+const checkContactPermission = (userId?: string, phone?: string, consent?: boolean) => {
+if (currentUser && currentUser.role === 'admin') return true;
+const isOwnerById = Boolean(
+currentUser && userId && (currentUser.userId === userId ? true : currentUser.id === userId));
+const isOwnerByPhone = Boolean(
+currentUser && phone && currentUser.phone && phone.replace(/\D/g, '') === currentUser.phone.replace(/\D/g, ''));
+if (isOwnerById ? true : isOwnerByPhone) return true;
+return consent !== false;
+};
+const handleAddSellerItem = (item: MarketItem) => {
+setItems((prev) => {
+const next = [item, ...prev];
+saveMarketItemsToStorage(next);
+return next;
+});
+addMarketplaceItemToFirestore(item).catch((err) => {
+console.warn('Sync seller item to cloud notice:', err);
+});
+try {
+window.dispatchEvent(new Event('sahaya_marketplace_updated'));
+} catch {}
+};
+const handleAddBuyerRequest = (req: MarketItem) => {
+setItems((prev) => {
+const next = [req, ...prev];
+saveMarketItemsToStorage(next);
+return next;
+});
+addMarketplaceItemToFirestore(req).catch((err) => {
+console.warn('Sync buyer request to cloud notice:', err);
+});
+try {
+window.dispatchEvent(new Event('sahaya_marketplace_updated'));
+} catch {}
+};
+const handleSaveShop = (savedShop: MarketShop) => {
+if (!savedShop) return;
+if (!savedShop.id) return;
+setShops((prev) => {
+const list = Array.isArray(prev) ? prev : [];
+const exists = list.some((s) => Boolean(s && s.id === savedShop.id));
+const next = exists
+? list.map((s) => (s && s.id === savedShop.id ? savedShop : s))
+: [savedShop, ...list];
+saveMarketShopsToStorage(next);
+return next;
+});
+addMarketShopToFirestore(savedShop).catch((err) => {
+console.warn('Sync shop to cloud notice:', err);
+});
+try {
+window.dispatchEvent(new Event('sahaya_marketplace_updated'));
+} catch {}
+if (savedShop.type === 'business') {
+setActiveSection('businesses');
+} else {
+setActiveSection('shops');
+}
+};
+const handleDeleteItem = (itemId: string) => {
+if (!itemId) return;
+setItems((prev) => {
+const updated = (Array.isArray(prev) ? prev : []).filter((i) => Boolean(i && i.id !== itemId));
+saveMarketItemsToStorage(updated);
+return updated;
+});
+addDeletedMarketplaceId(itemId);
+deleteMarketplaceItemFromFirestore(itemId).catch((err) => {
+console.warn('Firestore marketplace item delete notice:', err);
+});
+try {
+window.dispatchEvent(new Event('sahaya_marketplace_updated'));
+} catch {}
+setItemToDelete(null);
+};
+const handleDeleteShop = (shopId: string) => {
+if (!shopId) return;
+const targetShop = shops.find((s) => Boolean(s && s.id === shopId));
+const rawUPhone = currentUser && currentUser.phone ? currentUser.phone : currentUser && (currentUser as any).whatsappNumber ? (currentUser as any).whatsappNumber : '';
+const rawSPhone = targetShop && targetShop.userPhone ? targetShop.userPhone : targetShop && targetShop.whatsappNumber ? targetShop.whatsappNumber : '';
+const uPhone = String(rawUPhone).replace(/\D/g, '');
+const sPhone = String(rawSPhone).replace(/\D/g, '');
+const isRegOwner = Boolean(
+currentUser &&
+targetShop &&
+(
+(currentUser.userId && (targetShop.userId === currentUser.userId ? true : targetShop.userId === currentUser.id))
+? true
+: (currentUser.id && (targetShop.userId === currentUser.id ? true : targetShop.userId === currentUser.userId))
+? true
+: Boolean(uPhone && sPhone && uPhone === sPhone)));
+const userLat = (currentUser as any)?.registrationLat
+? (currentUser as any).registrationLat
+: (currentUser as any)?.lat
+? (currentUser as any).lat
+: 7.1710;
+const userLng = (currentUser as any)?.registrationLng
+? (currentUser as any).registrationLng
+: (currentUser as any)?.lng
+? (currentUser as any).lng
+: 79.8986;
+const geoCheck = validate100mGeoFencePermission(
+targetShop && targetShop.location ? targetShop.location.lat : undefined,
+targetShop && targetShop.location ? targetShop.location.lng : undefined,
+userLat,
+userLng,
+isAdmin,
+isRegOwner
+);
+if (!geoCheck.allowed) {
+alert(language === 'en' ? geoCheck.messageEn : language === 'ta' ? geoCheck.messageTa : geoCheck.messageSi);
+setShopToDelete(null);
+return;
+}
+setShops((prev) => {
+const updated = (Array.isArray(prev) ? prev : []).filter((s) => Boolean(s && s.id !== shopId));
+saveMarketShopsToStorage(updated);
+return updated;
+});
+addDeletedMarketShopId(shopId);
+deleteMarketplaceShopFromFirestore(shopId).catch((err) => {
+console.warn('Firestore marketplace shop delete notice:', err);
+});
+try {
+window.dispatchEvent(new Event('sahaya_marketplace_updated'));
+} catch {}
+setShopToDelete(null);
+};
+const handleOpenWhatsApp = (phone: string, title: string) => {
+if (!phone) return;
+const cleanPhone = phone.replace(/[^0-9]/g, '');
+const internationalPhone = cleanPhone.startsWith('0')
+? `94${cleanPhone.substring(1)}`
+: cleanPhone;
+const msg = encodeURIComponent(
+`ආයුබෝවන්, මම සහය (Sahaya) වෙළඳපොළ හරහා "${title}" සම්බන්ධයෙන් විමසමි.`
+);
+window.open(`https://wa.me/${internationalPhone}?text=${msg}`, '_blank');
+};
+const filteredSellerItems = useMemo(() => {
+return items
+.filter((item) => item && item.type === 'seller_item')
+.filter((item) => {
+if (searchQuery.trim()) {
+const keywords = getExpandedSearchKeywords(searchQuery);
+const itemText = `${item.title ? item.title : ''} ${item.tagName ? item.tagName : ''} ${item.userName ? item.userName : ''} ${item.barterNeeds ? item.barterNeeds : ''}`.toLowerCase();
+const matches = keywords.some((kw) => itemText.includes(kw));
+if (!matches) return false;
+}
+if (sellerSubTab !== 'all') {
+if (!item.saleTypes) return false;
+if (!item.saleTypes.includes(sellerSubTab)) return false;
+}
+if (selectedCategoryTag !== 'all') {
+if (item.tagName !== selectedCategoryTag) return false;
+}
+if (item.distanceKm && !(distanceFilterKm >= item.distanceKm)) return false;
+return true;
+})
+.sort((a, b) => {
+if (priceSortOrder === 'lowest') {
+return (a.price ? a.price : 0) - (b.price ? b.price : 0);
+} else if (priceSortOrder === 'highest') {
+return (b.price ? b.price : 0) - (a.price ? a.price : 0);
+}
+return (b.createdAtMs ? b.createdAtMs : 0) - (a.createdAtMs ? a.createdAtMs : 0);
+});
+}, [items, searchQuery, sellerSubTab, selectedCategoryTag, distanceFilterKm, priceSortOrder]);
+const filteredBuyerRequests = useMemo(() => {
+return items
+.filter((item) => item && item.type === 'buyer_request')
+.filter((item) => {
+if (searchQuery.trim()) {
+const keywords = getExpandedSearchKeywords(searchQuery);
+const itemText = `${item.title ? item.title : ''} ${item.tagName ? item.tagName : ''} ${item.userName ? item.userName : ''}`.toLowerCase();
+const matches = keywords.some((kw) => itemText.includes(kw));
+if (!matches) return false;
+}
+if (selectedCategoryTag !== 'all' && item.tagName !== selectedCategoryTag) return false;
+return true;
+})
+.sort((a, b) => (b.createdAtMs ? b.createdAtMs : 0) - (a.createdAtMs ? a.createdAtMs : 0));
+}, [items, searchQuery, selectedCategoryTag]);
+const filteredShops = useMemo(() => {
+const curId = currentUser ? currentUser.id : '';
+const curUserId = currentUser ? currentUser.userId : '';
+return (Array.isArray(shops) ? shops : [])
+.filter((s) => Boolean(s && s.type === 'shop'))
+.filter((s) => {
+if (myShopsOnly) {
+if (!curId && !curUserId) return false;
+if (s.userId !== curId && s.userId !== curUserId) return false;
+}
+if (searchQuery.trim()) {
+const q = searchQuery.toLowerCase();
+const sTitle = (s.shopName ? s.shopName : s.name ? s.name : '').toLowerCase();
+const matchesName = sTitle.includes(q);
+const matchesTag = (s.categoryTag ? s.categoryTag : '').toLowerCase().includes(q);
+const matchesInv = (Array.isArray(s.inventory) ? s.inventory : []).some((inv) =>
+(inv && inv.name ? inv.name : '').toLowerCase().includes(q));
+if (!matchesName && !matchesTag && !matchesInv) return false;
+}
+return true;
+})
+.sort((a, b) => (b.createdAtMs ? b.createdAtMs : 0) - (a.createdAtMs ? a.createdAtMs : 0));
+}, [shops, myShopsOnly, searchQuery, currentUser]);
+const filteredBusinesses = useMemo(() => {
+return (Array.isArray(shops) ? shops : [])
+.filter((s) => Boolean(s && s.type === 'business'))
+.filter((s) => {
+if (searchQuery.trim()) {
+const q = searchQuery.toLowerCase();
+const sTitle = (s.name ? s.name : s.shopName ? s.shopName : '').toLowerCase();
+const matchesName = sTitle.includes(q);
+const matchesTag = (s.categoryTag ? s.categoryTag : '').toLowerCase().includes(q);
+const matchesInv = (Array.isArray(s.inventory) ? s.inventory : []).some((inv) =>
+(inv && inv.name ? inv.name : '').toLowerCase().includes(q));
+if (!matchesName && !matchesTag && !matchesInv) return false;
+}
+return true;
+})
+.sort((a, b) => (b.createdAtMs ? b.createdAtMs : 0) - (a.createdAtMs ? a.createdAtMs : 0));
+}, [shops, searchQuery]);
+const mySavedShops = useMemo(() => {
+const curId = currentUser ? currentUser.id : '';
+const curUserId = currentUser ? currentUser.userId : '';
+if (!curId && !curUserId) return [];
+return (Array.isArray(shops) ? shops : []).filter(
+(s) => Boolean(s && s.type === 'shop' && ((curId && s.userId === curId) ? true : Boolean(curUserId && s.userId === curUserId))));
+}, [shops, currentUser]);
+const mySavedBusinesses = useMemo(() => {
+const curId = currentUser ? currentUser.id : '';
+const curUserId = currentUser ? currentUser.userId : '';
+if (!curId && !curUserId) return [];
+return (Array.isArray(shops) ? shops : []).filter(
+(s) => Boolean(s && s.type === 'business' && ((curId && s.userId === curId) ? true : Boolean(curUserId && s.userId === curUserId))));
+}, [shops, currentUser]);
+const h = React.createElement;
+const renderDirectoryCard = (shop: MarketShop, idx: number, isBiz: boolean) => {
+const displayTitle = shop.shopName ? shop.shopName : shop.name ? shop.name : isBiz ? 'ව්‍යාපාරික ස්ථානය' : 'අලෙවිසැල';
+const invList = Array.isArray(shop.inventory) ? shop.inventory : [];
+const displayPhone = shop.userPhone ? shop.userPhone : shop.whatsappNumber ? shop.whatsappNumber : '';
+const waPhone = shop.whatsappNumber ? shop.whatsappNumber : displayPhone;
+return h('div',
+{
+key: `${isBiz ? 'biz' : 'shop'}_${shop.id ? shop.id : 's'}_${idx}`,
+className: `bg-white dark:bg-zinc-900 border-2 border-slate-200/80 dark:border-zinc-800 rounded-3xl p-4 sm:p-5 shadow-sm ${
+isBiz ? 'hover:border-amber-500/60' : 'hover:border-teal-500/60'
+} transition-all flex flex-col justify-between space-y-3.5`
+}, h('div',
+{ className: 'space-y-2' }, h('div',
+{ className: 'flex items-center justify-between' }, h('span',
+{
+className: isBiz
+? 'px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60'
+: 'px-2.5 py-0.5 rounded-full text-[11px] font-black bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-900/60'
+},
+isBiz ? '🏢 Business Place' : shop.mode === 'online' ? '🌐 Online Shop' : '🏪 Physical Store'
+), h('div',
+{ className: 'flex items-center gap-1.5' }, h('span',
+{
+className: isBiz
+? 'font-mono text-[10px] font-black text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950 px-2 py-0.5 rounded-md border border-amber-300 dark:border-amber-800'
+: 'font-mono text-[10px] font-black text-teal-700 dark:text-teal-300 bg-teal-100 dark:bg-teal-950 px-2 py-0.5 rounded-md border border-teal-300 dark:border-teal-800'
+},
+`@${getEntitySerialNumber(shop, isBiz ? 'business' : 'shop')}`
+), h('span', { className: 'text-[11px] font-bold text-zinc-400' }, `#${shop.categoryTag ? shop.categoryTag : 'වෙළඳපොල'}`))), h('h3', { className: 'font-black text-base sm:text-lg text-slate-900 dark:text-zinc-100 leading-snug' }, displayTitle),
+shop.location
+? h('div',
+{ className: 'text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-1' }, h(MapPin, { className: `w-3.5 h-3.5 ${isBiz ? 'text-amber-600' : 'text-teal-600'} shrink-0` }), h('span', { className: 'truncate' }, getVillageOrTownDisplay(shop.location.name)))
+: null, h('div',
+{ className: 'p-2.5 bg-slate-50 dark:bg-zinc-800/60 rounded-xl space-y-1' }, h('div',
+{ className: 'text-[11px] font-bold text-zinc-600 dark:text-zinc-400' },
+`${isBiz ? 'සේවාවන් හා නිෂ්පාදන' : 'ප්‍රධාන භාණ්ඩ'} (${invList.length}) :`
+), h('div',
+{ className: 'space-y-1' },
+invList.slice(0, 2).map((inv: any, invIdx: number) =>
+h('div',
+{ key: `card_inv_${shop.id}_${inv && inv.id ? inv.id : 'i'}_${invIdx}`, className: 'flex items-center justify-between text-xs font-semibold' }, h('span', { className: 'truncate text-slate-800 dark:text-zinc-200' }, `• ${inv.name}`), h('span',
+{ className: 'text-emerald-600 dark:text-emerald-400 font-bold shrink-0 ml-2' },
+`රු. ${Number(inv.price ? inv.price : 0).toLocaleString()}`
+)))))), h('div',
+{ className: 'pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-2' }, h('div',
+{ className: 'flex items-center gap-1.5' }, h('button',
+{
+type: 'button',
+onClick: () => setPreviewingShop(shop),
+className: isBiz
+? 'px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-amber-200 dark:border-amber-900'
+: 'px-3.5 py-1.5 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-teal-200 dark:border-teal-900'
+}, h(Eye, { className: 'w-3.5 h-3.5' }), h('span', null, 'විස්තර (Preview)')),
+canDeleteShop(shop)
+? h('button',
+{
+type: 'button',
+onClick: () => setShopToDelete(shop),
+className:
+'p-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-xl text-xs font-bold transition-colors cursor-pointer border border-rose-200 dark:border-rose-900',
+title: 'ඉවත් කරන්න (Delete)'
+}, h(Trash2, { className: 'w-3.5 h-3.5' }))
+: null
+), h('div',
+{ className: 'flex items-center gap-1.5' },
+isDemo
+? h('button',
+{
+type: 'button',
+onClick: () => setShowDemoRegisterPrompt(true),
+className:
+'flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 border border-teal-300 dark:border-teal-800 text-teal-800 dark:text-teal-200 text-xs font-black hover:bg-teal-100 cursor-pointer active:scale-95 transition-all shadow-xs'
+}, h(Lock, { className: 'w-3.5 h-3.5 text-teal-600 shrink-0' }), h('span', null, '🔒 විස්තර බලන්න'))
+: checkContactPermission(shop.userId, displayPhone, shop.revealContactConsent)
+? h(React.Fragment,
+null,
+shop.showWhatsapp && waPhone
+? h('button',
+{
+type: 'button',
+onClick: () => handleOpenWhatsApp(waPhone, displayTitle),
+className: 'p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer',
+title: 'WhatsApp'
+}, h(MessageSquare, { className: 'w-3.5 h-3.5' }))
+: null,
+displayPhone
+? h('a',
+{
+href: `tel:${displayPhone}`,
+className: 'p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer',
+title: 'Call'
+}, h(Phone, { className: 'w-3.5 h-3.5' }))
+: null
+)
+: h('div',
+{ className: 'flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs font-bold' }, h(Lock, { className: 'w-3.5 h-3.5 text-amber-600 shrink-0' }), h('span', null, '🔒 ආරක්ෂිතයි')))));
+};
+return h('div',
+{ className: 'w-full space-y-4 sm:space-y-5 animate-in fade-in duration-300' }, h('div',
+{ className: 'bg-gradient-to-r from-emerald-600 via-teal-700 to-emerald-800 text-white rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3' }, h('div',
+{ className: 'flex items-center gap-3' }, h('button',
+{
+type: 'button',
+onClick: onBackToBoard,
+className:
+'p-2 sm:p-2.5 rounded-2xl bg-white/15 hover:bg-white/25 text-white transition-all cursor-pointer shadow-xs active:scale-95 flex items-center gap-1.5 text-xs font-bold'
+}, h(ArrowLeft, { className: 'w-4 h-4' }), h('span', { className: 'hidden sm:inline' }, 'සහය පුවරුවට')), h('div',
+null, h('div',
+{ className: 'flex items-center gap-2' }, h(Store, { className: 'w-5 h-5 text-emerald-200' }), h('h1', { className: 'text-lg sm:text-2xl font-black tracking-tight' }, 'සහය වෙළඳපොළ (Marketplace)')), h('p',
+{ className: 'text-xs text-emerald-100 font-medium mt-0.5' },
+'තොග, සිල්ලර, හුවමාරු භාණ්ඩ, අලෙවිසැල් හා ව්‍යාපාරික සේවා'
+))), h('div',
+{ className: 'flex flex-wrap items-center gap-2' }, h('button',
+{
+type: 'button',
+onClick: () => {
+setGuideModalInitialSection(activeSection);
+setIsGuideModalOpen(true);
+},
+className:
+'px-3.5 py-2 rounded-2xl bg-amber-400 hover:bg-amber-300 text-amber-950 font-black text-xs transition-all cursor-pointer shadow-md active:scale-95 flex items-center gap-2 border-2 border-amber-300'
+}, h(HelpCircle, { className: 'w-4 h-4 text-amber-950 shrink-0 animate-bounce' }), h('span', null, '💡 පිටුව ක්‍රියාත්මක වන ආකාරය (උදාහරණ)')), h('div',
+{ className: 'flex items-center gap-2 text-xs font-bold bg-white/10 px-3 py-1.5 rounded-2xl backdrop-blur-xs border border-white/20' }, h(MapPin, { className: 'w-3.5 h-3.5 text-emerald-200' }), h('span', null, `ස්ථානය : ${currentLocationName}`)))), h('div',
+{ className: 'relative space-y-2' }, h('div',
+{ className: 'relative flex items-center' }, h(Search, { className: 'w-5 h-5 text-emerald-600 dark:text-emerald-400 absolute left-4 pointer-events-none' }), h('input', {
+type: 'text',
+value: searchQuery,
+onChange: (e: any) => setSearchQuery(e.target.value),
+placeholder: 'භාණ්ඩ, වෙළෙන්දන්, අලෙවිසැල් හෝ ව්‍යාපාර සොයන්න (Search Marketplace)...',
+className:
+'w-full pl-12 pr-12 py-3.5 bg-white dark:bg-zinc-900 border-2 border-emerald-500/40 rounded-2xl text-sm font-semibold text-slate-800 dark:text-zinc-100 placeholder-zinc-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500'
+}),
+searchQuery
+? h('button',
+{ type: 'button', onClick: () => setSearchQuery(''), className: 'absolute right-4 p-1 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer' }, h(Trash2, { className: 'w-4 h-4' }))
+: null
+),
+marketplaceSynonymPrompt
+? h(SmartSearchSynonymPrompt, {
+prompt: marketplaceSynonymPrompt,
+onAcceptSuggestion: (suggested: string) => setSearchQuery(suggested),
+onDismiss: () => {
+if (searchQuery.trim()) {
+setDismissedSynonyms((prev) => [...prev, searchQuery.trim().toLowerCase()]);
+}
+}
+})
+: null
+), h('div',
+{ className: 'grid grid-cols-2 sm:grid-cols-4 gap-2.5' },
+[
+{
+id: 'sellers' as MarketSection,
+labelSi: 'වෙළෙන්දන්',
+icon: Store,
+count: items.filter((i) => i && i.type === 'seller_item').length,
+color: 'from-emerald-600 to-teal-700'
+},
+{
+id: 'buyers' as MarketSection,
+labelSi: 'ගැණුම්කරුවන්',
+icon: ShoppingCart,
+count: items.filter((i) => i && i.type === 'buyer_request').length,
+color: 'from-indigo-600 to-violet-700'
+},
+{
+id: 'shops' as MarketSection,
+labelSi: 'අලෙවිසැල්',
+icon: Store,
+count: shops.filter((s) => s && s.type === 'shop').length,
+color: 'from-teal-600 to-cyan-700'
+},
+{
+id: 'businesses' as MarketSection,
+labelSi: 'ව්‍යාපාරික ස්ථාන',
+icon: Building2,
+count: shops.filter((s) => s && s.type === 'business').length,
+color: 'from-amber-600 to-orange-700'
+}
+].map((sec, sIdx) => {
+const Icon = sec.icon;
+const isActive = activeSection === sec.id;
+return h('button',
+{
+key: `market_sec_${sec.id}_${sIdx}`,
+type: 'button',
+onClick: () => setActiveSection(sec.id),
+className: `p-3.5 sm:p-4 rounded-2xl flex flex-col items-center justify-center text-center transition-all cursor-pointer border-2 shadow-xs active:scale-95 ${
+isActive
+? `bg-gradient-to-r ${sec.color} text-white border-white/40 shadow-lg scale-[1.02]`
+: 'bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-300 border-slate-200/90 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800'
+}`
+}, h('div',
+{
+className: `w-10 h-10 rounded-2xl flex items-center justify-center mb-1.5 transition-colors ${
+isActive ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400'
+}`
+}, h(Icon, { className: 'w-5 h-5' })), h('span', { className: 'font-black text-xs sm:text-sm leading-tight' }, sec.labelSi), h('span', { className: `text-[10px] font-bold mt-0.5 ${isActive ? 'text-white/80' : 'text-zinc-400'}` }, `${sec.count} ක් සක්‍රීයයි`));
+})),
+activeSection === 'sellers'
+? h('div',
+{ className: 'space-y-4' }, h('div',
+{ className: 'flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5' }, h('div',
+{ className: 'flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-zinc-800/80 rounded-2xl border border-slate-200 dark:border-zinc-700 overflow-x-auto' },
+[
+{ id: 'all' as MarketSellerSubTab, label: '📦 සියල්ල (All)' },
+{ id: 'wholesale' as MarketSellerSubTab, label: '🏭 තොග (Wholesale)' },
+{ id: 'retail' as MarketSellerSubTab, label: '🛍️ සිල්ලර (Retail)' },
+{ id: 'free_giveaway' as MarketSellerSubTab, label: '🎁 නොමිලේ දෙන දෑ (Free)' },
+{ id: 'exchange' as MarketSellerSubTab, label: '🔄 හුවමාරු (Exchange)' }
+].map((st, stIdx) =>
+h('button',
+{
+key: `sub_tab_${st.id}_${stIdx}`,
+type: 'button',
+onClick: () => setSellerSubTab(st.id),
+className: `px-3.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
+sellerSubTab === st.id
+? 'bg-emerald-600 text-white shadow-xs'
+: 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
+}`
+},
+st.label
+)
+)
+), h('div',
+{ className: 'flex flex-wrap items-center gap-2' }, h('button',
+{
+type: 'button',
+onClick: () => {
+setGuideModalInitialSection('sellers');
+setIsGuideModalOpen(true);
+},
+className:
+'px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded-2xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5'
+}, h(HelpCircle, { className: 'w-4 h-4 text-emerald-600' }), h('span', null, 'භාවිතා කරන ආකාරය')), h('button',
+{
+type: 'button',
+onClick: () => handleGatedAction(() => setIsAddSellerModalOpen(true)),
+className:
+'px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-md transition-all cursor-pointer flex items-center justify-center gap-2'
+}, h(Plus, { className: 'w-4 h-4' }), h('span', null, 'භාණ්ඩයක් එකතු කරන්න (Add Item)')))), h(MarketplaceNewsTicker, {
+items: items,
+onOpenLowestPrices: (it: any) => {
+setSelectedLowestPriceItem(it ? it : null);
+setIsLowestPricesModalOpen(true);
+},
+onSelectItem: (selectedIt: any) => {
+setSearchQuery(selectedIt.title);
+}
+}), h('div',
+{ className: 'bg-white dark:bg-zinc-900 p-3.5 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-xs space-y-3' }, h('div',
+{ className: 'flex flex-wrap items-center justify-between gap-2.5' }, h('div',
+{ className: 'flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-zinc-300' }, h(SlidersHorizontal, { className: 'w-4 h-4 text-emerald-600' }), h('span', null, 'පෙරහන් (Filters) :')), h('div',
+{ className: 'flex flex-wrap items-center gap-2' }, h('select',
+{
+value: distanceFilterKm,
+onChange: (e: any) => setDistanceFilterKm(Number(e.target.value)),
+className:
+'px-2.5 py-1 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100'
+}, h('option', { value: 5 }, '5 km ඇතුළත'), h('option', { value: 10 }, '10 km ඇතුළත'), h('option', { value: 25 }, '25 km ඇතුළත'), h('option', { value: 50 }, '50 km ඇතුළත'), h('option', { value: 999 }, 'දිවයිනපුරා (All)')), h('select',
+{
+value: priceSortOrder,
+onChange: (e: any) => setPriceSortOrder(e.target.value),
+className:
+'px-2.5 py-1 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100'
+}, h('option', { value: 'default' }, 'නවතම පළමුව (Latest)'), h('option', { value: 'lowest' }, 'අඩුම මිල මුලින් (Lowest)'), h('option', { value: 'highest' }, 'වැඩිම මිල මුලින් (Highest)')
+)
+)
+), h('div',
+{ className: 'flex items-center gap-1.5 overflow-x-auto pb-1' }, h('button',
+{
+type: 'button',
+onClick: () => setSelectedCategoryTag('all'),
+className: `px-3 py-1 rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0 ${
+selectedCategoryTag === 'all'
+? 'bg-emerald-600 text-white'
+: 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400'
+}`
+},
+'සියලු Tags'
+),
+allTags.slice(0, 10).map((t, tIdx) =>
+h('button',
+{
+key: `mkt_tag_${t.id ? t.id : 't'}_${tIdx}`,
+type: 'button',
+onClick: () => setSelectedCategoryTag(t.tagName),
+className: `px-2.5 py-1 rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0 ${
+selectedCategoryTag === t.tagName
+? 'bg-emerald-600 text-white'
+: 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400'
+}`
+},
+`#${t.tagName}`
+)
+)
+)
+),
+filteredSellerItems.length === 0
+? h('div',
+{ className: 'space-y-4' }, h('div',
+{ className: 'w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-8 text-center space-y-3 shadow-xs' }, h(Package, { className: 'w-10 h-10 text-zinc-400 mx-auto' }), h('h3', { className: 'text-sm font-extrabold text-slate-800 dark:text-zinc-200' }, 'ගැලපෙන භාණ්ඩ හමු නොවීය'), h('p', { className: 'text-xs text-zinc-500' }, 'පෙරහන් වෙනස් කරන්න හෝ නව භාණ්ඩයක් වෙළඳපොළට එක් කරන්න.'), h('button',
+{ type: 'button', onClick: () => handleGatedAction(() => setIsAddSellerModalOpen(true)), className: 'px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold cursor-pointer' },
+'භාණ්ඩයක් එකතු කරන්න'
+)),
+filteredShops.length >= 1
+? h('div',
+{ className: 'space-y-3 pt-2' }, h('div',
+{ className: 'flex items-center justify-between' }, h('h3',
+{ className: 'text-sm font-extrabold text-slate-800 dark:text-zinc-200 flex items-center gap-1.5' }, h(Store, { className: 'w-4 h-4 text-teal-600' }),
+`ලියාපදිංචි අලෙවිසැල් (${filteredShops.length}) :`
+), h('button',
+{ type: 'button', onClick: () => setActiveSection('shops'), className: 'text-xs font-black text-teal-600 hover:underline cursor-pointer' },
+'සියල්ල බලන්න →'
+)), h('div',
+{ className: 'grid grid-cols-1 md:grid-cols-2 gap-3.5' },
+filteredShops.map((sh, idx) => renderDirectoryCard(sh, idx, false))))
+: null,
+filteredBusinesses.length >= 1
+? h('div',
+{ className: 'space-y-3 pt-2' }, h('div',
+{ className: 'flex items-center justify-between' }, h('h3',
+{ className: 'text-sm font-extrabold text-slate-800 dark:text-zinc-200 flex items-center gap-1.5' }, h(Building2, { className: 'w-4 h-4 text-amber-600' }),
+`ලියාපදිංචි ව්‍යාපාරික ස්ථාන (${filteredBusinesses.length}) :`
+), h('button',
+{ type: 'button', onClick: () => setActiveSection('businesses'), className: 'text-xs font-black text-amber-600 hover:underline cursor-pointer' },
+'සියල්ල බලන්න →'
+)), h('div',
+{ className: 'grid grid-cols-1 md:grid-cols-2 gap-3.5' },
+filteredBusinesses.map((bz, idx) => renderDirectoryCard(bz, idx, true))))
+: null
+)
+: h('div',
+{ className: 'grid grid-cols-1 md:grid-cols-2 gap-3.5' },
+filteredSellerItems.map((item, itmIdx) =>
+h('div',
+{
+key: `seller_item_${item.id ? item.id : 'itm'}_${itmIdx}`,
+className:
+'bg-white dark:bg-zinc-900 border-2 border-slate-200/80 dark:border-zinc-800 rounded-3xl p-4 sm:p-5 shadow-sm hover:border-emerald-500/60 transition-all flex flex-col justify-between space-y-3.5'
+}, h('div',
+{ className: 'space-y-2' }, h('div',
+{ className: 'flex flex-wrap items-center justify-between gap-1.5' }, h('div',
+{ className: 'flex items-center gap-1.5' }, h('span',
+{ className: 'px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/60' },
+`#${item.tagName}`
+),
+(Array.isArray(item.saleTypes) ? item.saleTypes : []).map((st) =>
+h('span',
+{ key: st, className: 'px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300' },
+st === 'wholesale' ? '🏭 තොග' : st === 'retail' ? '🛍️ සිල්ලර' : st === 'free_giveaway' ? '🎁 නොමිලේ' : '🔄 හුවමාරු'
+))), h('div',
+{ className: 'flex items-center gap-1.5' }, h('button',
+{
+type: 'button',
+onClick: () => setSelectedDetailItem(item),
+className:
+'px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-300 rounded-xl text-[11px] font-black cursor-pointer'
+}, h('span', null, 'විස්තර සහ මිල සංසන්දනය ➔')), h('span', { className: 'text-[11px] text-zinc-400 font-medium' }, item.createdAt),
+canDeleteItem(item)
+? h('button',
+{
+type: 'button',
+onClick: () => setItemToDelete(item),
+className: 'p-1 rounded-lg text-rose-500 hover:bg-rose-50 cursor-pointer',
+title: 'Delete'
+}, h(Trash2, { className: 'w-3.5 h-3.5' }))
+: null
+)), h('h3', { className: 'font-black text-base sm:text-lg text-slate-900 dark:text-zinc-100 leading-snug' }, item.title), h('div',
+{ className: 'flex items-center justify-between p-2.5 bg-slate-50 dark:bg-zinc-800/80 rounded-2xl border border-slate-100 dark:border-zinc-800' }, h('div',
+null, h('div', { className: 'text-[10px] text-zinc-500 font-bold uppercase' }, 'විකුණුම් මිල'), h('div',
+{ className: 'text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400' },
+item.price === 0 ? '🎁 නොමිලේ' : item.price ? `රු. ${item.price.toLocaleString()}` : 'හුවමාරුව සඳහා පමණි'
+)), h('div',
+{ className: 'text-right' }, h('div', { className: 'text-[10px] text-zinc-500 font-bold uppercase' }, 'ප්‍රමාණය'), h('div', { className: 'text-xs sm:text-sm font-extrabold text-slate-800 dark:text-zinc-200' }, item.quantity)))), h('div',
+{ className: 'space-y-2 text-xs' },
+item.barterNeeds
+? h('div',
+{ className: 'p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 rounded-xl text-amber-900 dark:text-amber-200' }, h('span', { className: 'font-bold' }, '🔄 හුවමාරුවට අවශ්‍ය : '), h('span', null, item.barterNeeds))
+: null, h('div',
+{ className: 'flex flex-wrap gap-2' },
+item.hasWarranty && item.warrantyPeriod
+? h('div',
+{ className: 'flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-xl font-bold' }, h(ShieldCheck, { className: 'w-3.5 h-3.5 shrink-0' }), h('span', null, item.warrantyPeriod))
+: null,
+item.expiryDate
+? h('div',
+{ className: 'flex items-center gap-1 text-amber-700 bg-amber-50 px-2.5 py-1 rounded-xl font-bold' }, h(AlertCircle, { className: 'w-3.5 h-3.5 shrink-0' }), h('span', null, `කල් ඉකුත්වීම: ${item.expiryDate}`))
+: null
+), h('div',
+{ className: 'flex items-center justify-between text-zinc-600 dark:text-zinc-400 pt-1' }, h('div',
+{ className: 'flex items-center gap-1 font-semibold' }, h(Truck, { className: 'w-3.5 h-3.5 text-emerald-600' }), h('span',
+null,
+item.deliveryOption === 'pickup'
+? 'පැමිණ රැගෙන යන්න (Self Pickup)'
+: item.deliveryOption === 'seller_deliver'
+? 'විකුණුම්කරු ගෙනවිත් දෙනු ඇත'
+: item.deliveryOption === 'free_shipping'
+? 'නොමිලේ ප්‍රවාහනය'
+: 'ඩිලිවරි ගාස්තු අයවේ'
+)),
+item.pickupLocation
+? h('button',
+{ type: 'button', onClick: () => handleGatedAction(() => setViewingLocation(item.pickupLocation)), className: 'text-[11px] font-bold text-emerald-600 hover:underline flex items-center gap-1 cursor-pointer' }, h(MapPin, { className: 'w-3 h-3' }), h('span', null, 'Map බලන්න'))
+: null
+)), h('div',
+{ className: 'pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-2' }, h('div',
+{ className: 'min-w-0' }, h('div', { className: 'text-xs font-extrabold text-slate-800 dark:text-zinc-200 truncate' }, item.userName), h('div', { className: 'text-[10px] text-zinc-400 truncate' }, getVillageOrTownDisplay(item.locationName))), h('div',
+{ className: 'flex items-center gap-1.5 shrink-0' },
+checkContactPermission(item.userId, item.userPhone, item.revealContactConsent)
+? h(React.Fragment,
+null,
+item.showWhatsapp && item.whatsappNumber
+? h('button',
+{ type: 'button', onClick: () => handleOpenWhatsApp(item.whatsappNumber!, item.title), className: 'p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1' }, h(MessageSquare, { className: 'w-3.5 h-3.5' }))
+: null,
+item.userPhone
+? h('a',
+{
+href: `tel:${item.userPhone}`,
+className: 'p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1'
+}, h(Phone, { className: 'w-3.5 h-3.5' }))
+: null
+)
+: h('div',
+{ className: 'flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 text-amber-900 text-xs font-bold' }, h(Lock, { className: 'w-3.5 h-3.5 text-amber-600 shrink-0' }), h('span', null, '🔒 ආරක්ෂිතයි'))))))))
+: null,
+activeSection === 'buyers'
+? h('div',
+{ className: 'space-y-4' }, h('div',
+{ className: 'flex items-center justify-between gap-2' }, h('div',
+null, h('h2', { className: 'text-base font-extrabold text-slate-800 dark:text-zinc-200' }, 'ගැණුම්කරුවන්ගේ ඉල්ලීම් (Buyer Requests)'), h('p', { className: 'text-xs text-zinc-500' }, 'පාරිභෝගිකයින් සොයන භාණ්ඩ සපයා අලෙවිය සිදුකරන්න')), h('button',
+{
+type: 'button',
+onClick: () => handleGatedAction(() => setIsAddBuyerModalOpen(true)),
+className:
+'px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-700 hover:from-indigo-700 hover:to-violet-800 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-md cursor-pointer flex items-center gap-2'
+}, h(Plus, { className: 'w-4 h-4' }), h('span', null, 'ඉල්ලීමක් එකතු කරන්න'))),
+filteredBuyerRequests.length === 0
+? h('div',
+{ className: 'w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-8 text-center space-y-3 shadow-xs' }, h(ShoppingCart, { className: 'w-10 h-10 text-zinc-400 mx-auto' }), h('h3', { className: 'text-sm font-extrabold text-slate-800 dark:text-zinc-200' }, 'ගැණුම්කරු ඉල්ලීම් හමු නොවීය'), h('button',
+{ type: 'button', onClick: () => handleGatedAction(() => setIsAddBuyerModalOpen(true)), className: 'px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer' },
+'ඉල්ලීමක් එකතු කරන්න'
+))
+: h('div',
+{ className: 'grid grid-cols-1 md:grid-cols-2 gap-3.5' },
+filteredBuyerRequests.map((req, rIdx) =>
+h('div',
+{
+key: `buyer_req_${req.id ? req.id : 'r'}_${rIdx}`,
+className:
+'bg-white dark:bg-zinc-900 border-2 border-indigo-500/20 rounded-3xl p-4 sm:p-5 shadow-sm hover:border-indigo-500/60 transition-all flex flex-col justify-between space-y-3.5'
+}, h('div',
+{ className: 'space-y-2' }, h('div',
+{ className: 'flex items-center justify-between' }, h('span',
+{ className: 'px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200' },
+`#${req.tagName}`
+), h('div',
+{ className: 'flex items-center gap-1.5' }, h('span', { className: 'text-[11px] text-zinc-400 font-medium' }, req.createdAt),
+canDeleteItem(req)
+? h('button',
+{ type: 'button', onClick: () => setItemToDelete(req), className: 'p-1 rounded-lg text-rose-500 hover:bg-rose-50 cursor-pointer' }, h(Trash2, { className: 'w-3.5 h-3.5' }))
+: null
+)), h('h3', { className: 'font-black text-base sm:text-lg text-slate-900 dark:text-zinc-100 leading-snug' }, req.title), h('div',
+{ className: 'flex items-center gap-3 text-xs bg-slate-50 dark:bg-zinc-800/60 p-2.5 rounded-xl' }, h('span', { className: 'font-extrabold text-slate-800 dark:text-zinc-200' }, `ප්‍රමාණය: ${req.quantity}`), h('span', { className: 'font-extrabold text-indigo-600' }, req.availableDateType === 'today' ? 'අදම අවශ්‍යයි' : req.availableDate))), h('div',
+{ className: 'pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-2' }, h('div', { className: 'text-xs font-extrabold text-slate-800 dark:text-zinc-200 truncate' }, req.userName), h('div',
+{ className: 'flex items-center gap-1.5' },
+req.showWhatsapp && req.whatsappNumber
+? h('button',
+{ type: 'button', onClick: () => handleOpenWhatsApp(req.whatsappNumber!, req.title), className: 'p-2 bg-emerald-600 text-white rounded-xl text-xs font-bold cursor-pointer' }, h(MessageSquare, { className: 'w-3.5 h-3.5' }))
+: null,
+req.userPhone
+? h('a',
+{
+href: `tel:${req.userPhone}`,
+className: 'p-2 bg-slate-800 text-white rounded-xl text-xs font-bold cursor-pointer'
+}, h(Phone, { className: 'w-3.5 h-3.5' }))
+: null
+))))))
+: null,
+activeSection === 'shops'
+? h('div',
+{ className: 'space-y-4' }, h('div',
+{ className: 'flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5' }, h('button',
+{
+type: 'button',
+onClick: () => setMyShopsOnly(!myShopsOnly),
+className: `px-4 py-2.5 rounded-2xl text-xs font-extrabold border-2 transition-all cursor-pointer flex items-center justify-center gap-2 ${
+myShopsOnly
+? 'bg-teal-600 text-white border-teal-600 shadow-md'
+: 'bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-300 border-slate-200 dark:border-zinc-800'
+}`
+}, h(Store, { className: 'w-4 h-4' }), h('span', null, `මගේ අලෙවිසැල (${mySavedShops.length})`)), h('button',
+{
+type: 'button',
+onClick: () =>
+handleGatedAction(() => {
+setEditingShop(null);
+setShopModalType('shop');
+setIsAddShopModalOpen(true);
+}),
+className:
+'px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-700 hover:from-teal-700 hover:to-emerald-800 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-md cursor-pointer flex items-center justify-center gap-2'
+}, h(Plus, { className: 'w-4 h-4' }), h('span', null, 'අලුත් අලෙවිසැලක් එකතු කරන්න'))),
+mySavedShops.length >= 1
+? h('div',
+{ className: 'bg-teal-50/60 dark:bg-teal-950/20 border-2 border-teal-500/30 rounded-3xl p-4 sm:p-5 space-y-3' }, h('div',
+{ className: 'flex items-center gap-2 text-xs font-black text-teal-900 dark:text-teal-200' }, h(Store, { className: 'w-4 h-4 text-teal-600' }), h('span', null, 'ඔබ ඇතුළත් කළ අලෙවිසැල් (Your Registered Shops) :')), h('div',
+{ className: 'space-y-2' },
+mySavedShops.map((shop, sIdx) =>
+h('div',
+{
+key: `my_shop_${shop.id ? shop.id : 's'}_${sIdx}`,
+className:
+'p-3.5 bg-white dark:bg-zinc-900 rounded-2xl border border-teal-200/80 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3'
+}, h('div',
+{ className: 'min-w-0' }, h('div',
+{ className: 'flex items-center gap-2' }, h('span',
+{ className: 'font-extrabold text-sm text-slate-900 dark:text-zinc-100 truncate' },
+shop.shopName ? shop.shopName : shop.name
+), h('span',
+{ className: 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-700' },
+shop.mode === 'online' ? 'Online' : 'Shop'
+)), h('div',
+{ className: 'text-xs text-zinc-500 mt-0.5 truncate' },
+`#${shop.categoryTag} • භාණ්ඩ ${(Array.isArray(shop.inventory) ? shop.inventory : []).length} ක්`
+)), h('div',
+{ className: 'flex items-center gap-1.5 shrink-0' }, h('button',
+{ type: 'button', onClick: () => setPreviewingShop(shop), className: 'px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1' }, h(Eye, { className: 'w-3.5 h-3.5 text-teal-600' }), h('span', null, 'Preview')), h('button',
+{
+type: 'button',
+onClick: () => {
+setEditingShop(shop);
+setShopModalType('shop');
+setIsAddShopModalOpen(true);
+},
+className: 'px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1 border border-teal-200'
+}, h(Edit3, { className: 'w-3.5 h-3.5' }), h('span', null, 'Edit')), h('button',
+{ type: 'button', onClick: () => setShopToDelete(shop), className: 'px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1 border border-rose-200' }, h(Trash2, { className: 'w-3.5 h-3.5' }), h('span', null, 'Delete'))
+)
+)
+)
+)
+)
+: null, h('div',
+{ className: 'space-y-3' }, h('h3',
+{ className: 'text-sm font-extrabold text-slate-800 dark:text-zinc-200 flex items-center gap-1.5' }, h(Store, { className: 'w-4 h-4 text-teal-600' }),
+`සියලු අලෙවිසැල් නාමාවලිය (${filteredShops.length}) :`
+),
+filteredShops.length === 0
+? h('div',
+{ className: 'w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-8 text-center space-y-3 shadow-xs' }, h(Store, { className: 'w-10 h-10 text-zinc-400 mx-auto' }), h('h3', { className: 'text-sm font-extrabold text-slate-800 dark:text-zinc-200' }, 'අලෙවිසැල් හමු නොවීය'))
+: h('div',
+{ className: 'grid grid-cols-1 md:grid-cols-2 gap-3.5' },
+filteredShops.map((shop, sIdx) => renderDirectoryCard(shop, sIdx, false)))))
+: null,
+activeSection === 'businesses'
+? h('div',
+{ className: 'space-y-4' }, h('div',
+{ className: 'flex items-center justify-between gap-2' }, h('div',
+null, h('h2', { className: 'text-base font-extrabold text-slate-800 dark:text-zinc-200' }, 'ව්‍යාපාරික ස්ථාන සහ සේවා මධ්‍යස්ථාන (Business Places)'), h('p', { className: 'text-xs text-zinc-500' }, 'ගරාජ්, සේවා මධ්‍යස්ථාන, කර්මාන්තශාලා හා ව්‍යාපාරික ආයතන')), h('button',
+{
+type: 'button',
+onClick: () =>
+handleGatedAction(() => {
+setEditingShop(null);
+setShopModalType('business');
+setIsAddShopModalOpen(true);
+}),
+className:
+'px-5 py-2.5 bg-gradient-to-r from-amber-600 to-orange-700 hover:from-amber-700 hover:to-orange-800 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-md cursor-pointer flex items-center gap-2'
+}, h(Plus, { className: 'w-4 h-4' }), h('span', null, 'නව ව්‍යාපාරයක් එකතු කරන්න'))),
+mySavedBusinesses.length >= 1
+? h('div',
+{ className: 'bg-amber-50/60 dark:bg-amber-950/20 border-2 border-amber-500/30 rounded-3xl p-4 sm:p-5 space-y-3' }, h('div',
+{ className: 'flex items-center gap-2 text-xs font-black text-amber-900 dark:text-amber-200' }, h(Building2, { className: 'w-4 h-4 text-amber-600' }), h('span', null, 'ඔබ ඇතුළත් කළ ව්‍යාපාරික ස්ථාන (Your Registered Businesses) :')), h('div',
+{ className: 'space-y-2' },
+mySavedBusinesses.map((biz, bIdx) =>
+h('div',
+{
+key: `my_biz_${biz.id ? biz.id : 'b'}_${bIdx}`,
+className:
+'p-3.5 bg-white dark:bg-zinc-900 rounded-2xl border border-amber-200/80 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3'
+}, h('div',
+{ className: 'min-w-0' }, h('div',
+{ className: 'font-extrabold text-sm text-slate-900 dark:text-zinc-100 truncate' },
+biz.name ? biz.name : biz.shopName
+), h('div',
+{ className: 'text-xs text-zinc-500 mt-0.5 truncate' },
+`#${biz.categoryTag} • සේවා ${(Array.isArray(biz.inventory) ? biz.inventory : []).length} ක්`
+)), h('div',
+{ className: 'flex items-center gap-1.5 shrink-0' }, h('button',
+{ type: 'button', onClick: () => setPreviewingShop(biz), className: 'px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1' }, h(Eye, { className: 'w-3.5 h-3.5 text-amber-600' }), h('span', null, 'Preview')), h('button',
+{
+type: 'button',
+onClick: () => {
+setEditingShop(biz);
+setShopModalType('business');
+setIsAddShopModalOpen(true);
+},
+className: 'px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1 border border-amber-200'
+}, h(Edit3, { className: 'w-3.5 h-3.5' }), h('span', null, 'Edit')), h('button',
+{ type: 'button', onClick: () => setShopToDelete(biz), className: 'px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1 border border-rose-200' }, h(Trash2, { className: 'w-3.5 h-3.5' }), h('span', null, 'Delete'))
+)
+)
+)
+)
+)
+: null,
+filteredBusinesses.length === 0
+? h('div',
+{ className: 'w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-8 text-center space-y-3 shadow-xs' }, h(Building2, { className: 'w-10 h-10 text-zinc-400 mx-auto' }), h('h3', { className: 'text-sm font-extrabold text-slate-800 dark:text-zinc-200' }, 'ව්‍යාපාරික ස්ථාන හමු නොවීය'))
+: h('div',
+{ className: 'grid grid-cols-1 md:grid-cols-2 gap-3.5' },
+filteredBusinesses.map((biz, bIdx) => renderDirectoryCard(biz, bIdx, true))))
+: null, h(MarketplaceAddSellerItemModal, {
+isOpen: isAddSellerModalOpen,
+onClose: () => setIsAddSellerModalOpen(false),
+onAddItem: handleAddSellerItem,
+currentUser: currentUser,
+allTags: allTags,
+onAddNewTag: onAddNewTag
+}), h(MarketplaceAddBuyerRequestModal, {
+isOpen: isAddBuyerModalOpen,
+onClose: () => setIsAddBuyerModalOpen(false),
+onAddRequest: handleAddBuyerRequest,
+currentUser: currentUser,
+allTags: allTags,
+existingSellerItems: items,
+onAddNewTag: onAddNewTag
+}), h(MarketplaceAddShopModal, {
+isOpen: isAddShopModalOpen,
+onClose: () => {
+setIsAddShopModalOpen(false);
+setEditingShop(null);
+},
+onSaveShop: handleSaveShop,
+currentUser: currentUser,
+allTags: allTags,
+editShop: editingShop,
+defaultType: shopModalType
+}), h(MarketShopPreviewModal, {
+isOpen: Boolean(previewingShop),
+onClose: () => setPreviewingShop(null),
+shop: previewingShop,
+currentUser: currentUser
+}),
+shopToDelete
+? h('div',
+{ className: 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200' }, h('div',
+{ className: 'bg-white dark:bg-zinc-900 border-2 border-rose-500/40 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4 text-center' }, h('div',
+{ className: 'w-12 h-12 rounded-full bg-rose-100 text-rose-600 mx-auto flex items-center justify-center' }, h(Trash2, { className: 'w-6 h-6' })), h('h3', { className: 'font-extrabold text-base sm:text-lg text-slate-900 dark:text-zinc-100' }, 'ස්ථිර ලෙසම ඉවත් කරනවාද?'), h('p',
+{ className: 'text-xs text-zinc-500' },
+`"${shopToDelete.shopName ? shopToDelete.shopName : shopToDelete.name}" වෙළඳපොළ පද්ධතියෙන් ස්ථිරවම ඉවත් කරනු ලැබේ.`
+), h('div',
+{ className: 'flex gap-2.5 pt-2' }, h('button',
+{ type: 'button', onClick: () => setShopToDelete(null), className: 'flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer' },
+'අවලංගු කරන්න (Cancel)'
+), h('button',
+{ type: 'button', onClick: () => handleDeleteShop(shopToDelete.id), className: 'flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold cursor-pointer' },
+'ඔව්, ඉවත් කරන්න (Delete)'
+))))
+: null,
+itemToDelete
+? h('div',
+{ className: 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200' }, h('div',
+{ className: 'bg-white dark:bg-zinc-900 border-2 border-rose-500/40 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4 text-center' }, h('div',
+{ className: 'w-12 h-12 rounded-full bg-rose-100 text-rose-600 mx-auto flex items-center justify-center' }, h(Trash2, { className: 'w-6 h-6' })), h('h3', { className: 'font-extrabold text-base sm:text-lg text-slate-900 dark:text-zinc-100' }, 'දැන්වීම ස්ථිර ලෙසම ඉවත් කරනවාද?'), h('p', { className: 'text-xs text-zinc-500' }, `"${itemToDelete.title}" පද්ධතියෙන් ස්ථිරවම ඉවත් කරනු ඇත.`), h('div',
+{ className: 'flex gap-2.5 pt-2' }, h('button',
+{ type: 'button', onClick: () => setItemToDelete(null), className: 'flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer' },
+'අවලංගු කරන්න (Cancel)'
+), h('button',
+{ type: 'button', onClick: () => handleDeleteItem(itemToDelete.id), className: 'flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold cursor-pointer' },
+'ඔව්, ඉවත් කරන්න (Delete)'
+))))
+: null,
+viewingLocation
+? h(GroupChatMapViewerModal, {
+isOpen: Boolean(viewingLocation),
+onClose: () => setViewingLocation(null),
+location: {
+name: viewingLocation.name,
+address: viewingLocation.address,
+lat: viewingLocation.lat,
+lng: viewingLocation.lng,
+note: viewingLocation.note
+}
+})
+: null, h(MarketplaceLowestPricesModal, {
+isOpen: isLowestPricesModalOpen,
+onClose: () => {
+setIsLowestPricesModalOpen(false);
+setSelectedLowestPriceItem(null);
+},
+items: items,
+initialSelectedItem: selectedLowestPriceItem,
+onOpenMap: (loc: any) => setViewingLocation(loc)
+}), h(MarketplaceGuideModal, {
+isOpen: isGuideModalOpen,
+onClose: () => setIsGuideModalOpen(false),
+initialSection: guideModalInitialSection,
+onNavigateSection: (sec: MarketSection) => setActiveSection(sec)
+}), h(MarketplaceItemDetailModal, {
+isOpen: Boolean(selectedDetailItem),
+onClose: () => setSelectedDetailItem(null),
+item: selectedDetailItem,
+allItems: items,
+onSelectItem: (newItem: any) => setSelectedDetailItem(newItem),
+currentUser: currentUser,
+language: language
+}), h(DemoRegistrationPromptModal, {
+isOpen: showDemoRegisterPrompt,
+onClose: () => setShowDemoRegisterPrompt(false),
+language: language,
+onRegister: () => {
+setShowDemoRegisterPrompt(false);
+if (onRequireRegistration) {
+onRequireRegistration();
+}
+}
+}));
+};
+export default MarketplaceView;

@@ -1,0 +1,636 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // 🛡️ 0. Global Default-Deny Safety Net
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // 🛡️ 1. Core Security, ID Hardening & Field-Level Lock Helpers
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 150 && id.matches('^[a-zA-Z0-9_\\-.:@]+$');
+    }
+
+    function isValidPayload() {
+      return request.resource != null &&
+             request.resource.data is map &&
+             request.resource.data.keys().size() <= 100;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        (request.auth.token.email_verified == true &&
+         (request.auth.token.admin == true || request.auth.token.role in ['admin', 'super_admin'])) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super_admin'])
+      );
+    }
+
+    // 🔒 1. User Creation & Update Field Locks (Role Escalation, NIC Immutability & Credit Cap)
+    function isSafeCreditValue(data) {
+      let validCredits = !('credits' in data) || !(data.credits is number) || (data.credits >= 0 && data.credits <= 50000);
+      let validBalance = !('balance' in data) || !(data.balance is number) || (data.balance >= 0 && data.balance <= 50000);
+      let validPoints = !('points' in data) || !(data.points is number) || (data.points >= 0 && data.points <= 100000);
+      return validCredits && validBalance && validPoints;
+    }
+
+    function isSafeUserCreate(userId) {
+      let data = request.resource.data;
+      let isFirstTimeBootstrapAdmin = (userId == 'usr_admin' || userId == '970181547V') &&
+                                      !exists(/databases/$(database)/documents/users/$(userId));
+      let hasAdminRole = ('role' in data && data.role in ['admin', 'super_admin']) ||
+                         ('isAdmin' in data && data.isAdmin == true) ||
+                         ('isSuperAdmin' in data && data.isSuperAdmin == true);
+      let validInitialCredits = !('credits' in data) || !(data.credits is number) || (data.credits >= 0 && data.credits <= 5000);
+      return isValidId(userId) &&
+             isValidPayload() &&
+             (!hasAdminRole || isFirstTimeBootstrapAdmin || isAdmin()) &&
+             (validInitialCredits || isFirstTimeBootstrapAdmin || isAdmin());
+    }
+
+    function isSafeUserUpdate(userId) {
+      let data = request.resource.data;
+      let prev = resource.data;
+      let wasAlreadyAdmin = ('role' in prev && prev.role in ['admin', 'super_admin']) ||
+                            ('isAdmin' in prev && prev.isAdmin == true) ||
+                            ('isSuperAdmin' in prev && prev.isSuperAdmin == true);
+      let isPromotingToAdmin = (('role' in data && data.role in ['admin', 'super_admin']) ||
+                                ('isAdmin' in data && data.isAdmin == true) ||
+                                ('isSuperAdmin' in data && data.isSuperAdmin == true)) && !wasAlreadyAdmin;
+      let nicUnchanged = !('nic' in prev) || prev.nic == '' || !('nic' in data) || data.nic == prev.nic;
+      let nicNumUnchanged = !('nicNumber' in prev) || prev.nicNumber == '' || !('nicNumber' in data) || data.nicNumber == prev.nicNumber;
+      return isValidId(userId) &&
+             isValidPayload() &&
+             (!isPromotingToAdmin || isAdmin()) &&
+             ((nicUnchanged && nicNumUnchanged) || wasAlreadyAdmin || isAdmin()) &&
+             (isSafeCreditValue(data) || wasAlreadyAdmin || isAdmin());
+    }
+
+    // 🔒 2. Post Ownership & Timestamp Immutability Lock
+    function isSafePostUpdate(postId) {
+      let data = request.resource.data;
+      let prev = resource.data;
+      let isDirectChat = postId.matches('^direct_user_chat_.*');
+      let userIdUnchanged = !('userId' in prev) || prev.userId == '' || !('userId' in data) || data.userId == prev.userId;
+      let authorIdUnchanged = !('authorId' in prev) || prev.authorId == '' || !('authorId' in data) || data.authorId == prev.authorId;
+      let createdAtUnchanged = !('createdAt' in prev) || prev.createdAt == '' || !('createdAt' in data) || data.createdAt == prev.createdAt;
+      return isValidId(postId) &&
+             isValidPayload() &&
+             (isDirectChat || isAdmin() || (userIdUnchanged && authorIdUnchanged && createdAtUnchanged));
+    }
+
+    // 🔒 3. Push Token Validation Lock
+    function isSafePushTokenWrite(tokenId) {
+      let data = request.resource.data;
+      let validTokenField = !('token' in data) || (data.token is string && data.token.size() >= 8 && data.token.size() <= 1024);
+      return isValidId(tokenId) && isValidPayload() && validTokenField;
+    }
+
+    // ===============================================================
+    // 👤 2. Users Collection (පරිශීලක ගිණුම් කළමනාකරණය - Role & NIC Protected)
+    // ===============================================================
+    match /users/{userId} {
+      allow get: if isValidId(userId);
+      allow list: if true;
+      allow create: if isSafeUserCreate(userId);
+      allow update: if isSafeUserUpdate(userId);
+      allow delete: if isValidId(userId) && (
+        isAdmin() ||
+        userId == 'usr_citizen_1' ||
+        resource.data.isDeleted == true ||
+        resource.data.status == 'deleted'
+      );
+
+      match /private/{docId} {
+        allow get: if isValidId(docId);
+        allow list: if isAdmin();
+        allow create, update: if isValidId(docId) && isValidPayload();
+        allow delete: if isValidId(docId);
+      }
+
+      match /saved_posts/{postId} {
+        allow get: if isValidId(postId);
+        allow list: if true;
+        allow create, update: if isValidId(postId) && isValidPayload();
+        allow delete: if isValidId(postId);
+      }
+
+      match /fcm_tokens/{tokenId} {
+        allow get: if isValidId(tokenId);
+        allow list: if isAdmin();
+        allow create, update: if isSafePushTokenWrite(tokenId);
+        allow delete: if isValidId(tokenId);
+      }
+    }
+
+    // ===============================================================
+    // 📢 3. Help Posts & Notices (ප්‍රධාන දැන්වීම් පුවරුව - Ownership Protected)
+    // ===============================================================
+    match /posts/{postId} {
+      allow get: if isValidId(postId);
+      allow list: if true;
+      allow create: if isValidId(postId) && isValidPayload();
+      allow update: if isSafePostUpdate(postId);
+      allow delete: if isValidId(postId);
+
+      match /replies/{replyId} {
+        allow get: if isValidId(replyId);
+        allow list: if true;
+        allow create, update: if isValidId(replyId) && isValidPayload();
+        allow delete: if isValidId(replyId);
+      }
+
+      match /messages/{messageId} {
+        allow get: if isValidId(messageId);
+        allow list: if true;
+        allow create, update: if isValidId(messageId) && isValidPayload();
+        allow delete: if isValidId(messageId);
+      }
+
+      match /comments/{commentId} {
+        allow get: if isValidId(commentId);
+        allow list: if true;
+        allow create, update: if isValidId(commentId) && isValidPayload();
+        allow delete: if isValidId(commentId);
+      }
+
+      match /reactions/{reactionId} {
+        allow get: if isValidId(reactionId);
+        allow list: if true;
+        allow create, update: if isValidId(reactionId) && isValidPayload();
+        allow delete: if isValidId(reactionId);
+      }
+    }
+
+    match /helpPosts/{postId} {
+      allow get: if isValidId(postId);
+      allow list: if true;
+      allow create: if isValidId(postId) && isValidPayload();
+      allow update: if isSafePostUpdate(postId);
+      allow delete: if isValidId(postId);
+
+      match /replies/{replyId} {
+        allow get: if isValidId(replyId);
+        allow list: if true;
+        allow create, update: if isValidId(replyId) && isValidPayload();
+        allow delete: if isValidId(replyId);
+      }
+
+      match /messages/{messageId} {
+        allow get: if isValidId(messageId);
+        allow list: if true;
+        allow create, update: if isValidId(messageId) && isValidPayload();
+        allow delete: if isValidId(messageId);
+      }
+
+      match /comments/{commentId} {
+        allow get: if isValidId(commentId);
+        allow list: if true;
+        allow create, update: if isValidId(commentId) && isValidPayload();
+        allow delete: if isValidId(commentId);
+      }
+
+      match /reactions/{reactionId} {
+        allow get: if isValidId(reactionId);
+        allow list: if true;
+        allow create, update: if isValidId(reactionId) && isValidPayload();
+        allow delete: if isValidId(reactionId);
+      }
+    }
+
+    // ===============================================================
+    // 📍 4. Saved Places (ස්ථාන සුරකීම - 'saved_places')
+    // ===============================================================
+    match /saved_places/{placeId} {
+      allow get: if isValidId(placeId);
+      allow list: if true;
+      allow create, update: if isValidId(placeId) && isValidPayload();
+      allow delete: if isValidId(placeId);
+    }
+
+    // ===============================================================
+    // 👥 5. Community Groups (කණ්ඩායම් සහ ශ්‍රමදාන - 'groups')
+    // ===============================================================
+    match /groups/{groupId} {
+      allow get: if isValidId(groupId);
+      allow list: if true;
+      allow create, update: if isValidId(groupId) && isValidPayload();
+      allow delete: if isValidId(groupId);
+
+      match /messages/{messageId} {
+        allow get: if isValidId(messageId);
+        allow list: if true;
+        allow create, update: if isValidId(messageId) && isValidPayload();
+        allow delete: if isValidId(messageId);
+      }
+
+      match /joinRequests/{requestId} {
+        allow get: if isValidId(requestId);
+        allow list: if true;
+        allow create, update: if isValidId(requestId) && isValidPayload();
+        allow delete: if isValidId(requestId);
+      }
+    }
+
+    // ===============================================================
+    // 🚨 6. Red Alerts & SOS Live Tracker (රතු එළිය සහ SOS සජීවී ලුහුබැඳීම)
+    // ===============================================================
+    match /red_alerts/{alertId} {
+      allow get: if isValidId(alertId);
+      allow list: if true;
+      allow create, update: if isValidId(alertId) && isValidPayload();
+      allow delete: if isValidId(alertId);
+
+      match /comments/{commentId} {
+        allow get: if isValidId(commentId);
+        allow list: if true;
+        allow create, update: if isValidId(commentId) && isValidPayload();
+        allow delete: if isValidId(commentId);
+      }
+
+      match /votes/{voterId} {
+        allow get: if isValidId(voterId);
+        allow list: if true;
+        allow create, update: if isValidId(voterId) &&
+                                 isValidPayload() &&
+                                 request.resource.data.vote in ['true', 'false'] &&
+                                 request.resource.data.weight is number &&
+                                 request.resource.data.weight >= 0.2 &&
+                                 request.resource.data.weight <= 5.0;
+        allow delete: if false;
+      }
+    }
+
+    match /redAlerts/{alertId} {
+      allow get: if isValidId(alertId);
+      allow list: if true;
+      allow create, update: if isValidId(alertId) && isValidPayload();
+      allow delete: if isValidId(alertId);
+
+      match /comments/{commentId} {
+        allow get: if isValidId(commentId);
+        allow list: if true;
+        allow create, update: if isValidId(commentId) && isValidPayload();
+        allow delete: if isValidId(commentId);
+      }
+
+      match /votes/{voterId} {
+        allow get: if isValidId(voterId);
+        allow list: if true;
+        allow create, update: if isValidId(voterId) &&
+                                 isValidPayload() &&
+                                 request.resource.data.vote in ['true', 'false'] &&
+                                 request.resource.data.weight is number &&
+                                 request.resource.data.weight >= 0.2 &&
+                                 request.resource.data.weight <= 5.0;
+        allow delete: if false;
+      }
+    }
+
+    match /sos_live_sessions/{sessionId} {
+      allow get: if isValidId(sessionId);
+      allow list: if true;
+      allow create, update: if isValidId(sessionId) && isValidPayload();
+      allow delete: if isValidId(sessionId);
+    }
+
+    // ===============================================================
+    // 🛒 7. Marketplace, Shops & Professional Services (වෙළඳපොළ සහ වෘත්තීය සේවා)
+    // ===============================================================
+    match /marketplace/{itemId} {
+      allow get: if isValidId(itemId);
+      allow list: if true;
+      allow create, update: if isValidId(itemId) && isValidPayload();
+      allow delete: if isValidId(itemId);
+    }
+
+    match /market_shops/{shopId} {
+      allow get: if isValidId(shopId);
+      allow list: if true;
+      allow create, update: if isValidId(shopId) && isValidPayload();
+      allow delete: if isValidId(shopId);
+    }
+
+    match /professional_services/{serviceId} {
+      allow get: if isValidId(serviceId);
+      allow list: if true;
+      allow create, update: if isValidId(serviceId) && isValidPayload();
+      allow delete: if isValidId(serviceId);
+    }
+
+    // ===============================================================
+    // 💼 8. Jobs, Accommodations & Barter Exchange (රැකියා, නවාතැන් සහ භාණ්ඩ හුවමාරුව)
+    // ===============================================================
+    match /jobs/{jobId} {
+      allow get: if isValidId(jobId);
+      allow list: if true;
+      allow create, update: if isValidId(jobId) && isValidPayload();
+      allow delete: if isValidId(jobId);
+
+      match /comments/{commentId} {
+        allow get: if isValidId(commentId);
+        allow list: if true;
+        allow create, update: if isValidId(commentId) && isValidPayload();
+        allow delete: if isValidId(commentId);
+      }
+    }
+
+    match /job_comments/{commentId} {
+      allow get: if isValidId(commentId);
+      allow list: if true;
+      allow create, update: if isValidId(commentId) && isValidPayload();
+      allow delete: if isValidId(commentId);
+    }
+
+    match /accommodations/{accId} {
+      allow get: if isValidId(accId);
+      allow list: if true;
+      allow create, update: if isValidId(accId) && isValidPayload();
+      allow delete: if isValidId(accId);
+    }
+
+    match /barter_items/{itemId} {
+      allow get: if isValidId(itemId);
+      allow list: if true;
+      allow create, update: if isValidId(itemId) && isValidPayload();
+      allow delete: if isValidId(itemId);
+    }
+
+    match /barter_proposals/{proposalId} {
+      allow get: if isValidId(proposalId);
+      allow list: if true;
+      allow create, update: if isValidId(proposalId) && isValidPayload();
+      allow delete: if isValidId(proposalId);
+    }
+
+    // ===============================================================
+    // 🩸 9. Blood Donation, Disaster Relief & Transparent Aid Ledger
+    // ===============================================================
+    match /blood_requests/{reqId} {
+      allow get: if isValidId(reqId);
+      allow list: if true;
+      allow create, update: if isValidId(reqId) && isValidPayload();
+      allow delete: if isValidId(reqId);
+    }
+
+    match /volunteer_donors/{donorId} {
+      allow get: if isValidId(donorId);
+      allow list: if true;
+      allow create, update: if isValidId(donorId) && isValidPayload();
+      allow delete: if isValidId(donorId);
+    }
+
+    match /disaster_relief/{reliefId} {
+      allow get: if isValidId(reliefId);
+      allow list: if true;
+      allow create, update: if isValidId(reliefId) && isValidPayload();
+      allow delete: if isValidId(reliefId);
+    }
+
+    match /aid_centers/{centerId} {
+      allow get: if isValidId(centerId);
+      allow list: if true;
+      allow create, update: if isValidId(centerId) && isValidPayload();
+      allow delete: if isValidId(centerId);
+    }
+
+    match /aid_deliveries/{deliveryId} {
+      allow get: if isValidId(deliveryId);
+      allow list: if true;
+      allow create, update: if isValidId(deliveryId) && isValidPayload();
+      allow delete: if isValidId(deliveryId);
+    }
+
+    match /aid_broadcasts/{broadcastId} {
+      allow get: if isValidId(broadcastId);
+      allow list: if true;
+      allow create, update: if isValidId(broadcastId) && isValidPayload();
+      allow delete: if isValidId(broadcastId);
+    }
+
+    // ===============================================================
+    // 🛠️ 10. Issues, Password Resets, System Settings, Credits & AI Knowledge
+    // ===============================================================
+    match /issues/{issueId} {
+      allow get: if isValidId(issueId);
+      allow list: if true;
+      allow create, update: if isValidId(issueId) && isValidPayload();
+      allow delete: if isValidId(issueId);
+    }
+
+    match /password_reset_requests/{resetId} {
+      allow get: if isValidId(resetId);
+      allow list: if true;
+      allow create: if isValidId(resetId) && isValidPayload() &&
+                    (!('status' in request.resource.data) || request.resource.data.status == 'pending');
+      allow update: if isValidId(resetId) && isValidPayload();
+      allow delete: if isValidId(resetId);
+    }
+
+    match /passwordResets/{resetId} {
+      allow get: if isValidId(resetId);
+      allow list: if true;
+      allow create: if isValidId(resetId) && isValidPayload() &&
+                    (!('status' in request.resource.data) || request.resource.data.status == 'pending');
+      allow update: if isValidId(resetId) && isValidPayload();
+      allow delete: if isValidId(resetId);
+    }
+
+    match /system_metadata/{docId} {
+      allow get: if isValidId(docId);
+      allow list: if true;
+      allow create, update: if isValidId(docId) && isValidPayload();
+      allow delete: if isValidId(docId) && isAdmin();
+    }
+
+    match /system_settings/{settingId} {
+      allow get: if isValidId(settingId);
+      allow list: if true;
+      allow create, update: if isValidId(settingId) && isValidPayload();
+      allow delete: if isValidId(settingId) && isAdmin();
+    }
+
+    match /systemSettings/{settingId} {
+      allow get: if isValidId(settingId);
+      allow list: if true;
+      allow create, update: if isValidId(settingId) && isValidPayload();
+      allow delete: if isValidId(settingId) && isAdmin();
+    }
+
+    match /credits/{userId} {
+      allow get: if isValidId(userId);
+      allow list: if true;
+      allow create, update: if isValidId(userId) && isValidPayload() && (isSafeCreditValue(request.resource.data) || isAdmin());
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    match /credit_balances/{userId} {
+      allow get: if isValidId(userId);
+      allow list: if true;
+      allow create, update: if isValidId(userId) && isValidPayload() && (isSafeCreditValue(request.resource.data) || isAdmin());
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    match /creditTransactions/{transactionId} {
+      allow get: if isValidId(transactionId);
+      allow list: if true;
+      allow create, update: if isValidId(transactionId) && isValidPayload();
+      allow delete: if isValidId(transactionId) && isAdmin();
+    }
+
+    match /credit_transactions/{transactionId} {
+      allow get: if isValidId(transactionId);
+      allow list: if true;
+      allow create, update: if isValidId(transactionId) && isValidPayload();
+      allow delete: if isValidId(transactionId) && isAdmin();
+    }
+
+    match /s_points/{userId} {
+      allow get: if isValidId(userId);
+      allow list: if true;
+      allow create, update: if isValidId(userId) && isValidPayload() && (isSafeCreditValue(request.resource.data) || isAdmin());
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    match /emergencyDirectory/{contactId} {
+      allow get: if isValidId(contactId);
+      allow list: if true;
+      allow create, update: if isValidId(contactId) && isValidPayload();
+      allow delete: if isValidId(contactId);
+    }
+
+    match /emergency_directory/{contactId} {
+      allow get: if isValidId(contactId);
+      allow list: if true;
+      allow create, update: if isValidId(contactId) && isValidPayload();
+      allow delete: if isValidId(contactId);
+    }
+
+    match /searchDictionary/{wordId} {
+      allow get: if isValidId(wordId);
+      allow list: if true;
+      allow create, update: if isValidId(wordId) && isValidPayload();
+      allow delete: if isValidId(wordId);
+    }
+
+    match /search_dictionary/{wordId} {
+      allow get: if isValidId(wordId);
+      allow list: if true;
+      allow create, update: if isValidId(wordId) && isValidPayload();
+      allow delete: if isValidId(wordId);
+    }
+
+    match /pending_ai_queries/{queryId} {
+      allow get: if isValidId(queryId);
+      allow list: if true;
+      allow create, update: if isValidId(queryId) && isValidPayload();
+      allow delete: if isValidId(queryId);
+    }
+
+    match /verified_ai_knowledge/{knowledgeId} {
+      allow get: if isValidId(knowledgeId);
+      allow list: if true;
+      allow create, update: if isValidId(knowledgeId) && isValidPayload();
+      allow delete: if isValidId(knowledgeId);
+    }
+
+    match /aiKnowledge/{knowledgeId} {
+      allow get: if isValidId(knowledgeId);
+      allow list: if true;
+      allow create, update: if isValidId(knowledgeId) && isValidPayload();
+      allow delete: if isValidId(knowledgeId);
+    }
+
+    match /presence/{userId} {
+      allow get: if isValidId(userId);
+      allow list: if true;
+      allow create, update: if isValidId(userId) && isValidPayload();
+      allow delete: if isValidId(userId);
+    }
+
+    match /online_users/{userId} {
+      allow get: if isValidId(userId);
+      allow list: if true;
+      allow create, update: if isValidId(userId) && isValidPayload();
+      allow delete: if isValidId(userId);
+    }
+
+    match /notifications/{notificationId} {
+      allow get: if isValidId(notificationId);
+      allow list: if true;
+      allow create, update: if isValidId(notificationId) && isValidPayload();
+      allow delete: if isValidId(notificationId);
+    }
+
+    match /push_broadcast_queue/{queueId} {
+      allow get: if isValidId(queueId);
+      allow list: if true;
+      allow create, update: if isValidId(queueId) && isValidPayload();
+      allow delete: if isValidId(queueId);
+    }
+
+    match /device_push_tokens/{tokenId} {
+      allow get: if isValidId(tokenId);
+      allow list: if true;
+      allow create, update: if isSafePushTokenWrite(tokenId);
+      allow delete: if isValidId(tokenId) && isAdmin();
+    }
+
+    match /fcm_tokens/{tokenId} {
+      allow get: if isValidId(tokenId);
+      allow list: if isAdmin();
+      allow create, update: if isSafePushTokenWrite(tokenId);
+      allow delete: if isValidId(tokenId) && isAdmin();
+    }
+
+    match /chats/{chatId} {
+      allow get: if isValidId(chatId);
+      allow list: if true;
+      allow create, update: if isValidId(chatId) && isValidPayload();
+      allow delete: if isValidId(chatId);
+
+      match /messages/{messageId} {
+        allow get: if isValidId(messageId);
+        allow list: if true;
+        allow create, update: if isValidId(messageId) && isValidPayload();
+        allow delete: if isValidId(messageId);
+      }
+    }
+
+    match /test/{docId} {
+      allow get: if isValidId(docId);
+      allow list: if true;
+      allow create, update: if isValidId(docId) && isValidPayload();
+      allow delete: if isValidId(docId);
+    }
+
+    match /subscriptions/{subId} {
+      allow get: if isValidId(subId) && (isAdmin() || (isAuthenticated() && request.auth.uid == subId));
+      allow list: if isAdmin();
+      allow create, update: if isValidId(subId) && isValidPayload();
+      allow delete: if isValidId(subId);
+    }
+
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && isAuthenticated();
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /auditLogs/{logId} {
+      allow get, list: if isAdmin();
+      allow create: if isValidId(logId) && isValidPayload();
+      allow update, delete: if false;
+    }
+  }
+}
