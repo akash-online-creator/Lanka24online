@@ -86,11 +86,17 @@ import {
   getStoredDisasterReliefItems, 
   saveDisasterReliefItemsToStorage, 
   getStoredSupportedDisasterIds, 
-  saveSupportedDisasterIdsToStorage 
+  saveSupportedDisasterIdsToStorage,
+  purgeDisasterReliefEverywhere,
 } from '../data/bloodAndDisasterData';
 import { maskName, maskPhone } from '../utils/demoDataMasker';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
-import { addDeletedDisasterId } from '../utils/deletedPostsManager';
+import { 
+  addDeletedDisasterId,
+  filterNonDeletedDisasterItems,
+  isDisasterPermanentlyDeleted,
+  isPostPermanentlyDeleted,
+} from '../utils/deletedPostsManager';
 import { 
   saveDisasterReliefToFirestore, 
   deleteDisasterReliefFromFirestore,
@@ -239,9 +245,12 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
     });
 
     const unsubRelief = subscribeToDisasterReliefFromFirestore((remoteRelief) => {
-      if (Array.isArray(remoteRelief) && remoteRelief.length > 0) {
-        setDisasterItems(remoteRelief);
-        saveDisasterReliefItemsToStorage(remoteRelief);
+      if (Array.isArray(remoteRelief)) {
+        const cleaned = filterNonDeletedDisasterItems(remoteRelief).filter(
+          (r: any) => Boolean(r && r.id && !isDisasterPermanentlyDeleted(r.id) && !isPostPermanentlyDeleted(r.id))
+        );
+        setDisasterItems(cleaned);
+        saveDisasterReliefItemsToStorage(cleaned);
       }
     });
 
@@ -254,6 +263,7 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
 
     window.addEventListener('sahaya_blood_disaster_updated', handleLocalSync);
     window.addEventListener('sahaya_sync_all_services', handleLocalSync);
+    window.addEventListener('sahaya_post_deleted', handleLocalSync);
 
     return () => {
       unsubCenters();
@@ -262,6 +272,7 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
       unsubRelief();
       window.removeEventListener('sahaya_blood_disaster_updated', handleLocalSync);
       window.removeEventListener('sahaya_sync_all_services', handleLocalSync);
+      window.removeEventListener('sahaya_post_deleted', handleLocalSync);
     };
   }, []);
 
@@ -812,13 +823,17 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
       return;
     }
 
-    const newItem: DisasterReliefItem = {
-      id: `rel_${Date.now()}`,
-      title: reliefTitle,
+    const sharedId = `rel_${Date.now()}`;
+    const sharedPostCode = `#EMG-${String(sharedId).slice(-4)}`;
+
+    const newItem: DisasterReliefItem & { postCode?: string } = {
+      id: sharedId,
+      postCode: sharedPostCode,
+      title: reliefTitle.trim(),
       type: reliefType,
-      locationName: reliefLocation,
+      locationName: reliefLocation.trim(),
       district: reliefDistrict,
-      description: reliefDesc,
+      description: reliefDesc.trim(),
       urgency: reliefUrgency,
       contactPerson: reliefContactName || 'ආපදා කමිටුව',
       contactPhone: reliefContactPhone,
@@ -837,8 +852,8 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
 
     broadcastAppNotification({
       type: 'aid_ledger',
-      title: `📦 හදිසි ආපදා සහන ඉල්ලීමක්: ${reliefTitle}`,
-      message: `${reliefLocation} (${reliefDistrict}) - ${reliefDesc || 'ආපදා සහනාධාර ද්‍රව්‍ය කඩිනමින් අවශ්‍යයි.'}`,
+      title: `📦 හදිසි ආපදා සහන ඉල්ලීමක්: ${reliefTitle.trim()}`,
+      message: `${reliefLocation.trim()} (${reliefDistrict}) - ${reliefDesc.trim() || 'ආපදා සහනාධාර ද්‍රව්‍ය කඩිනමින් අවශ්‍යයි.'}`,
       locationName: reliefDistrict,
       badgeText: 'ආපදා සහන',
       targetModal: 'aid_ledger',
@@ -847,10 +862,10 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
 
     broadcastPushNotification({
       category: 'aid_ledger',
-      title: `📦 හදිසි ආපදා සහන ඉල්ලීමක්: ${reliefTitle}`,
-      body: `${reliefLocation} (${reliefDistrict}) - ${reliefDesc || 'ආපදා සහනාධාර ද්‍රව්‍ය කඩිනමින් අවශ්‍යයි.'}`,
+      title: `📦 හදිසි ආපදා සහන ඉල්ලීමක්: ${reliefTitle.trim()}`,
+      body: `${reliefLocation.trim()} (${reliefDistrict}) - ${reliefDesc.trim() || 'ආපදා සහනාධාර ද්‍රව්‍ය කඩිනමින් අවශ්‍යයි.'}`,
       postId: newItem.id,
-      locationName: `${reliefLocation}, ${reliefDistrict}`,
+      locationName: `${reliefLocation.trim()}, ${reliefDistrict}`,
       urgency: 'high',
       badgeText: 'ආපදා සහන',
       targetModal: 'aid_ledger',
@@ -861,19 +876,24 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
 
     if (onSubmitHelpPost) {
       onSubmitHelpPost({
+        id: sharedId,
+        postCode: sharedPostCode,
         category: 'emergency',
+        postType: 'disaster_relief',
+        serviceType: 'disaster_relief',
         tagCategory: 'හදිසි / ආපදා',
         tagName: `📦 හදිසි ආපදා සහන: ${reliefType}`,
-        whatHappened: `📦 හදිසි ආපදා සහන ඉල්ලීමක්: ${reliefTitle}`,
-        whatIsNeeded: `ආපදා වර්ගය: ${reliefType} • ස්ථානය: ${reliefLocation} • දිස්ත්‍රික්කය: ${reliefDistrict} • අවශ්‍ය ප්‍රමාණය: ${reliefTargetQty || 'අවශ්‍ය පරිදි'} • විස්තර: ${reliefDesc} • සම්බන්ධීකාරක: ${reliefContactName || 'ආපදා කමිටුව'} (${reliefContactPhone})`,
-        locationName: `${reliefLocation}, ${reliefDistrict}`,
+        title: `📦 හදිසි ආපදා සහන ඉල්ලීමක්: ${reliefTitle.trim()}`,
+        headline: `📦 හදිසි ආපදා සහන ඉල්ලීමක්: ${reliefTitle.trim()}`,
+        whatHappened: `📦 හදිසි ආපදා සහන ඉල්ලීමක්: ${reliefTitle.trim()}`,
+        whatIsNeeded: `ආපදා වර්ගය: ${reliefType} • ස්ථානය: ${reliefLocation.trim()} • දිස්ත්‍රික්කය: ${reliefDistrict} • අවශ්‍ය ප්‍රමාණය: ${reliefTargetQty || 'අවශ්‍ය පරිදි'} • විස්තර: ${reliefDesc.trim()} • සම්බන්ධීකාරක: ${reliefContactName || 'ආපදා කමිටුව'} (${reliefContactPhone})`,
+        locationName: `${reliefLocation.trim()}, ${reliefDistrict}`,
         district: reliefDistrict,
         priorityLevel: 'emergency',
         isPinnedEmergency: true,
         contactNumber: reliefContactPhone,
         contactPersonName: reliefContactName || 'ආපදා කමිටුව',
         status: 'open',
-        postCode: `#EMG-${Math.floor(1000 + Math.random() * 9000)}`,
       }).catch((e) => console.warn('Sync disaster to help posts notice:', e));
     }
 
@@ -903,16 +923,13 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
       ? 'පරිපාලක (Admin) ලෙස මෙම ආපදා සහනාධාර දැන්වීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?'
       : 'මෙම ආපදා සහනාධාර දැන්වීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?';
     if (!window.confirm(confirmMsg)) return;
-    const updated = disasterItems.filter((item) => item.id !== id);
-    setDisasterItems(updated);
-    saveDisasterReliefItemsToStorage(updated);
-    addDeletedDisasterId(id);
-    deleteDisasterReliefFromFirestore(id).catch((err) => {
-      console.warn('Delete disaster item notice:', err);
-    });
-    try {
-      window.dispatchEvent(new CustomEvent('sahaya_sync_all_services'));
-    } catch {}
+    const targetItem = allMergedDisasterItems.find((i) => i && String(i.id) === String(id));
+    const remaining = purgeDisasterReliefEverywhere(
+      String(id),
+      targetItem?.title,
+      (targetItem as any)?.postCode
+    );
+    setDisasterItems(remaining);
     alert('ආපදා සහනාධාර දැන්වීම සාර්ථකව ඉවත් කරන ලදී.');
   };
 
@@ -935,43 +952,81 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
     alert(`ස්තූතියි! ${item.district} (${item.title}) සහනාධාරය සඳහා ඔබ සහය දැක්වීමට ඉදිරිපත් වීම අගය කරමු.\n\n📞 සම්බන්ධීකාරක අංකය: ${item.contactPhone}\n(දැන් ඔබට සෘජුවම අමතා සම්බන්ධීකාරක සමඟ සම්බන්ධ විය හැක)`);
   };
 
-  // Bridge helpPosts with disaster relief items
+  // Bridge helpPosts with disaster relief items without duplicating
   const allMergedDisasterItems = useMemo(() => {
     const map = new Map<string, DisasterReliefItem>();
+    const seenPostCodes = new Set<string>();
+    const seenTitles = new Set<string>();
+
+    const normalizeDisasterTitle = (raw?: string): string => {
+      if (!raw) return '';
+      return raw
+        .replace(/^📦\s*(හදිසි ආපදා සහන ඉල්ලීමක්:|හදිසි ආපදා සහනාධාර අවශ්‍යතාවය:|හදිසි ආපදා සහන:)?\s*/i, '')
+        .split(':')[0]
+        .trim()
+        .toLowerCase();
+    };
+
     for (const item of disasterItems) {
-      if (item && item.id) map.set(String(item.id), item);
+      if (!item || !item.id) continue;
+      if (isDisasterPermanentlyDeleted(item.id) || isPostPermanentlyDeleted(item.id)) continue;
+      map.set(String(item.id), item);
+      const code = String((item as any).postCode || `#EMG-${String(item.id).slice(-4)}`);
+      seenPostCodes.add(code);
+      const normTitle = normalizeDisasterTitle(item.title);
+      if (normTitle) seenTitles.add(`${normTitle}|${(item.district || '').trim().toLowerCase()}`);
+      if (normTitle) seenTitles.add(normTitle);
     }
+
     if (helpPosts && helpPosts.length > 0) {
       for (const p of helpPosts) {
-        if (!p) continue;
-        const isDisaster = 
-          (p.category === 'emergency' && !p.tagName?.includes('ලේ') && !p.whatHappened?.includes('ලේ')) ||
-          p.category === 'flood' || 
+        if (!p || !p.id) continue;
+        if (p.isDeleted || p.status === 'deleted' || isPostPermanentlyDeleted(p.id) || isDisasterPermanentlyDeleted(p.id)) {
+          continue;
+        }
+        const pCode = String(p.postCode || '');
+        if (p.category === 'red_alert' || p.postType === 'red_alert' || pCode.startsWith('#RED-') || pCode.startsWith('#BLD-')) {
+          continue;
+        }
+        const isDisaster =
+          p.postType === 'disaster_relief' ||
+          p.serviceType === 'disaster_relief' ||
+          pCode.startsWith('#EMG-') ||
+          p.category === 'flood' ||
           p.category === 'landslide' ||
           p.category === 'disaster' ||
-          (p.tagName && (p.tagName.includes('ආපදා') || p.tagName.includes('සහන') || p.tagName.includes('ගංවතුර') || p.tagName.includes('නාය'))) ||
-          (p.whatHappened && (p.whatHappened.includes('ආපදා') || p.whatHappened.includes('ගංවතුර') || p.whatHappened.includes('නාය')));
+          (p.tagName && (p.tagName.includes('ආපදා සහන') || p.tagName.includes('ගංවතුර') || p.tagName.includes('නාය')));
 
         if (isDisaster) {
-          const id = String(p.id || `rel_hp_${Date.now()}`);
-          if (!map.has(id)) {
-            map.set(id, {
-              id,
-              type: 'other',
-              title: p.tagName || p.whatHappened || 'හදිසි ආපදා සහන ඉල්ලීම',
-              description: p.whatIsNeeded || p.whatHappened || '',
-              locationName: p.locationName || p.district || 'ප්‍රදේශය',
-              district: p.district || 'ගම්පහ',
-              urgency: 'high',
-              targetQuantity: 'අවශ්‍ය පරිදි',
-              contactPerson: p.contactPersonName || p.authorName || 'සම්බන්ධීකාරක',
-              contactPhone: p.contactNumber || p.phone || '',
-              createdAt: p.createdAt || 'දැන්',
-              createdAtMs: p.createdAtMs || Date.now(),
-              status: 'urgent' as any,
-              userId: p.userId,
-            });
+          const id = String(p.id);
+          if (map.has(id) || (pCode && seenPostCodes.has(pCode))) continue;
+          const candidateTitle = p.whatHappened || p.title || p.tagName || '';
+          const normCandidate = normalizeDisasterTitle(candidateTitle);
+          if (
+            normCandidate &&
+            (seenTitles.has(normCandidate) ||
+              seenTitles.has(`${normCandidate}|${(p.district || '').trim().toLowerCase()}`))
+          ) {
+            continue;
           }
+          if (normCandidate) seenTitles.add(normCandidate);
+          if (pCode) seenPostCodes.add(pCode);
+          map.set(id, {
+            id,
+            type: 'other',
+            title: candidateTitle.replace(/^📦\s*(හදිසි ආපදා සහන ඉල්ලීමක්:)?\s*/i, '').trim() || 'හදිසි ආපදා සහන ඉල්ලීම',
+            description: p.whatIsNeeded || p.whatHappened || '',
+            locationName: p.locationName || p.district || 'ප්‍රදේශය',
+            district: p.district || 'ගම්පහ',
+            urgency: 'high',
+            targetQuantity: 'අවශ්‍ය පරිදි',
+            contactPerson: p.contactPersonName || p.authorName || p.userName || 'සම්බන්ධීකාරක',
+            contactPhone: p.contactNumber || p.userPhone || p.phone || '',
+            createdAt: p.createdAt || 'දැන්',
+            createdAtMs: p.createdAtMs || Date.now(),
+            status: 'collecting',
+            userId: p.userId,
+          });
         }
       }
     }

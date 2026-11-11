@@ -562,6 +562,11 @@ export function removeDeletedBloodId(bloodId: string): void {
   restoreDeletedId(DELETED_BLOOD_IDS_KEY, bloodId);
 }
 
+export function isBloodPermanentlyDeleted(bloodId: string): boolean {
+  if (!bloodId) return false;
+  return getStoredDeletedBloodIds().includes(bloodId) || DUMMY_BLOOD_IDS.has(bloodId);
+}
+
 export function filterNonDeletedBloodRequests(requests: BloodDonationRequest[]): BloodDonationRequest[] {
   if (!Array.isArray(requests)) return [];
   const deletedIds = new Set(getStoredDeletedBloodIds());
@@ -585,6 +590,11 @@ export function addDeletedDisasterId(disasterId: string): void {
 
 export function removeDeletedDisasterId(disasterId: string): void {
   restoreDeletedId(DELETED_DISASTER_IDS_KEY, disasterId);
+}
+
+export function isDisasterPermanentlyDeleted(disasterId: string): boolean {
+  if (!disasterId) return false;
+  return getStoredDeletedDisasterIds().includes(disasterId) || DUMMY_DISASTER_IDS.has(disasterId);
 }
 
 export function filterNonDeletedDisasterItems(items: DisasterReliefItem[]): DisasterReliefItem[] {

@@ -34,10 +34,16 @@ import {
   getStoredVolunteerDonors, 
   saveVolunteerDonorsToStorage, 
   getStoredSupportedBloodIds, 
-  saveSupportedBloodIdsToStorage 
+  saveSupportedBloodIdsToStorage,
+  purgeBloodRequestEverywhere,
 } from '../data/bloodAndDisasterData';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
-import { addDeletedBloodId, addDeletedDonorId } from '../utils/deletedPostsManager';
+import { 
+  addDeletedBloodId, 
+  addDeletedDonorId,
+  isBloodPermanentlyDeleted,
+  isPostPermanentlyDeleted,
+} from '../utils/deletedPostsManager';
 import { 
   deleteBloodRequestFromFirestore, 
   deleteVolunteerDonorFromFirestore, 
@@ -105,12 +111,14 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
 
     window.addEventListener('sahaya_blood_disaster_updated', refresh);
     window.addEventListener('sahaya_sync_all_services', refresh);
+    window.addEventListener('sahaya_post_deleted', refresh);
 
     return () => {
       unsubBlood();
       unsubDonors();
       window.removeEventListener('sahaya_blood_disaster_updated', refresh);
       window.removeEventListener('sahaya_sync_all_services', refresh);
+      window.removeEventListener('sahaya_post_deleted', refresh);
     };
   }, []);
 
@@ -246,12 +254,19 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     setActiveTab('blood_requests');
     setBannerMessage(`🩸 ${newPatientName} වෙනුවෙන් ${newBloodGroup} ලේ අවශ්‍යතාවය සාර්ථකව පළ කරන ලදී! පහත ලැයිස්තුවේ දැන් දිස්වේ.`);
     
-    // Also save to Main Help Posts Notice Board with High-Priority Pinned Emergency flag
+    // Also save to Main Help Posts Notice Board with High-Priority Pinned Emergency flag (using the exact same id & postCode)
     if (onSubmitHelpPost) {
       onSubmitHelpPost({
+        id: newRequest.id,
+        postCode: newRequest.postCode,
         category: 'emergency',
+        postType: 'blood_request',
+        serviceType: 'blood_donation',
+        bloodGroup: newBloodGroup,
         tagCategory: 'හදිසි / ආපදා',
         tagName: `🩸 හදිසි ${newBloodGroup} ලේ අවශ්‍යතාවය`,
+        title: `🩸 ${newBloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${newHospitalName}`,
+        headline: `🩸 ${newBloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${newHospitalName}`,
         whatHappened: `🩸 ${newBloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${newHospitalName}`,
         whatIsNeeded: `රෝගී නම: ${newPatientName} • ලේ වර්ගය: ${newBloodGroup} • අවශ්‍ය ඒකක: ${newUnitsNeeded} • රෝහල: ${newHospitalName} • දිස්ත්‍රික්කය: ${newDistrict} • අවශ්‍ය දිනය: ${newNeededDate || 'කඩිනමින්'} • සම්බන්ධීකාරක: ${newContactName || 'සම්බන්ධීකාරක'} (${newContactPhone}) ${newNotes ? `• සටහන්: ${newNotes}` : ''}`,
         locationName: `${newHospitalName}, ${newDistrict}`,
@@ -261,7 +276,6 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
         contactNumber: newContactPhone,
         contactPersonName: newContactName || 'සම්බන්ධීකාරක',
         status: 'open',
-        postCode: newRequest.postCode,
       }).catch((e) => console.warn('Sync blood to help posts notice:', e));
     }
 
@@ -361,16 +375,13 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       ? 'පරිපාලක (Admin) ලෙස මෙම ලේ ඉල්ලීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?'
       : 'මෙම ලේ ඉල්ලීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?';
     if (!window.confirm(confirmMsg)) return;
-    const updated = bloodRequests.filter((b) => b.id !== id);
-    setBloodRequests(updated);
-    saveBloodRequestsToStorage(updated);
-    addDeletedBloodId(id);
-    deleteBloodRequestFromFirestore(id).catch((err) => {
-      console.warn('Delete blood request notice:', err);
-    });
-    try {
-      window.dispatchEvent(new CustomEvent('sahaya_sync_all_services'));
-    } catch {}
+    const targetReq = allMergedBloodRequests.find((b) => b && String(b.id) === String(id));
+    const remaining = purgeBloodRequestEverywhere(
+      String(id),
+      targetReq?.postCode,
+      targetReq?.patientName
+    );
+    setBloodRequests(remaining);
     alert('ලේ ඉල්ලීම සාර්ථකව ඉවත් කරන ලදී.');
   };
 
@@ -393,47 +404,66 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     alert('පරිත්‍යාගශීලියා සාර්ථකව ඉවත් කරන ලදී.');
   };
 
-  // Merge any blood emergency posts from helpPosts
+  // Merge any blood emergency posts from helpPosts without duplicating
   const allMergedBloodRequests = useMemo(() => {
     const map = new Map<string, BloodDonationRequest>();
+    const seenPostCodes = new Set<string>();
+    const seenPatients = new Set<string>();
+
     for (const b of bloodRequests) {
-      if (b && b.id) map.set(String(b.id), b);
+      if (!b || !b.id) continue;
+      if (isBloodPermanentlyDeleted(b.id) || isPostPermanentlyDeleted(b.id)) continue;
+      map.set(String(b.id), b);
+      if (b.postCode) seenPostCodes.add(String(b.postCode));
+      if (b.patientName) seenPatients.add(`${b.patientName.trim().toLowerCase()}|${(b.bloodGroup || '').toLowerCase()}`);
     }
     if (helpPosts && helpPosts.length > 0) {
       for (const p of helpPosts) {
-        if (!p) continue;
-        const isBlood = 
-          p.category === 'emergency' || 
-          p.category === 'blood' || 
-          p.isPinnedEmergency || 
+        if (!p || !p.id) continue;
+        if (p.isDeleted || p.status === 'deleted' || isPostPermanentlyDeleted(p.id) || isBloodPermanentlyDeleted(p.id)) {
+          continue;
+        }
+        const pCode = String(p.postCode || '');
+        if (pCode.startsWith('#RED-') || pCode.startsWith('#EMG-') || p.postType === 'disaster_relief') {
+          continue;
+        }
+        const isBlood =
+          pCode.startsWith('#BLD-') ||
+          p.postType === 'blood_request' ||
+          p.serviceType === 'blood_donation' ||
+          p.category === 'blood' ||
+          p.category === 'blood_disaster' ||
           (p.tagName && (p.tagName.includes('ලේ') || p.tagName.toLowerCase().includes('blood'))) ||
-          (p.whatHappened && (p.whatHappened.includes('ලේ') || p.whatHappened.includes('රුධිරය'))) ||
-          (p.whatIsNeeded && (p.whatIsNeeded.includes('ලේ') || p.whatIsNeeded.includes('රුධිරය')));
-        
+          (p.whatHappened && (p.whatHappened.includes('ලේ') || p.whatHappened.includes('රුධිරය')));
+
         if (isBlood) {
-          const id = String(p.id || `bld_hp_${Date.now()}`);
-          if (!map.has(id)) {
-            const bgMatch = `${p.tagName || ''} ${p.whatHappened || ''} ${p.whatIsNeeded || ''}`.match(/(A\+|A-|B\+|B-|AB\+|AB-|O\+|O-)/i);
-            const bg = (bgMatch ? bgMatch[1].toUpperCase() : 'O+') as BloodGroup;
-            map.set(id, {
-              id,
-              postCode: p.postCode || `#BLD-${id.slice(-4)}`,
-              patientName: p.contactPersonName || p.authorName || 'රෝගියා',
-              bloodGroup: bg,
-              unitsNeeded: 1,
-              hospitalName: p.locationName || p.district || 'රෝහල',
-              district: p.district || 'කොළඹ',
-              urgency: 'urgent',
-              neededDate: 'හදිසි (Urgent)',
-              contactName: p.contactPersonName || p.authorName || 'සම්බන්ධීකාරක',
-              contactPhone: p.contactNumber || p.phone || '',
-              additionalNotes: p.whatIsNeeded || p.whatHappened || '',
-              status: 'active',
-              createdAt: p.createdAt || 'දැන්',
-              createdAtMs: p.createdAtMs || Date.now(),
-              userId: p.userId,
-            });
-          }
+          const id = String(p.id);
+          if (map.has(id) || (pCode && seenPostCodes.has(pCode))) continue;
+          const bgMatch = `${p.tagName || ''} ${p.whatHappened || ''} ${p.whatIsNeeded || ''}`.match(/(A\+|A-|B\+|B-|AB\+|AB-|O\+|O-)/i);
+          const bg = (bgMatch ? bgMatch[1].toUpperCase() : 'O+') as BloodGroup;
+          const pName = (p.contactPersonName || p.authorName || 'රෝගියා').trim();
+          const patientKey = `${pName.toLowerCase()}|${bg.toLowerCase()}`;
+          if (seenPatients.has(patientKey)) continue;
+          if (pCode) seenPostCodes.add(pCode);
+          seenPatients.add(patientKey);
+          map.set(id, {
+            id,
+            postCode: pCode || `#BLD-${id.slice(-4)}`,
+            patientName: pName,
+            bloodGroup: bg,
+            unitsNeeded: 1,
+            hospitalName: p.locationName || p.district || 'රෝහල',
+            district: p.district || 'කොළඹ',
+            urgency: 'urgent',
+            neededDate: 'හදිසි (Urgent)',
+            contactName: p.contactPersonName || p.authorName || 'සම්බන්ධීකාරක',
+            contactPhone: p.contactNumber || p.phone || '',
+            additionalNotes: p.whatIsNeeded || p.whatHappened || '',
+            status: 'active',
+            createdAt: p.createdAt || 'දැන්',
+            createdAtMs: p.createdAtMs || Date.now(),
+            userId: p.userId,
+          });
         }
       }
     }

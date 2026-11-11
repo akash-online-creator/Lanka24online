@@ -2,15 +2,22 @@ import { BloodDonationRequest, VolunteerDonor, DisasterReliefItem } from '../typ
 import { 
   filterNonDeletedBloodRequests, 
   filterNonDeletedDisasterItems, 
-  filterNonDeletedDonors 
+  filterNonDeletedDonors,
+  addDeletedBloodId,
+  addDeletedDisasterId,
+  addDeletedPostId,
+  isPostPermanentlyDeleted,
+  isBloodPermanentlyDeleted,
+  isDisasterPermanentlyDeleted,
 } from '../utils/deletedPostsManager';
 import {
   subscribeToBloodRequestsFromFirestore,
   subscribeToVolunteerDonorsFromFirestore,
   subscribeToDisasterReliefFromFirestore,
-  saveBloodRequestToFirestore,
-  saveVolunteerDonorToFirestore,
-  saveDisasterReliefToFirestore,
+  deleteBloodRequestFromFirestore,
+  deleteDisasterReliefFromFirestore,
+  updateHelpPostInFirestore,
+  deleteHelpPostFromFirestore,
 } from '../lib/firebase';
 
 // 🩸 හදිසි ලේ අවශ්‍යතා ආරම්භයේදී පිරිසිදුව හිස්ව තැබීම (සාම්පල දත්ත ඉවත් කර ඇත)
@@ -41,12 +48,20 @@ if (typeof window !== 'undefined') {
       if (!Array.isArray(remoteReqs)) return;
       const map = new Map<string, BloodDonationRequest>();
       getStoredBloodRequests().forEach((r) => {
-        if (r && r.id) map.set(String(r.id), r);
+        if (r && r.id && !isBloodPermanentlyDeleted(r.id) && !isPostPermanentlyDeleted(r.id)) {
+          map.set(String(r.id), r);
+        }
       });
       remoteReqs.forEach((r: any) => {
-        if (r && r.id) map.set(String(r.id), r as BloodDonationRequest);
+        if (r && r.id && !isBloodPermanentlyDeleted(r.id) && !isPostPermanentlyDeleted(r.id)) {
+          map.set(String(r.id), r as BloodDonationRequest);
+        }
       });
-      const merged = sortByNewest(filterNonDeletedBloodRequests(Array.from(map.values())));
+      const merged = sortByNewest(
+        filterNonDeletedBloodRequests(Array.from(map.values())).filter(
+          (r) => r && r.id && !isPostPermanentlyDeleted(r.id)
+        )
+      );
       try {
         localStorage.setItem('sahaya_blood_requests', JSON.stringify(merged));
         emitBloodDisasterUpdated();
@@ -73,12 +88,20 @@ if (typeof window !== 'undefined') {
       if (!Array.isArray(remoteRelief)) return;
       const map = new Map<string, DisasterReliefItem>();
       getStoredDisasterReliefItems().forEach((r) => {
-        if (r && r.id) map.set(String(r.id), r);
+        if (r && r.id && !isDisasterPermanentlyDeleted(r.id) && !isPostPermanentlyDeleted(r.id)) {
+          map.set(String(r.id), r);
+        }
       });
       remoteRelief.forEach((r: any) => {
-        if (r && r.id) map.set(String(r.id), r as DisasterReliefItem);
+        if (r && r.id && !isDisasterPermanentlyDeleted(r.id) && !isPostPermanentlyDeleted(r.id)) {
+          map.set(String(r.id), r as DisasterReliefItem);
+        }
       });
-      const merged = sortByNewest(filterNonDeletedDisasterItems(Array.from(map.values())));
+      const merged = sortByNewest(
+        filterNonDeletedDisasterItems(Array.from(map.values())).filter(
+          (r) => r && r.id && !isPostPermanentlyDeleted(r.id)
+        )
+      );
       try {
         localStorage.setItem('sahaya_disaster_relief', JSON.stringify(merged));
         emitBloodDisasterUpdated();
@@ -94,7 +117,12 @@ export const getStoredBloodRequests = (): BloodDonationRequest[] => {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
         return sortByNewest(
-          filterNonDeletedBloodRequests(parsed.filter((b: BloodDonationRequest) => Boolean(b && b.id)))
+          filterNonDeletedBloodRequests(
+            parsed.filter(
+              (b: BloodDonationRequest) =>
+                Boolean(b && b.id && !isBloodPermanentlyDeleted(b.id) && !isPostPermanentlyDeleted(b.id))
+            )
+          )
         );
       }
     } catch (e) { /* ignore */ }
@@ -103,12 +131,13 @@ export const getStoredBloodRequests = (): BloodDonationRequest[] => {
 };
 
 export const saveBloodRequestsToStorage = (requests: BloodDonationRequest[]) => {
-  const cleaned = sortByNewest(filterNonDeletedBloodRequests(requests));
+  const cleaned = sortByNewest(
+    filterNonDeletedBloodRequests(requests).filter(
+      (b) => b && b.id && !isBloodPermanentlyDeleted(b.id) && !isPostPermanentlyDeleted(b.id)
+    )
+  );
   localStorage.setItem('sahaya_blood_requests', JSON.stringify(cleaned));
   emitBloodDisasterUpdated();
-  cleaned.forEach((req) => {
-    saveBloodRequestToFirestore(req).catch(() => {});
-  });
 };
 
 export const getStoredVolunteerDonors = (): VolunteerDonor[] => {
@@ -128,9 +157,6 @@ export const saveVolunteerDonorsToStorage = (donors: VolunteerDonor[]) => {
   const cleaned = filterNonDeletedDonors(donors);
   localStorage.setItem('sahaya_volunteer_donors', JSON.stringify(cleaned));
   emitBloodDisasterUpdated();
-  cleaned.forEach((donor) => {
-    saveVolunteerDonorToFirestore(donor).catch(() => {});
-  });
 };
 
 export const getStoredDisasterReliefItems = (): DisasterReliefItem[] => {
@@ -140,7 +166,12 @@ export const getStoredDisasterReliefItems = (): DisasterReliefItem[] => {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
         return sortByNewest(
-          filterNonDeletedDisasterItems(parsed.filter((r: DisasterReliefItem) => Boolean(r && r.id)))
+          filterNonDeletedDisasterItems(
+            parsed.filter(
+              (r: DisasterReliefItem) =>
+                Boolean(r && r.id && !isDisasterPermanentlyDeleted(r.id) && !isPostPermanentlyDeleted(r.id))
+            )
+          )
         );
       }
     } catch (e) { /* ignore */ }
@@ -149,12 +180,171 @@ export const getStoredDisasterReliefItems = (): DisasterReliefItem[] => {
 };
 
 export const saveDisasterReliefItemsToStorage = (items: DisasterReliefItem[]) => {
-  const cleaned = sortByNewest(filterNonDeletedDisasterItems(items));
+  const cleaned = sortByNewest(
+    filterNonDeletedDisasterItems(items).filter(
+      (r) => r && r.id && !isDisasterPermanentlyDeleted(r.id) && !isPostPermanentlyDeleted(r.id)
+    )
+  );
   localStorage.setItem('sahaya_disaster_relief', JSON.stringify(cleaned));
   emitBloodDisasterUpdated();
-  cleaned.forEach((item) => {
-    saveDisasterReliefToFirestore(item).catch(() => {});
+};
+
+export const purgeDisasterReliefEverywhere = (
+  targetId: string,
+  titleHint?: string,
+  postCodeHint?: string
+): DisasterReliefItem[] => {
+  const idsToPurge = new Set<string>();
+  if (targetId) idsToPurge.add(String(targetId));
+
+  const currentDisaster = getStoredDisasterReliefItems();
+  const matchedItem = currentDisaster.find(
+    (d) =>
+      d &&
+      (String(d.id) === String(targetId) ||
+        (postCodeHint && String((d as any).postCode || `#EMG-${String(d.id).slice(-4)}`) === String(postCodeHint)))
+  );
+  const cleanTitle = (matchedItem?.title || titleHint || '')
+    .replace(/^📦\s*(හදිසි ආපදා සහන ඉල්ලීමක්:|හදිසි ආපදා සහනාධාර අවශ්‍යතාවය:)?\s*/i, '')
+    .split(':')[0]
+    .trim()
+    .toLowerCase();
+
+  currentDisaster.forEach((d) => {
+    if (!d || !d.id) return;
+    const dCode = String((d as any).postCode || `#EMG-${String(d.id).slice(-4)}`);
+    const dTitle = String(d.title || '').trim().toLowerCase();
+    if (
+      String(d.id) === String(targetId) ||
+      (postCodeHint && dCode === String(postCodeHint)) ||
+      (cleanTitle && cleanTitle.length >= 3 && dTitle && (dTitle === cleanTitle || cleanTitle.includes(dTitle)))
+    ) {
+      idsToPurge.add(String(d.id));
+    }
   });
+
+  try {
+    const rawPosts = localStorage.getItem('sahaya_help_posts');
+    const parsedPosts = rawPosts ? JSON.parse(rawPosts) : [];
+    if (Array.isArray(parsedPosts)) {
+      parsedPosts.forEach((p: any) => {
+        if (!p || !p.id) return;
+        const pCode = String(p.postCode || '');
+        const pText = `${p.title || ''} ${p.whatHappened || ''} ${p.whatIsNeeded || ''}`.toLowerCase();
+        const isDisasterPost =
+          p.postType === 'disaster_relief' ||
+          p.serviceType === 'disaster_relief' ||
+          pCode.startsWith('#EMG-') ||
+          (p.tagName && String(p.tagName).includes('ආපදා සහන'));
+        if (
+          String(p.id) === String(targetId) ||
+          (postCodeHint && pCode === String(postCodeHint)) ||
+          (isDisasterPost && cleanTitle && cleanTitle.length >= 3 && pText.includes(cleanTitle))
+        ) {
+          idsToPurge.add(String(p.id));
+        }
+      });
+      const remainingPosts = parsedPosts.filter((p: any) => p && !idsToPurge.has(String(p.id)));
+      localStorage.setItem('sahaya_help_posts', JSON.stringify(remainingPosts));
+    }
+  } catch {}
+
+  idsToPurge.forEach((pid) => {
+    addDeletedDisasterId(pid);
+    addDeletedPostId(pid);
+    deleteDisasterReliefFromFirestore(pid).catch(() => {});
+    updateHelpPostInFirestore(pid, {
+      isDeleted: true,
+      status: 'deleted',
+      deletedAt: new Date().toISOString(),
+    }).catch(() => {});
+    deleteHelpPostFromFirestore(pid).catch(() => {});
+  });
+
+  const remainingDisaster = currentDisaster.filter((d) => d && !idsToPurge.has(String(d.id)));
+  saveDisasterReliefItemsToStorage(remainingDisaster);
+
+  try {
+    window.dispatchEvent(new Event('sahaya_post_deleted'));
+    window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+    window.dispatchEvent(new CustomEvent('sahaya_sync_all_services'));
+  } catch {}
+
+  return remainingDisaster;
+};
+
+export const purgeBloodRequestEverywhere = (
+  targetId: string,
+  postCodeHint?: string,
+  patientNameHint?: string
+): BloodDonationRequest[] => {
+  const idsToPurge = new Set<string>();
+  if (targetId) idsToPurge.add(String(targetId));
+
+  const currentBlood = getStoredBloodRequests();
+  const matchedReq = currentBlood.find(
+    (b) =>
+      b &&
+      (String(b.id) === String(targetId) ||
+        (postCodeHint && String(b.postCode || '') === String(postCodeHint)))
+  );
+  const effectiveCode = matchedReq?.postCode || postCodeHint || '';
+  const cleanPatient = (matchedReq?.patientName || patientNameHint || '').trim().toLowerCase();
+
+  currentBlood.forEach((b) => {
+    if (!b || !b.id) return;
+    if (
+      String(b.id) === String(targetId) ||
+      (effectiveCode && String(b.postCode || '') === String(effectiveCode)) ||
+      (cleanPatient && cleanPatient.length >= 3 && String(b.patientName || '').trim().toLowerCase() === cleanPatient)
+    ) {
+      idsToPurge.add(String(b.id));
+    }
+  });
+
+  try {
+    const rawPosts = localStorage.getItem('sahaya_help_posts');
+    const parsedPosts = rawPosts ? JSON.parse(rawPosts) : [];
+    if (Array.isArray(parsedPosts)) {
+      parsedPosts.forEach((p: any) => {
+        if (!p || !p.id) return;
+        const pCode = String(p.postCode || '');
+        const pText = `${p.title || ''} ${p.whatHappened || ''} ${p.whatIsNeeded || ''}`.toLowerCase();
+        if (
+          String(p.id) === String(targetId) ||
+          (effectiveCode && pCode === String(effectiveCode)) ||
+          (pCode.startsWith('#BLD-') && cleanPatient && cleanPatient.length >= 3 && pText.includes(cleanPatient))
+        ) {
+          idsToPurge.add(String(p.id));
+        }
+      });
+      const remainingPosts = parsedPosts.filter((p: any) => p && !idsToPurge.has(String(p.id)));
+      localStorage.setItem('sahaya_help_posts', JSON.stringify(remainingPosts));
+    }
+  } catch {}
+
+  idsToPurge.forEach((pid) => {
+    addDeletedBloodId(pid);
+    addDeletedPostId(pid);
+    deleteBloodRequestFromFirestore(pid).catch(() => {});
+    updateHelpPostInFirestore(pid, {
+      isDeleted: true,
+      status: 'deleted',
+      deletedAt: new Date().toISOString(),
+    }).catch(() => {});
+    deleteHelpPostFromFirestore(pid).catch(() => {});
+  });
+
+  const remainingBlood = currentBlood.filter((b) => b && !idsToPurge.has(String(b.id)));
+  saveBloodRequestsToStorage(remainingBlood);
+
+  try {
+    window.dispatchEvent(new Event('sahaya_post_deleted'));
+    window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+    window.dispatchEvent(new CustomEvent('sahaya_sync_all_services'));
+  } catch {}
+
+  return remainingBlood;
 };
 
 export const getStoredSupportedBloodIds = (): string[] => {

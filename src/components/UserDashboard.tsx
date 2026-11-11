@@ -806,7 +806,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   // Core Post Creation Handler (addHelpPostToFirestore)
   const handleCreatePost = async (newPost: Omit<HelpPost, 'id' | 'createdAt' | 'createdAtIso'>) => {
-    const postId = `post_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const postId = (newPost as any).id
+      ? String((newPost as any).id)
+      : `post_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const rawCode = String((newPost as any).postCode ? (newPost as any).postCode : '');
     const isFreeBloodPost = Boolean(rawCode.startsWith('#BLD-') ? true : (newPost as any).category === 'blood_disaster' ? true : (newPost as any).category === 'emergency' ? true : (newPost as any).isPinnedEmergency);
     const categoryKey = isFreeBloodPost ? 'blood_request' : resolveCategoryKeyForPost(newPost);
@@ -1049,6 +1051,38 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
     // 3. LocalStorage Blacklist & Purge local memory & helper notifications
     addDeletedPostId(postId);
+    try {
+      const pCodeStr = String(postToDelete?.postCode || '');
+      const isDisaster = Boolean(
+        postToDelete?.postType === 'disaster_relief' ||
+        postToDelete?.serviceType === 'disaster_relief' ||
+        pCodeStr.startsWith('#EMG-') ||
+        String(postId).startsWith('rel_') ||
+        (postToDelete?.tagName && String(postToDelete.tagName).includes('ආපදා සහන'))
+      );
+      const isBlood = Boolean(
+        postToDelete?.postType === 'blood_request' ||
+        postToDelete?.serviceType === 'blood_donation' ||
+        pCodeStr.startsWith('#BLD-') ||
+        String(postId).startsWith('bld_') ||
+        (postToDelete?.tagName && String(postToDelete.tagName).includes('ලේ අවශ්‍යතාවය'))
+      );
+      if (isDisaster) {
+        const { purgeDisasterReliefEverywhere } = await import('../data/bloodAndDisasterData');
+        purgeDisasterReliefEverywhere(
+          postId,
+          postToDelete?.title || postToDelete?.whatHappened,
+          pCodeStr
+        );
+      } else if (isBlood) {
+        const { purgeBloodRequestEverywhere } = await import('../data/bloodAndDisasterData');
+        purgeBloodRequestEverywhere(
+          postId,
+          pCodeStr,
+          (postToDelete as any)?.contactPersonName || postToDelete?.userName
+        );
+      }
+    } catch {}
     try {
       removeNotificationsForPost(postId, postToDelete?.postCode);
     } catch {}
@@ -2020,7 +2054,12 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               setViewingPost(p);
             }
           }}
-          onDeletePost={(p) => setDeletingPost(p)}
+          onDeletePost={(p) => {
+            const pid = typeof p === 'string' ? p : p?.id;
+            if (pid) {
+              handleConfirmDeletePost(pid);
+            }
+          }}
           onOpenChat={(p) => {
             // 🚀 Demo පරිශීලකයින්ට Chat සංවාද සඳහා ලියාපදිංචි වීම අනිවාර්යයි
             if (user?.isDemo) {

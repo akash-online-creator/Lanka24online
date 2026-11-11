@@ -12,6 +12,10 @@ import {
   addDeletedAccommodationId,
 } from '../utils/deletedPostsManager';
 import {
+  purgeDisasterReliefEverywhere,
+  purgeBloodRequestEverywhere,
+} from '../data/bloodAndDisasterData';
+import {
   deleteHelpPostFromFirestore,
   updateHelpPostInFirestore,
   cancelRedAlertByReporter,
@@ -410,8 +414,18 @@ if (targetId) {
 addDeletedPostId(targetId);
 const pCodeStr = String(post.postCode || '');
 const isRedAlertPost = Boolean((post as any)?.rawRedAlert || post.category === 'red_alert' || pCodeStr.startsWith('#RED-'));
-const isBloodPost = Boolean(post.postType === 'blood_request' || pCodeStr.startsWith('#BLD-'));
-const isDisasterPost = Boolean(post.postType === 'disaster_relief' || pCodeStr.startsWith('#EMG-'));
+const isBloodPost = Boolean(
+  post.postType === 'blood_request' ||
+  post.serviceType === 'blood_donation' ||
+  pCodeStr.startsWith('#BLD-') ||
+  (post.tagName && String(post.tagName).includes('ලේ අවශ්‍යතාවය'))
+);
+const isDisasterPost = Boolean(
+  post.postType === 'disaster_relief' ||
+  post.serviceType === 'disaster_relief' ||
+  pCodeStr.startsWith('#EMG-') ||
+  (post.tagName && String(post.tagName).includes('ආපදා සහන'))
+);
 const isJobPost = Boolean((post as any)?.rawJobListing || post.category === 'jobs');
 const isAccPost = Boolean((post as any)?.rawAccommodationListing || post.category === 'accommodation');
 if (isRedAlertPost) {
@@ -426,12 +440,12 @@ window.dispatchEvent(new CustomEvent('sahaya_red_alert_deleted', { detail: { ale
 } else if (isBloodPost) {
 addDeletedBloodId(targetId);
 try {
-window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+purgeBloodRequestEverywhere(targetId, pCodeStr, post.contactPersonName);
 } catch {}
 } else if (isDisasterPost) {
 addDeletedDisasterId(targetId);
 try {
-window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+purgeDisasterReliefEverywhere(targetId, post.title || post.whatHappened, pCodeStr);
 } catch {}
 } else if (isJobPost) {
 addDeletedJobId(targetId);
