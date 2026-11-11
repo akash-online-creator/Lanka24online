@@ -686,8 +686,9 @@ return h('div', { className: 'mt-3 px-3.5 py-2.5 rounded-2xl bg-amber-500/10 dar
 const renderExpandedFullModal = () => {
 if (!isExpandedFullModal) return null;
 const rawHeadline = post.headline ? post.headline : post.title ? post.title : '';
-const fullDesc = post.content ? post.content : post.whatHappened ? post.whatHappened : '';
-const neededText = post.whatIsNeeded && post.whatIsNeeded !== rawHeadline && post.whatIsNeeded !== fullDesc ? post.whatIsNeeded : '';
+const rawFullDesc = post.content ? post.content : post.whatHappened ? post.whatHappened : '';
+const fullDesc = rawFullDesc && rawFullDesc.trim() !== rawHeadline.trim() ? rawFullDesc : '';
+const neededText = post.whatIsNeeded && post.whatIsNeeded.trim() !== rawHeadline.trim() && post.whatIsNeeded.trim() !== fullDesc.trim() ? post.whatIsNeeded : '';
 const condText = post.conditions ? post.conditions : '';
 const noticeText = post.specialNotice ? post.specialNotice : '';
 const transportText = post.transport ? post.transport : post.deliveryOption ? post.deliveryOption : '';
@@ -725,11 +726,23 @@ const rawHeadline = post.headline ? post.headline : post.title ? post.title : ''
 const rawDesc = post.content ? post.content : post.whatHappened ? post.whatHappened : '';
 const imgUrl = post.imageUrl ? post.imageUrl : post.photoUrl ? post.photoUrl : post.image;
 const fontStyle = getFontFamilyById(post.selectedFont);
-const lineCount = rawDesc ? rawDesc.split(String.fromCharCode(10)).length : 0;
-const isLongText = Boolean(Math.max(rawDesc.length, 165) === rawDesc.length && rawDesc.length !== 165 ? true : Math.max(lineCount, 4) === lineCount);
+const isBloodCard = Boolean(
+  post.postType === 'blood_request' ||
+  post.serviceType === 'blood_donation' ||
+  String(post.postCode || '').startsWith('#BLD-') ||
+  (post.tagName && String(post.tagName).includes('ලේ අවශ්‍යතාවය'))
+);
+const hasDistinctDesc = Boolean(
+  !isBloodCard &&
+  rawDesc &&
+  rawDesc.trim() !== rawHeadline.trim()
+);
+const effectiveDesc = hasDistinctDesc ? rawDesc : '';
+const lineCount = effectiveDesc ? effectiveDesc.split(String.fromCharCode(10)).length : 0;
+const isLongText = Boolean(Math.max(effectiveDesc.length, 165) === effectiveDesc.length && effectiveDesc.length !== 165 ? true : Math.max(lineCount, 4) === lineCount);
 const hasValidImage = Boolean(imgUrl && !imageError);
 const shouldCap16x9 = Boolean(isLongText ? true : hasValidImage);
-const shortDesc = isLongText ? rawDesc.slice(0, 165) + '...' : rawDesc;
+const shortDesc = isLongText ? effectiveDesc.slice(0, 165) + '...' : effectiveDesc;
 return h(React.Fragment, null, h('div', {
 onClick: () => {
 if ((post as any)?.rawRedAlert && onViewPost) {
@@ -758,14 +771,14 @@ className: (shouldCap16x9 ? 'w-full aspect-video max-h-[250px] justify-between '
 }, rawHeadline ? h('div', { className: 'w-full px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-200/90 via-white to-emerald-100/90 dark:from-emerald-800/85 dark:via-[#0b291a] dark:to-emerald-900/85 border-2 border-emerald-500/70 shadow-2xs shrink-0 ' + (Boolean(shortDesc ? true : hasValidImage ? true : localPoll) ? 'mb-2 ' : '') + 'flex items-center justify-between gap-2' }, h('h3', {
 className: 'text-xs sm:text-base font-black text-slate-950 dark:text-white leading-snug line-clamp-2',
 style: { fontFamily: fontStyle }
-}, rawHeadline)) : null, (hasValidImage ? true : Boolean(shortDesc && (!hasValidImage ? true : shortDesc !== rawHeadline)) ? true : Boolean(localPoll)) ? h('div', { className: (shouldCap16x9 ? 'flex-1 min-h-0 ' : '') + 'overflow-hidden flex gap-3 items-center' }, hasValidImage ? h('div', { className: (shortDesc && shortDesc !== rawHeadline ? 'w-1/2 ' : 'w-full ') + 'h-full max-h-[180px] rounded-xl overflow-hidden bg-slate-900 border border-emerald-300 dark:border-emerald-800 relative shrink-0' }, h('img', {
+}, rawHeadline)) : null, (hasValidImage ? true : Boolean(shortDesc) ? true : Boolean(localPoll)) ? h('div', { className: (shouldCap16x9 ? 'flex-1 min-h-0 ' : '') + 'overflow-hidden flex gap-3 items-center' }, hasValidImage ? h('div', { className: (shortDesc ? 'w-1/2 ' : 'w-full ') + 'h-full max-h-[180px] rounded-xl overflow-hidden bg-slate-900 border border-emerald-300 dark:border-emerald-800 relative shrink-0' }, h('img', {
 src: imgUrl,
 alt: rawHeadline,
 loading: 'lazy',
 decoding: 'async',
 className: 'w-full h-full object-cover group-hover:scale-105 transition-transform duration-300',
 onError: () => setImageError(true)
-})) : null, h('div', { className: 'flex-1 min-w-0 flex flex-col justify-between overflow-hidden space-y-2' }, shortDesc && (!hasValidImage ? true : shortDesc !== rawHeadline) ? h('div', { className: 'p-2.5 sm:p-3 rounded-xl bg-white/95 dark:bg-[#071d12]/95 border border-emerald-200/90 dark:border-emerald-900/80 shadow-2xs overflow-hidden' }, h('p', {
+})) : null, h('div', { className: 'flex-1 min-w-0 flex flex-col justify-between overflow-hidden space-y-2' }, shortDesc ? h('div', { className: 'p-2.5 sm:p-3 rounded-xl bg-white/95 dark:bg-[#071d12]/95 border border-emerald-200/90 dark:border-emerald-900/80 shadow-2xs overflow-hidden' }, h('p', {
 className: (isLongText ? 'line-clamp-4 ' : '') + 'text-xs sm:text-sm text-slate-950 dark:text-zinc-100 leading-relaxed font-bold whitespace-pre-line',
 style: { fontFamily: fontStyle }
 }, shortDesc)) : null, renderPollBox())) : null), renderExternalLinkBar(), renderValidityDurationForPoster(), renderInteractiveActionBar(), renderCommentsSection()), renderExpandedFullModal());
