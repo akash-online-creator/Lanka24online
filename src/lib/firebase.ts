@@ -743,6 +743,79 @@ export function subscribeToUsers(callback: (users: any[]) => void): () => void {
 // 🆘 HELP POSTS OPERATIONS
 // ==============================================================
 
+export function deduplicatePostReplies(replies: any[], post?: any): any[] {
+  if (!Array.isArray(replies) || replies.length === 0) return [];
+  const posterId = String(post?.userId || post?.authorId || '').trim();
+  const posterPhone = String(post?.userPhone || post?.contactPhone || '').replace(/\D/g, '');
+  const posterName = String(post?.userName || post?.authorName || '').trim().toLowerCase();
+
+  const helperMap = new Map<string, any>();
+
+  for (const r of replies) {
+    if (!r || typeof r !== 'object') continue;
+    const msgText = String(r.message || r.text || '').trim();
+    // Filter out system/poster chat messages that were accidentally added to replies earlier
+    if (
+      msgText.startsWith('✅ [පියවර 2/4') ||
+      msgText.startsWith('🎉 [පියවර 4/4') ||
+      msgText.startsWith('📍 [රෝහල') ||
+      msgText.startsWith('🚗 [පියවර 3/4') ||
+      msgText.startsWith('🏥 [පියවර 3/4') ||
+      msgText.startsWith('🩸 [පියවර 3/4') ||
+      (msgText.startsWith('✅ "') && msgText.includes('තෝරාගෙන ඇත'))
+    ) {
+      continue;
+    }
+
+    const rId = String(r.responderId || '').trim();
+    const rPhone = String(r.responderPhone || '').replace(/\D/g, '');
+    const rName = String(r.responderName || '').trim().toLowerCase();
+
+    // Skip if this reply was authored by the post owner themselves
+    const isSameAsPoster =
+      (rId && posterId && rId !== 'helper_user' && rId === posterId) ||
+      (rPhone.length >= 9 && posterPhone.length >= 9 && rPhone.slice(-9) === posterPhone.slice(-9)) ||
+      (rName && posterName && rName === posterName && !rPhone);
+    if (isSameAsPoster) continue;
+
+    // Build a stable deduplication key per helper (prefer last 9 digits of phone, then responderId, then name)
+    const dedupeKey =
+      rPhone.length >= 9
+        ? `ph_${rPhone.slice(-9)}`
+        : rId && rId !== 'helper_user'
+        ? `id_${rId}`
+        : rName
+        ? `nm_${rName}`
+        : `raw_${r.id || Math.random()}`;
+
+    const existing = helperMap.get(dedupeKey);
+    if (!existing) {
+      helperMap.set(dedupeKey, r);
+    } else {
+      // Merge flags so confirmation / step progress is never lost, and prefer clean user message over chat-prefixed text
+      const existingCleanMsg = String(existing.message || '').startsWith('🩸 [පියවර 1/4')
+        ? msgText || existing.message
+        : existing.message || msgText;
+      helperMap.set(dedupeKey, {
+        ...existing,
+        ...r,
+        id: existing.id || r.id,
+        responderId: existing.responderId && existing.responderId !== 'helper_user' ? existing.responderId : r.responderId,
+        responderName: existing.responderName || r.responderName,
+        responderPhone: existing.responderPhone || r.responderPhone,
+        message: existingCleanMsg,
+        isConfirmed: Boolean(existing.isConfirmed || r.isConfirmed),
+        isAccepted: Boolean(existing.isAccepted || r.isAccepted),
+        donorArrivedAtHospital: Boolean(existing.donorArrivedAtHospital || r.donorArrivedAtHospital),
+        bloodDonatedByHelper: Boolean(existing.bloodDonatedByHelper || r.bloodDonatedByHelper),
+        workflowStep: Math.max(Number(existing.workflowStep || 0), Number(r.workflowStep || 0)),
+      });
+    }
+  }
+
+  return Array.from(helperMap.values());
+}
+
 export function subscribeToHelpPosts(callback: (posts: any[]) => void): () => void {
   let primaryPosts: any[] = [];
   let legacyPosts: any[] = [];
@@ -751,7 +824,12 @@ export function subscribeToHelpPosts(callback: (posts: any[]) => void): () => vo
     const map = new Map();
     [...fallbackPosts, ...legacyPosts, ...primaryPosts].forEach((p) => {
       if (p && p.id && !p.isDeleted && p.status !== 'deleted' && p.status !== 'archived') {
-        map.set(String(p.id), p);
+        const cleanReplies = Array.isArray(p.replies) ? deduplicatePostReplies(p.replies, p) : [];
+        map.set(String(p.id), {
+          ...p,
+          replies: cleanReplies,
+          repliesCount: cleanReplies.length,
+        });
       }
     });
     const sorted = Array.from(map.values()).sort((a: any, b: any) => {
@@ -1084,11 +1162,12 @@ export async function sendChatMessageToFirestore(postId: string, messageData: an
       } : {};
       await setDoc(postDocRef, sanitizeForFirestore(Object.assign({}, directMeta, {
         lastMessage: (messageData.text ? messageData.text : ''),
+        lastMessageSenderId: (messageData.senderId ? messageData.senderId : ''),
         lastMessageSenderName: (messageData.senderName ? messageData.senderName : ''),
         lastMessageSenderPhone: (messageData.senderPhone ? messageData.senderPhone : ''),
         lastMessageTime: nowIso,
         lastMessageTimeMs: nowMs,
-        replies: arrayUnion(replyEntry),
+        ...(isDirect ? { replies: arrayUnion(replyEntry) } : {}),
         updatedAtServer: serverTimestamp(),
       })), { merge: true });
     } catch (parentErr) {

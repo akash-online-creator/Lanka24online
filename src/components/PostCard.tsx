@@ -21,6 +21,7 @@ import {
   cancelRedAlertByReporter,
   deleteRedAlertInFirestore,
   addCommentToRedAlert,
+  deduplicatePostReplies,
 } from '../lib/firebase';
 import { maskPhone } from '../utils/demoDataMasker';
 import { AudioVoicePlayer } from './AudioVoiceNote';
@@ -519,9 +520,10 @@ const isBloodCardType = Boolean(
   pCodeUpper.startsWith('#BLD-') ||
   (post.tagName && String(post.tagName).includes('ලේ අවශ්‍යතාවය'))
 );
+const cleanReplies = deduplicatePostReplies(Array.isArray(post.replies) ? post.replies : [], post);
 const normCurrentPhone = (currentUser?.phone || (currentUser as any)?.whatsappPhone || (currentUser as any)?.whatsappNumber || '').replace(/\D/g, '');
-const myReply = !ownerCheck && Array.isArray(post.replies)
-  ? post.replies.find((r: any) => {
+const myReply = !ownerCheck
+  ? cleanReplies.find((r: any) => {
       if (!r) return false;
       if (r.responderId && myUserId && myUserId !== 'anonymous_guest' && String(r.responderId) === String(myUserId)) return true;
       const rPhone = (r.responderPhone || '').replace(/\D/g, '');
@@ -537,7 +539,35 @@ const isMyReplyConfirmed = Boolean(
     (post.isConfirmed && (post.confirmedHelperName === myReply.responderName || post.confirmedHelperId === myReply.responderId))
   )
 );
-const offersCount = Array.isArray(post.replies) ? post.replies.length : (post.repliesCount || 0);
+const offersCount = cleanReplies.length;
+const isBloodCompletedOnCard = Boolean(
+  post.isResolved ||
+  post.status === 'resolved' ||
+  post.serviceStage === 'completed' ||
+  Number((post as any).bloodWorkflowStep) >= 5
+);
+const isBloodStep3DoneOnCard = Boolean(
+  isBloodCompletedOnCard ||
+  (post as any).bloodDonatedByHelper ||
+  Number((post as any).bloodWorkflowStep) >= 4 ||
+  cleanReplies.some((r: any) => r?.bloodDonatedByHelper || Number(r?.workflowStep) >= 4)
+);
+const isBloodStep2DoneOnCard = Boolean(
+  isBloodStep3DoneOnCard ||
+  post.isConfirmed ||
+  isMyReplyConfirmed ||
+  Number((post as any).bloodWorkflowStep) >= 3 ||
+  cleanReplies.some((r: any) => r?.isConfirmed || r?.isAccepted || Number(r?.workflowStep) >= 3)
+);
+const cardBloodStep: 1 | 2 | 3 | 4 | 5 = isBloodCompletedOnCard
+  ? 5
+  : isBloodStep3DoneOnCard
+  ? 4
+  : isBloodStep2DoneOnCard
+  ? 3
+  : offersCount > 0
+  ? 2
+  : 1;
 
 const handleSupportClick = (e: React.MouseEvent) => {
 e.stopPropagation();
@@ -551,10 +581,12 @@ return;
 }
 if (ownerCheck && onOpenSupportOffers) {
 onOpenSupportOffers(post);
-} else if (!ownerCheck && myReply && onOpenChat) {
-onOpenChat(post);
+} else if (!ownerCheck && myReply && onOpenSupportOffers) {
+onOpenSupportOffers(post);
 } else if (onOfferSupport) {
 onOfferSupport(post);
+} else if (onOpenSupportOffers) {
+onOpenSupportOffers(post);
 } else if (onOpenConfirm) {
 onOpenConfirm(post);
 } else if (onViewPost) {
@@ -649,15 +681,31 @@ const renderInteractiveActionBar = () => {
     ? getLangText('🚨 රතු එළිය විස්තරය', '🚨 Red Alert Details', '🚨 சிவப்பு எச்சரிக்கை')
     : ownerCheck
       ? isBloodCardType
-        ? getLangText(`🩸 පරිත්‍යාගශීලීන් (${offersCount})`, `🩸 Donors (${offersCount})`, `🩸 கொடையாளர்கள் (${offersCount})`)
+        ? cardBloodStep === 5
+          ? getLangText(`🎉 ලේ ලැබුණා • අවසන් (${offersCount})`, `🎉 Completed (${offersCount})`, `🎉 முடிந்தது (${offersCount})`)
+          : cardBloodStep === 4
+          ? getLangText(`👉 පියවර 4/4: ලේ ලැබුණා තහවුරු කරන්න`, `👉 Step 4/4: Confirm Blood`, `👉 படி 4/4: உறுதிப்படுத்தவும்`)
+          : cardBloodStep === 3
+          ? getLangText(`⏳ පියවර 3/4 • පරිත්‍යාගශීලීන් (${offersCount})`, `⏳ Step 3/4 • Donors (${offersCount})`, `⏳ படி 3/4 (${offersCount})`)
+          : cardBloodStep === 2
+          ? getLangText(`👉 පියවර 2/4: පරිත්‍යාගශීලියා තෝරන්න (${offersCount})`, `👉 Step 2/4: Select Donor (${offersCount})`, `👉 படி 2/4 (${offersCount})`)
+          : getLangText(`🩸 පරිත්‍යාගශීලීන් (${offersCount})`, `🩸 Donors (${offersCount})`, `🩸 கொடையாளர்கள் (${offersCount})`)
         : getLangText(`සහායකයින් (${offersCount})`, `Helpers (${offersCount})`, `உதவியாளர்கள் (${offersCount})`)
-      : isMyReplyConfirmed
-        ? getLangText('✅ තෝරාගෙන ඇත • පණිවිඩ', '✅ Confirmed • Chat', '✅ உறுதி • Chat')
-        : myReply
-          ? getLangText('⏳ ඉදිරිපත් වී ඇත • පණිවිඩ', '⏳ Offered • Chat', '⏳ வழங்கப்பட்டது • Chat')
-          : isBloodCardType
-            ? getLangText('🩸 ලේ ලබාදෙන්න', '🩸 Donate Blood', '🩸 இரத்தம் வழங்கவும்')
-            : getLangText('සහාය වන්න', 'Help', 'உதவுக');
+      : myReply
+        ? isBloodCardType
+          ? cardBloodStep === 5
+            ? getLangText('🎉 ගනුදෙනුව අවසන් (4/4 ✓)', '🎉 Completed (4/4 ✓)', '🎉 முடிந்தது (4/4 ✓)')
+            : cardBloodStep === 4
+            ? getLangText('⏳ පියවර 4/4 • අවසන් තහවුරු කිරීම', '⏳ Step 4/4 • Finalizing', '⏳ படி 4/4')
+            : cardBloodStep === 3
+            ? getLangText('👉 පියවර 3/4: ලේ පරිත්‍යාගය තහවුරු කරන්න', '👉 Step 3/4: Confirm Donation', '👉 படி 3/4')
+            : getLangText('⏳ පියවර 2/4 • පියවර බලන්න', '⏳ Step 2/4 • View Steps', '⏳ படி 2/4')
+          : isMyReplyConfirmed
+          ? getLangText('✅ තෝරාගෙන ඇත • විස්තර', '✅ Confirmed • Details', '✅ உறுதி')
+          : getLangText('⏳ ඉදිරිපත් වී ඇත • විස්තර', '⏳ Offered • Details', '⏳ வழங்கப்பட்டது')
+        : isBloodCardType
+          ? getLangText('🩸 ලේ ලබාදෙන්න (පියවර 1)', '🩸 Donate Blood (Step 1)', '🩸 இரத்தம் வழங்கவும்')
+          : getLangText('සහාය වන්න', 'Help', 'உதவுக');
 
 return h('div', {
 onClick: (e: any) => e.stopPropagation(),
@@ -690,12 +738,12 @@ title: 'දුරකථන අංකය පිටපත් කරන්න'
 type: 'button',
 onClick: handleChatClick,
 className: 'px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700/60 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 text-xs font-bold shadow-xs',
-title: 'Inbox / Chat පණිවිඩයක් එවන්න'
-}, h(MessageCircle, { className: 'w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400' }), h('span', null, 'Inbox')), Boolean(onOfferSupport ? true : onOpenSupportOffers ? true : onOpenConfirm) ? h('button', {
+title: 'අවශ්‍ය නම් පමණක් Chat පණිවිඩයක් එවන්න'
+}, h(MessageCircle, { className: 'w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400' }), h('span', null, 'Chat')), Boolean(onOfferSupport ? true : onOpenSupportOffers ? true : onOpenConfirm) ? h('button', {
 type: 'button',
 onClick: handleSupportClick,
 className: 'px-3 py-1.5 rounded-xl ' + ((post as any)?.rawRedAlert || (isBloodCardType && !ownerCheck && !myReply) ? 'bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 ' : ownerCheck ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 ' : 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 ') + 'text-white flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 text-xs font-black shadow-sm',
-title: (post as any)?.rawRedAlert ? 'රතු එළිය විස්තරය සහ සත්‍ය/අසත්‍ය ලකුණු' : ownerCheck ? 'ඉදිරිපත් වූ සහායකයින් / පරිත්‍යාගශීලීන් බලන්න' : 'සහාය වන්න (Offer Support)'
+title: (post as any)?.rawRedAlert ? 'රතු එළිය විස්තරය සහ සත්‍ය/අසත්‍ය ලකුණු' : ownerCheck ? 'ඉදිරිපත් වූ සහායකයින් / පරිත්‍යාග පියවර බලන්න' : myReply ? 'ලේ පරිත්‍යාග පියවර විවෘත කරන්න' : 'සහාය වන්න (Offer Support)'
 }, h(ownerCheck && !(post as any)?.rawRedAlert ? UserCheck : HelpCircle, { className: 'w-3.5 h-3.5' }), h('span', null, supportBtnLabel)) : null, canModify && onEditPost ? h('button', {
 type: 'button',
 onClick: handleEditClick,

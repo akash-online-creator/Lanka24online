@@ -1463,10 +1463,10 @@ return h(
           )
         ),
 
-        // Top Navigation Tab Bar: Separates Chat Page, Donation Steps Page, and Mobile Partner List!
+        // Mobile Partner Switcher Bar (only shown on mobile when multiple partners exist)
         h(
           'div',
-          { className: 'bg-slate-900 dark:bg-[#04140c] border-b border-emerald-800/60 px-2.5 py-1.5 flex items-center gap-1.5 shrink-0 overflow-x-auto' },
+          { className: 'md:hidden bg-slate-900 dark:bg-[#04140c] border-b border-emerald-800/60 px-2.5 py-1.5 flex items-center gap-1.5 shrink-0 overflow-x-auto' },
           h(
             'button',
             {
@@ -1479,38 +1479,15 @@ return h(
                   : 'bg-white/10 hover:bg-white/15 text-slate-300'),
             },
             h(MessageCircle, { className: 'w-3.5 h-3.5' }),
-            h('span', null, '💬 පණිවිඩ (Chat පිටුව)')
+            h('span', null, '💬 පණිවිඩ (Chat)')
           ),
-          isBloodPost
-            ? h(
-                'button',
-                {
-                  type: 'button',
-                  onClick: () => setActiveModalTab('steps'),
-                  className:
-                    'px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ' +
-                    (activeModalTab === 'steps'
-                      ? 'bg-rose-600 text-white shadow-sm'
-                      : isMyTurnInBloodSteps
-                      ? 'bg-amber-500 text-slate-950 animate-pulse'
-                      : 'bg-rose-950/80 hover:bg-rose-900/80 text-rose-200 border border-rose-700/50'),
-                },
-                h(
-                  'span',
-                  null,
-                  isBloodCompleted
-                    ? '🩸 පරිත්‍යාග පියවර (4/4 ✓)'
-                    : '🩸 පරිත්‍යාග පියවර (' + currentBloodStep + '/4)' + (isMyTurnInBloodSteps ? ' • ඔබේ වාරයයි' : '')
-                )
-              )
-            : null,
           h(
             'button',
             {
               type: 'button',
               onClick: () => setActiveModalTab('partners'),
               className:
-                'md:hidden px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ' +
+                'px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ' +
                 (activeModalTab === 'partners'
                   ? 'bg-sky-600 text-white shadow-sm'
                   : 'bg-white/10 hover:bg-white/15 text-slate-300'),
@@ -1522,12 +1499,10 @@ return h(
         // TAB CONTENT: Show ONLY the selected page so nothing overlaps!
         activeModalTab === 'partners'
           ? renderPartnersSidebar(true)
-          : activeModalTab === 'steps' && isBloodPost
-          ? renderBloodDonationStepsPage()
           : h(
               React.Fragment,
               null,
-              // Compact 1-line Language & Blood Step Summary Bar
+              // Compact 1-line Language Bar
               h(
                 'div',
                 { className: 'bg-slate-950/95 dark:bg-[#03120a] border-b border-emerald-800/50 px-3 py-1.5 text-white flex items-center justify-between gap-2 shrink-0 flex-wrap' },
@@ -1556,32 +1531,7 @@ return h(
                     h(Lock, { className: 'w-2.5 h-2.5 text-teal-300' }),
                     h('span', { className: 'text-amber-300 font-black' }, otherLangInfo.badge)
                   )
-                ),
-                isBloodPost
-                  ? h(
-                      'button',
-                      {
-                        type: 'button',
-                        onClick: () => setActiveModalTab('steps'),
-                        className:
-                          'px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer transition-all ' +
-                          (isBloodCompleted
-                            ? 'bg-emerald-600 text-white'
-                            : isMyTurnInBloodSteps
-                            ? 'bg-amber-500 text-slate-950 shadow-xs'
-                            : 'bg-rose-600 text-white'),
-                      },
-                      h(
-                        'span',
-                        null,
-                        isBloodCompleted
-                          ? '✓ ලේ පරිත්‍යාගය අවසන් (4/4)'
-                          : isMyTurnInBloodSteps
-                          ? '👉 පියවර ' + currentBloodStep + '/4 ක්‍රියාත්මක කරන්න →'
-                          : '⏳ පියවර ' + currentBloodStep + '/4 තත්ත්වය බලන්න →'
-                      )
-                    )
-                  : null
+                )
               ),
 
               pinnedMessage

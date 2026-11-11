@@ -150,15 +150,20 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
       message: finalMsg,
       createdAt: new Date().toLocaleString('si-LK'),
       createdAtMs: nowMs,
+      ...(isBloodPost ? { workflowStep: 2 } : {}),
     } as any;
 
     const existingReplies = Array.isArray(post.replies) ? post.replies : [];
+    const myNormPhone = phone.trim().replace(/\D/g, '');
+    const myNormName = name.trim().toLowerCase();
+
     const filteredExisting = existingReplies.filter((r: any) => {
       if (!r) return false;
       if (r.responderId && helperUid !== 'helper_user' && String(r.responderId) === String(helperUid)) return false;
-      const rPh = (r.responderPhone || '').replace(/\D/g, '');
-      const myPh = phone.trim().replace(/\D/g, '');
-      if (rPh.length >= 9 && myPh.length >= 9 && rPh.slice(-9) === myPh.slice(-9)) return false;
+      const rPh = String(r.responderPhone || '').replace(/\D/g, '');
+      if (rPh.length >= 9 && myNormPhone.length >= 9 && rPh.slice(-9) === myNormPhone.slice(-9)) return false;
+      const rNm = String(r.responderName || '').trim().toLowerCase();
+      if (rNm && myNormName && rNm === myNormName) return false;
       return true;
     });
     const updatedReplies = [...filteredExisting, newReply];
@@ -209,43 +214,13 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
       } as any);
     } catch (_) {}
 
-    const step1ChatText = isBloodPost
-      ? `🩸 [පියවර 1/4 - ලේ පරිත්‍යාගය සඳහා ඉදිරිපත් වීම]\n👤 පරිත්‍යාගශීලියා (සහයක): ${name.trim()}\n📞 දුරකථන: ${phone.trim()}\n💬 පණිවිඩය: ${finalMsg}`
-      : finalMsg;
-
-    try {
-      await sendChatMessageToFirestore(post.id, {
-        id: `msg_${nowMs}`,
-        postId: post.id,
-        senderId: helperUid,
-        senderName: name.trim(),
-        senderPhone: phone.trim(),
-        senderRole: 'helper',
-        recipientName: posterDisplayName,
-        recipientPhone: posterDisplayPhone,
-        recipientId: post.userId || post.authorId || '',
-        text: step1ChatText,
-        message: step1ChatText,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-        createdAt: new Date().toISOString(),
-        createdAtIso: new Date().toISOString(),
-        createdAtMs: nowMs,
-      });
-    } catch (_) {}
-
-    // Note: Do NOT ring the continuous support bell locally on the helper's own device.
-    // The poster's device automatically detects the new reply via real-time Firestore sync in UserDashboard and rings only for the poster.
-
     setSubmitted(true);
 
     setTimeout(() => {
       setSubmitted(false);
       setMsg('');
       onClose();
-    }, 800);
+    }, 900);
   };
 
   return h(
@@ -326,8 +301,8 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
               'div',
               { className: 'py-8 text-center flex flex-col items-center justify-center space-y-3 animate-fadeIn' },
               h(CheckCircle2, { className: 'w-16 h-16 text-emerald-600 dark:text-emerald-400 animate-bounce' }),
-              h('h4', { className: 'text-lg font-bold text-slate-900 dark:text-slate-100' }, 'ඔබගේ සහය ඉල්ලීම සාර්ථකව යොමු විය!'),
-              h('p', { className: 'text-xs text-slate-600 dark:text-slate-400' }, 'දැන්වීම්කරු සමඟ සෘජු පණිවිඩ හුවමාරුව (Chat) දැන් විවෘත වේ...')
+              h('h4', { className: 'text-lg font-bold text-slate-900 dark:text-slate-100' }, isBloodPost ? 'පියවර 1/4: ඔබගේ ඉදිරිපත් වීම සාර්ථකව සටහන් විය!' : 'ඔබගේ සහය ඉල්ලීම සාර්ථකව යොමු විය!'),
+              h('p', { className: 'text-xs text-slate-600 dark:text-slate-400' }, isBloodPost ? 'දැන්වීම්කරු විසින් ඔබව තෝරාගත් පසු (පියවර 2) ඔබට ඊළඟ පියවර සඳහා ප්‍රතිචාර දැක්විය හැක.' : 'දැන්වීම්කරු වෙත ඔබගේ තොරතුරු යොමු කරන ලදී.')
             )
           : h(
               'form',

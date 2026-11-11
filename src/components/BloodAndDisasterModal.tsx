@@ -53,7 +53,8 @@ import {
   saveVolunteerDonorToFirestore,
   saveDisasterReliefToFirestore,
   subscribeToBloodRequestsFromFirestore,
-  subscribeToVolunteerDonorsFromFirestore
+  subscribeToVolunteerDonorsFromFirestore,
+  deduplicatePostReplies
 } from '../lib/firebase';
 import { broadcastAppNotification } from '../utils/notificationManager';
 import { broadcastPushNotification } from '../utils/fcmNotificationService';
@@ -795,8 +796,8 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
               filteredBloodRequests.filter(Boolean).map((req, rIdx) => {
                 const linkedPost = resolveLinkedHelpPost(req);
                 const isPoster = isPosterOfBloodReq(req, linkedPost);
-                const repliesList = Array.isArray(linkedPost?.replies) ? linkedPost.replies : [];
-                const offersCount = Math.max(repliesList.length, req.supportedCount || 0);
+                const repliesList = deduplicatePostReplies(Array.isArray(linkedPost?.replies) ? linkedPost.replies : [], linkedPost);
+                const offersCount = repliesList.length > 0 ? repliesList.length : Math.min(req.supportedCount || 0, 1);
                 const viewerPhone = (currentUser?.phone || (currentUser as any)?.whatsappNumber || '').replace(/\D/g, '');
                 const myReply = !isPoster && currentUser
                   ? repliesList.find((r: any) => {
@@ -812,6 +813,15 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                 const isSupported = Boolean(myReply || (req.id ? supportedBloodIds.includes(req.id) : false));
                 const isMyReplyConfirmed = Boolean(myReply && (myReply.isConfirmed || myReply.isAccepted));
                 const isFulfilled = Boolean(req.status === 'fulfilled' || linkedPost?.isResolved || linkedPost?.status === 'resolved');
+                const currentStepNum = isFulfilled
+                  ? 4
+                  : Boolean((linkedPost as any)?.bloodDonatedByHelper || Number((linkedPost as any)?.bloodWorkflowStep || 0) >= 4 || Number(myReply?.workflowStep || 0) >= 4)
+                  ? 4
+                  : Boolean(linkedPost?.isConfirmed || isMyReplyConfirmed || Number((linkedPost as any)?.bloodWorkflowStep || 0) >= 3 || Number(myReply?.workflowStep || 0) >= 3)
+                  ? 3
+                  : offersCount > 0 || isSupported
+                  ? 2
+                  : 1;
 
                 return (
                   <div
@@ -913,7 +923,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                               className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
                             >
                               <Users className="w-4 h-4" />
-                              <span>🩸 පරිත්‍යාගශීලීන් ({offersCount})</span>
+                              <span>🩸 පියවර {currentStepNum}/4 • පරිත්‍යාගශීලීන් ({offersCount})</span>
                             </button>
                           )}
                           {onOpenChat && (
@@ -923,15 +933,29 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                                 onClose();
                                 onOpenChat(linkedPost);
                               }}
-                              className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                              className="px-3.5 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-900 text-white font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-xs active:scale-95 transition-all cursor-pointer"
+                              title="අවශ්‍ය නම් පමණක් Chat කරන්න"
                             >
                               <MessageCircle className="w-4 h-4" />
-                              <span>පණිවිඩ (Chat)</span>
+                              <span>💬 Chat</span>
                             </button>
                           )}
                         </div>
                       ) : !isDemo && isSupported ? (
                         <div className="flex items-center gap-2 flex-wrap">
+                          {onOpenSupportOffers && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onClose();
+                                onOpenSupportOffers(linkedPost);
+                              }}
+                              className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-rose-600 to-orange-600 hover:from-rose-700 hover:to-orange-700 text-white font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                            >
+                              <HeartHandshake className="w-4 h-4" />
+                              <span>🩸 පියවර {currentStepNum}/4 ඉදිරියට යන්න</span>
+                            </button>
+                          )}
                           {onOpenChat && (
                             <button
                               type="button"
@@ -939,15 +963,16 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                                 onClose();
                                 onOpenChat(linkedPost);
                               }}
-                              className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                              className="px-3.5 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-900 text-white font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-xs active:scale-95 transition-all cursor-pointer"
+                              title="අවශ්‍ය නම් පමණක් Chat කරන්න"
                             >
                               <MessageCircle className="w-4 h-4" />
-                              <span>{isMyReplyConfirmed ? '✅ තෝරාගෙන ඇත • පණිවිඩ' : '💬 පණිවිඩ (Chat)'}</span>
+                              <span>💬 Chat</span>
                             </button>
                           )}
                           <a
                             href={`tel:${req.contactPhone}`}
-                            className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                            className="px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
                           >
                             <Phone className="w-4 h-4" />
                             <span>{req.contactPhone}</span>
