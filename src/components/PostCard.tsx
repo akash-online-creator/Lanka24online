@@ -512,6 +512,33 @@ onOfferSupport(post);
 onViewDetails(post.id);
 }
 };
+const pCodeUpper = String(post.postCode || '').toUpperCase();
+const isBloodCardType = Boolean(
+  post.postType === 'blood_request' ||
+  post.serviceType === 'blood_donation' ||
+  pCodeUpper.startsWith('#BLD-') ||
+  (post.tagName && String(post.tagName).includes('ලේ අවශ්‍යතාවය'))
+);
+const normCurrentPhone = (currentUser?.phone || (currentUser as any)?.whatsappPhone || (currentUser as any)?.whatsappNumber || '').replace(/\D/g, '');
+const myReply = !ownerCheck && Array.isArray(post.replies)
+  ? post.replies.find((r: any) => {
+      if (!r) return false;
+      if (r.responderId && myUserId && myUserId !== 'anonymous_guest' && String(r.responderId) === String(myUserId)) return true;
+      const rPhone = (r.responderPhone || '').replace(/\D/g, '');
+      if (normCurrentPhone.length >= 9 && rPhone.length >= 9 && normCurrentPhone.slice(-9) === rPhone.slice(-9)) return true;
+      if (currentUser?.name && r.responderName && currentUser.name.trim().toLowerCase() === r.responderName.trim().toLowerCase()) return true;
+      return false;
+    })
+  : null;
+const isMyReplyConfirmed = Boolean(
+  myReply && (
+    myReply.isConfirmed ||
+    myReply.isAccepted ||
+    (post.isConfirmed && (post.confirmedHelperName === myReply.responderName || post.confirmedHelperId === myReply.responderId))
+  )
+);
+const offersCount = Array.isArray(post.replies) ? post.replies.length : (post.repliesCount || 0);
+
 const handleSupportClick = (e: React.MouseEvent) => {
 e.stopPropagation();
 if (isDemo) {
@@ -524,6 +551,8 @@ return;
 }
 if (ownerCheck && onOpenSupportOffers) {
 onOpenSupportOffers(post);
+} else if (!ownerCheck && myReply && onOpenChat) {
+onOpenChat(post);
 } else if (onOfferSupport) {
 onOfferSupport(post);
 } else if (onOpenConfirm) {
@@ -616,6 +645,20 @@ title: 'Comment කරන්න'
 }, h(Send, { className: 'w-4 h-4' })))));
 };
 const renderInteractiveActionBar = () => {
+  const supportBtnLabel = (post as any)?.rawRedAlert
+    ? getLangText('🚨 රතු එළිය විස්තරය', '🚨 Red Alert Details', '🚨 சிவப்பு எச்சரிக்கை')
+    : ownerCheck
+      ? isBloodCardType
+        ? getLangText(`🩸 පරිත්‍යාගශීලීන් (${offersCount})`, `🩸 Donors (${offersCount})`, `🩸 கொடையாளர்கள் (${offersCount})`)
+        : getLangText(`සහායකයින් (${offersCount})`, `Helpers (${offersCount})`, `உதவியாளர்கள் (${offersCount})`)
+      : isMyReplyConfirmed
+        ? getLangText('✅ තෝරාගෙන ඇත • පණිවිඩ', '✅ Confirmed • Chat', '✅ உறுதி • Chat')
+        : myReply
+          ? getLangText('⏳ ඉදිරිපත් වී ඇත • පණිවිඩ', '⏳ Offered • Chat', '⏳ வழங்கப்பட்டது • Chat')
+          : isBloodCardType
+            ? getLangText('🩸 ලේ ලබාදෙන්න', '🩸 Donate Blood', '🩸 இரத்தம் வழங்கவும்')
+            : getLangText('සහාය වන්න', 'Help', 'உதவுக');
+
 return h('div', {
 onClick: (e: any) => e.stopPropagation(),
 className: 'mt-3 pt-2.5 border-t border-slate-100 dark:border-emerald-950/60 flex items-center justify-between gap-2 text-xs font-bold flex-wrap'
@@ -651,9 +694,9 @@ title: 'Inbox / Chat පණිවිඩයක් එවන්න'
 }, h(MessageCircle, { className: 'w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400' }), h('span', null, 'Inbox')), Boolean(onOfferSupport ? true : onOpenSupportOffers ? true : onOpenConfirm) ? h('button', {
 type: 'button',
 onClick: handleSupportClick,
-className: 'px-3 py-1.5 rounded-xl ' + ((post as any)?.rawRedAlert ? 'bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 ' : 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 ') + 'text-white flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 text-xs font-black shadow-sm',
-title: (post as any)?.rawRedAlert ? 'රතු එළිය විස්තරය සහ සත්‍ය/අසත්‍ය ලකුණු' : ownerCheck ? 'සහායකයින් බලන්න' : 'සහාය වන්න (Offer Support)'
-}, h(ownerCheck && !(post as any)?.rawRedAlert ? UserCheck : HelpCircle, { className: 'w-3.5 h-3.5' }), h('span', null, (post as any)?.rawRedAlert ? getLangText('🚨 රතු එළිය විස්තරය', '🚨 Red Alert Details', '🚨 சிவப்பு எச்சரிக்கை') : ownerCheck ? getLangText('සහායකයින්', 'Helpers', 'உதவியாளர்கள்') : getLangText('සහාය වන්න', 'Help', 'உதவுக'))) : null, canModify && onEditPost ? h('button', {
+className: 'px-3 py-1.5 rounded-xl ' + ((post as any)?.rawRedAlert || (isBloodCardType && !ownerCheck && !myReply) ? 'bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 ' : ownerCheck ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 ' : 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 ') + 'text-white flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 text-xs font-black shadow-sm',
+title: (post as any)?.rawRedAlert ? 'රතු එළිය විස්තරය සහ සත්‍ය/අසත්‍ය ලකුණු' : ownerCheck ? 'ඉදිරිපත් වූ සහායකයින් / පරිත්‍යාගශීලීන් බලන්න' : 'සහාය වන්න (Offer Support)'
+}, h(ownerCheck && !(post as any)?.rawRedAlert ? UserCheck : HelpCircle, { className: 'w-3.5 h-3.5' }), h('span', null, supportBtnLabel)) : null, canModify && onEditPost ? h('button', {
 type: 'button',
 onClick: handleEditClick,
 className: 'p-1.5 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/60 rounded-xl cursor-pointer active:scale-95',
@@ -676,7 +719,7 @@ const renderCardHeader = () => {
     loading: 'lazy',
     decoding: 'async',
     className: 'w-10 h-10 rounded-2xl object-cover border-2 border-emerald-500 shadow-md ring-2 ring-emerald-400/20'
-  }) : h('div', { className: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex items-center justify-center font-black text-sm shadow-md border-2 border-white dark:border-slate-800' }, authorName.charAt(0).toUpperCase()), ownerCheck && !isAnonymousPost ? h('span', { className: 'absolute -bottom-1 -right-1 bg-emerald-600 text-white rounded-full p-0.5 border border-white dark:border-slate-800 shadow-xs' }, h(UserCheck, { className: 'w-3 h-3' })) : null), h('div', { className: 'min-w-0 flex-1' }, h('div', { className: 'flex items-center gap-1.5 flex-wrap' }, h('h4', { className: 'font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm leading-snug truncate group-hover:text-emerald-600 transition-colors' }, authorName), isAnonymousPost ? h('span', { className: 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-zinc-300 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-slate-300 dark:border-slate-700' }, 'නම සඟවා ඇත') : null, ownerCheck ? h('span', { className: 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700' }, 'ඔබගේ') : null, isPrivatePost ? h('span', { className: 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-amber-300' }, '🔒 Private') : null, isScheduledPost ? h('span', { className: 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-sky-300' }, '📅 ' + (post.scheduledDate ? post.scheduledDate + ' ' + (post.scheduledTime ? post.scheduledTime : '') : 'Scheduled')) : null, h('span', { className: 'font-mono text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md' }, postCode), h('span', { className: 'inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/80' }, h(Zap, { className: 'w-2.5 h-2.5 text-emerald-600' }), h('span', null, '#' + tagDisplay.replace(/^#/, '')) /* TAG_END */ )), h('div', { className: 'flex items-center gap-2 text-[10px] text-slate-400 mt-0.5 flex-wrap' }, h('span', { className: 'flex items-center gap-1' }, h(Clock, { className: 'w-3 h-3 text-slate-400' }), h('span', null, formatPostDate(post.createdAt ? post.createdAt : post.createdAtIso))), h('span', null, '•'), h('span', { className: 'flex items-center gap-0.5 text-emerald-700 dark:text-emerald-400 font-medium' }, h(MapPin, { className: 'w-3 h-3' }), h('span', { className: 'truncate max-w-[140px]' }, nearestCity)), rawDistance !== null && !isDistanceHiddenFromUsers ? h('span', { className: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-md font-mono font-bold text-[9px]' }, rawDistance.toFixed(1) + ' km') : null, rawDistance !== null && isDistanceHiddenFromUsers && isAdmin ? h('span', { className: 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded-md font-mono font-bold text-[9px] border border-amber-300' }, '🔒 දුර (Admin): ' + rawDistance.toFixed(1) + ' km') : null))), isAdmin && (isAnonymousPost ? true : isDistanceHiddenFromUsers) ? h('div', { className: 'p-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-[10px] text-amber-900 dark:text-amber-200 shrink-0' }, h('div', { className: 'font-black flex items-center gap-1' }, h(Lock, { className: 'w-3 h-3 text-amber-600' }), h('span', null, 'Admin Audit:')), h('div', { className: 'truncate max-w-[140px] font-bold' }, 'නම: ' + (post.actualAuthorName ? post.actualAuthorName : post.userName ? post.userName : 'Unknown')), rawDistance !== null ? h('div', { className: 'font-mono text-[9px] text-amber-800 dark:text-amber-300' }, 'දුර: ' + rawDistance.toFixed(1) + ' km') : null) : null);
+  }) : h('div', { className: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex items-center justify-center font-black text-sm shadow-md border-2 border-white dark:border-slate-800' }, authorName.charAt(0).toUpperCase()), ownerCheck && !isAnonymousPost ? h('span', { className: 'absolute -bottom-1 -right-1 bg-emerald-600 text-white rounded-full p-0.5 border border-white dark:border-slate-800 shadow-xs' }, h(UserCheck, { className: 'w-3 h-3' })) : null), h('div', { className: 'min-w-0 flex-1' }, h('div', { className: 'flex items-center gap-1.5 flex-wrap' }, h('h4', { className: 'font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm leading-snug truncate group-hover:text-emerald-600 transition-colors' }, authorName), isAnonymousPost ? h('span', { className: 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-zinc-300 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-slate-300 dark:border-slate-700' }, 'නම සඟවා ඇත') : null, ownerCheck ? h('span', { className: 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 text-[9px] font-black px-2 py-0.5 rounded-full border border-emerald-400 dark:border-emerald-700' }, '👤 ඔබගේ (දැන්වීම්කරු)') : myReply ? h('span', { className: isMyReplyConfirmed ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 text-[9px] font-black px-2 py-0.5 rounded-full border border-emerald-400' : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200 text-[9px] font-black px-2 py-0.5 rounded-full border border-amber-400' }, isMyReplyConfirmed ? '✅ ඔබව සහායක ලෙස තෝරාගෙන ඇත' : '⏳ ඔබ සහයට ඉදිරිපත් වී ඇත') : null, isPrivatePost ? h('span', { className: 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-amber-300' }, '🔒 Private') : null, isScheduledPost ? h('span', { className: 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-sky-300' }, '📅 ' + (post.scheduledDate ? post.scheduledDate + ' ' + (post.scheduledTime ? post.scheduledTime : '') : 'Scheduled')) : null, h('span', { className: 'font-mono text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md' }, postCode), h('span', { className: 'inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/80' }, h(Zap, { className: 'w-2.5 h-2.5 text-emerald-600' }), h('span', null, '#' + tagDisplay.replace(/^#/, '')) /* TAG_END */ )), h('div', { className: 'flex items-center gap-2 text-[10px] text-slate-400 mt-0.5 flex-wrap' }, h('span', { className: 'flex items-center gap-1' }, h(Clock, { className: 'w-3 h-3 text-slate-400' }), h('span', null, formatPostDate(post.createdAt ? post.createdAt : post.createdAtIso))), h('span', null, '•'), h('span', { className: 'flex items-center gap-0.5 text-emerald-700 dark:text-emerald-400 font-medium' }, h(MapPin, { className: 'w-3 h-3' }), h('span', { className: 'truncate max-w-[140px]' }, nearestCity)), rawDistance !== null && !isDistanceHiddenFromUsers ? h('span', { className: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-md font-mono font-bold text-[9px]' }, rawDistance.toFixed(1) + ' km') : null, rawDistance !== null && isDistanceHiddenFromUsers && isAdmin ? h('span', { className: 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded-md font-mono font-bold text-[9px] border border-amber-300' }, '🔒 දුර (Admin): ' + rawDistance.toFixed(1) + ' km') : null))), isAdmin && (isAnonymousPost ? true : isDistanceHiddenFromUsers) ? h('div', { className: 'p-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-[10px] text-amber-900 dark:text-amber-200 shrink-0' }, h('div', { className: 'font-black flex items-center gap-1' }, h(Lock, { className: 'w-3 h-3 text-amber-600' }), h('span', null, 'Admin Audit:')), h('div', { className: 'truncate max-w-[140px] font-bold' }, 'නම: ' + (post.actualAuthorName ? post.actualAuthorName : post.userName ? post.userName : 'Unknown')), rawDistance !== null ? h('div', { className: 'font-mono text-[9px] text-amber-800 dark:text-amber-300' }, 'දුර: ' + rawDistance.toFixed(1) + ' km') : null) : null);
 };
 const renderValidityDurationForPoster = () => {
 if (!ownerCheck) return null;

@@ -20,7 +20,7 @@ X
 } from 'lucide-react';
 import { HelpPost, ChatMessage, User as UserType, Language } from '../types';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
-import { subscribeToChatMessages, sendChatMessageToFirestore, deleteChatMessageForEveryone, togglePinChatMessage } from '../lib/firebase';
+import { subscribeToChatMessages, sendChatMessageToFirestore, deleteChatMessageForEveryone, togglePinChatMessage, updateHelpPostInFirestore } from '../lib/firebase';
 import { parseTimeToMs, formatMessageClockTime } from '../utils/dateUtils';
 import {
 inspectAndSanitizeMessage,
@@ -150,7 +150,7 @@ language?: Language;
 lang?: Language;
 }
 export const QuickServiceChatModal = ({ post, isOpen, onClose, currentUser: currentUserProp, user: userProp, onNavigateToIssues, onOpenConfirm,
-onConfirmWorkflow, language = 'si', lang, }: QuickServiceChatModalProps) => {
+onConfirmWorkflow, onUpdatePost, language = 'si', lang, }: QuickServiceChatModalProps) => {
 const currentUser = (currentUserProp ? currentUserProp : userProp) as UserType;
 const activePropLang = (lang ? lang : language ? language : 'si') as Language;
 const handleConfirm = onConfirmWorkflow ? onConfirmWorkflow : onOpenConfirm;
@@ -295,8 +295,9 @@ m.senderName && rep.responderName && m.senderName.trim() === rep.responderName.t
 combined.push({ id: rep.id ? rep.id : 'rep_' + rIdx, senderName: rep.responderName ? rep.responderName : 'සහායක', senderRole: 'helper',
 text: rep.message ? rep.message : 'ඉක්මන් සේවාව සඳහා සහය වීමට කැමැත්ත පළ කර ඇත.', timestamp: formatMessageClockTime(rep.createdAt, repMs),
 createdAtMs: repMs, senderPhone: rep.responderPhone ? rep.responderPhone : '', senderId: rep.responderId ? rep.responderId : '', } as any);
-} }); } (firestoreMsgs ? firestoreMsgs : []).forEach((fMsg) => { if (!fMsg) return; const fMs = fMsg.createdAtMs ? fMsg.createdAtMs : parseTimeToMs(fMsg.timestamp);
-combined.push({ ...fMsg, createdAtMs: fMs, timestamp: formatMessageClockTime(fMsg.timestamp, fMs), }); }); combined.sort((a, b) => {
+} }); } (firestoreMsgs ? firestoreMsgs : []).forEach((fMsg: any) => { if (!fMsg) return; const fMs = fMsg.createdAtMs ? fMsg.createdAtMs : parseTimeToMs(fMsg.timestamp);
+const resolvedText = fMsg.text ? fMsg.text : fMsg.message ? fMsg.message : '';
+combined.push({ ...fMsg, text: resolvedText, createdAtMs: fMs, timestamp: formatMessageClockTime(fMsg.timestamp, fMs), }); }); combined.sort((a, b) => {
 const timeA = a.createdAtMs ? a.createdAtMs : parseTimeToMs(a.timestamp); const timeB = b.createdAtMs ? b.createdAtMs : parseTimeToMs(b.timestamp);
 return timeA - timeB; }); setAllPostMessages(combined); }); return () => unsubscribe(); }, [isOpen, post?.id, post?.replies]);
 const partnersList = useMemo(() => { if (!post) return []; const map: any = {}; const addPartner = (name?: string, phone?: string, id?: string, role?: string, lastText?: string, lastMs?: number) => {
@@ -497,7 +498,109 @@ useEffect(() => {
 }, [isOpen, activePartnerMessages, userLang, detectedOtherPartyLang]);
 useEffect(() => { if (isOpen) { chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); } }, [activePartnerMessages.length, selectedPartnerKey, isOpen]);
 if (!isOpen ? true : !post ? true : !currentUser) return null;
-const isConfirmed = Boolean(post.isConfirmed);
+const isBloodPost = Boolean(
+  post?.postType === 'blood_request' ||
+  post?.serviceType === 'blood_donation' ||
+  String(post?.postCode || '').toUpperCase().startsWith('#BLD-') ||
+  (post?.tagName && (String(post.tagName).includes('ලේ') || String(post.tagName).toLowerCase().includes('blood')))
+);
+const isBloodCompleted = Boolean(post?.isResolved || post?.status === 'resolved' || post?.serviceStage === 'completed');
+const isConfirmed = Boolean(post.isConfirmed || isBloodPost);
+
+const handleSendBloodStageMessage = async (stageText: string, stageAction?: 'confirm_donor' | 'complete_blood') => {
+  if (!activePartner || isSending) return;
+  const nowIso = new Date().toISOString();
+  const nowMs = Date.now();
+  const newMsg: any = {
+    senderName: currentUser?.name ? currentUser.name : 'පරිශීලක',
+    senderRole: isPostAuthor ? 'seeker' : 'helper',
+    text: stageText,
+    message: stageText,
+    timestamp: formatMessageClockTime(nowIso, nowMs),
+    createdAt: nowIso,
+    createdAtMs: nowMs,
+    senderPhone: currentUser?.phone ? currentUser.phone : (currentUser as any)?.whatsappNumber ? (currentUser as any).whatsappNumber : '',
+    senderId: currentUserId,
+    senderLang: userLang,
+    originalText: stageText,
+    recipientKey: activePartner.key,
+    recipientName: activePartner.name,
+    recipientPhone: activePartner.phone ? activePartner.phone : '',
+    recipientId: activePartner.id ? activePartner.id : '',
+  };
+  const localMsgWithId = { ...newMsg, id: 'stage_msg_' + nowMs };
+  const updatedPartnerMsgs = [...activePartnerMessages.filter((m) => !String(m.id).startsWith('init_welcome_')), localMsgWithId];
+  saveLocalPartnerMessages(post.id, activePartner.key, updatedPartnerMsgs);
+  setAllPostMessages((prev) => [...prev, localMsgWithId]);
+  setIsSending(true);
+  try {
+    await sendChatMessageToFirestore(post.id, newMsg);
+    if (stageAction === 'confirm_donor') {
+      const updatedReplies = Array.isArray(post.replies)
+        ? post.replies.map((r: any) =>
+            r.responderName === activePartner.name || r.responderPhone === activePartner.phone
+              ? { ...r, isAccepted: true, isConfirmed: true }
+              : r
+          )
+        : [];
+      const updatedPost: HelpPost = {
+        ...post,
+        replies: updatedReplies,
+        isConfirmed: true,
+        confirmedHelperId: activePartner.id || post.confirmedHelperId,
+        confirmedHelperName: activePartner.name || post.confirmedHelperName,
+        confirmedHelperPhone: activePartner.phone || post.confirmedHelperPhone,
+        confirmedBy: activePartner.name || post.confirmedBy,
+        confirmedAt: nowIso,
+        serviceStage: 'in_progress' as any,
+      };
+      if (onUpdatePost) onUpdatePost(updatedPost);
+      await updateHelpPostInFirestore(post.id, {
+        replies: updatedReplies,
+        isConfirmed: true,
+        confirmedHelperId: updatedPost.confirmedHelperId || '',
+        confirmedHelperName: updatedPost.confirmedHelperName || '',
+        confirmedHelperPhone: updatedPost.confirmedHelperPhone || '',
+        confirmedBy: updatedPost.confirmedBy || '',
+        confirmedAt: nowIso,
+        serviceStage: 'in_progress' as any,
+      });
+    } else if (stageAction === 'complete_blood') {
+      const updatedPost: HelpPost = {
+        ...post,
+        isConfirmed: true,
+        isResolved: true,
+        status: 'resolved',
+        serviceStage: 'completed' as any,
+      };
+      if (onUpdatePost) onUpdatePost(updatedPost);
+      await updateHelpPostInFirestore(post.id, {
+        isConfirmed: true,
+        isResolved: true,
+        status: 'resolved',
+        serviceStage: 'completed' as any,
+      });
+      try {
+        const rawBlood = localStorage.getItem('sahaya_blood_requests');
+        if (rawBlood) {
+          const parsedBlood = JSON.parse(rawBlood);
+          if (Array.isArray(parsedBlood)) {
+            const updatedBlood = parsedBlood.map((b: any) =>
+              b && (String(b.id) === String(post.id) || String(b.id) === String(post.postCode || '').replace('#', ''))
+                ? { ...b, status: 'fulfilled' }
+                : b
+            );
+            localStorage.setItem('sahaya_blood_requests', JSON.stringify(updatedBlood));
+          }
+        }
+      } catch {}
+    }
+  } catch (err) {
+    console.error('Failed to send blood stage message:', err);
+  } finally {
+    setIsSending(false);
+  }
+};
 const handleSend = async (e: React.FormEvent) => {
 e.preventDefault();
 if (!inputText.trim() ? true : isSending ? true : !activePartner) return;
@@ -708,7 +811,7 @@ h( 'div', { className: 'flex items-center justify-between gap-2' }, h( 'div', { 
 (activePartner?.name ? activePartner.name : 'U').charAt(0).toUpperCase() ), h('span', { className: 'w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-emerald-950 absolute bottom-0 right-0' })
 ), h( 'div', { className: 'min-w-0' }, h( 'div', { className: 'flex items-center gap-1.5 flex-wrap' }, h('h3', { className: 'text-sm sm:text-base font-black text-white truncate' }, activePartner?.name ? activePartner.name : post.userName),
 h( 'span', { className: 'text-[9px] bg-emerald-400/20 text-emerald-200 border border-emerald-400/30 px-1.5 py-0.5 rounded font-bold shrink-0' },
-activePartner?.role === 'seeker' ? 'දැන්වීම්කරු' : 'සහායක' ) ), h( 'p', { className: 'text-[11px] text-emerald-100/90 font-medium truncate max-w-xs sm:max-w-md' },
+activePartner?.role === 'seeker' ? '🏥 දැන්වීම්කරු' : isBloodPost ? '🩸 ලේ පරිත්‍යාගශීලියා (සහයක)' : 'සහායක' ) ), h( 'p', { className: 'text-[11px] text-emerald-100/90 font-medium truncate max-w-xs sm:max-w-md' },
 '📌 ' + inspectAndSanitizeMessage(post.whatHappened ? post.whatHappened : '', isConfirmed).sanitizedText ) ) ), h( 'div', { className: 'flex items-center gap-2 shrink-0' },
 activePartner ? h('button', {
   type: 'button',
@@ -722,7 +825,25 @@ activePartner ? h('button', {
   h(Pin, { className: 'w-3.5 h-3.5 ' + (pinnedPartnerKeys.includes(activePartner.key) ? 'fill-slate-950 text-slate-950' : 'text-white') }),
   h('span', { className: 'hidden sm:inline' }, pinnedPartnerKeys.includes(activePartner.key) ? 'Pinned Chat' : 'Pin Chat')
 ) : null,
-isConfirmed ? h( 'span', { className: 'text-[10px] bg-emerald-500 text-white px-2.5 py-1 rounded-lg font-black font-mono flex items-center gap-1 shadow-xs' },
+isBloodPost
+  ? isBloodCompleted
+    ? h('span', { className: 'text-[10px] bg-emerald-500 text-white px-2.5 py-1 rounded-lg font-black flex items-center gap-1 shadow-xs' },
+        h(CheckCircle, { className: 'w-3.5 h-3.5' }),
+        h('span', null, 'ලේ ලැබුණා • අවසන්')
+      )
+    : isPostAuthor
+      ? h('button', {
+          type: 'button',
+          onClick: () => handleSendBloodStageMessage(
+            `🎉 [පියවර 4/4 - ගනුදෙනුව සාර්ථකව අවසන්]\n🩸 රෝගියා සඳහා අවශ්‍ය රුධිරය සාර්ථකව ලැබුණි. උතුම් ජීවිතයක් බේරාගැනීමට දායක වූ "${activePartner?.name || 'පරිත්‍යාගශීලියා'}" වෙත හදපිරි ස්තූතිය පුද කරමු! 🙏❤️`,
+            'complete_blood'
+          ),
+          className: 'px-3 py-1 bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600 text-slate-950 font-black text-xs rounded-xl shadow-md flex items-center gap-1 transition-all active:scale-95 cursor-pointer'
+        }, h(CheckCircle, { className: 'w-3.5 h-3.5' }), h('span', null, 'ලේ ලැබුණා • අවසන් කරන්න'))
+      : h('span', { className: 'text-[10px] bg-rose-500/80 text-white px-2.5 py-1 rounded-lg font-black flex items-center gap-1 shadow-xs' },
+          h('span', null, '🩸 ලේ පරිත්‍යාග සංවාදය')
+        )
+  : isConfirmed ? h( 'span', { className: 'text-[10px] bg-emerald-500 text-white px-2.5 py-1 rounded-lg font-black font-mono flex items-center gap-1 shadow-xs' },
 h(CheckCircle, { className: 'w-3 h-3' }), h('span', null, 'CONFIRMED') ) : handleConfirm ? h( 'button', { type: 'button', onClick: () => {
 onClose(); handleConfirm(post); }, className: 'px-3 py-1 bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 hover:from-amber-500 text-slate-950 font-black text-xs rounded-xl shadow-md flex items-center gap-1 transition-all active:scale-95 cursor-pointer'
 }, h('span', null, 'Confirm') ) : null, h( 'button', { type: 'button', onClick: onClose, className: 'w-8 h-8 rounded-full bg-white/10 hover:bg-rose-600 text-white flex items-center justify-center font-bold text-xs transition-all cursor-pointer shadow-xs',
@@ -767,6 +888,30 @@ h( 'div', {
         h('span', { key: 'txt' }, 'Auto-Translate (' + userLangInfo.nativeName + ')')
       ]
 ) ),
+isBloodPost ? h('div', {
+  className: 'bg-rose-50/90 dark:bg-[#190a0e] border-b border-rose-200 dark:border-rose-900/60 px-3 py-2 shrink-0 space-y-1.5'
+},
+  h('div', { className: 'flex flex-wrap items-center justify-between gap-2 text-[11px]' },
+    h('div', { className: 'flex items-center gap-2 flex-wrap' },
+      h('span', { className: 'px-2 py-0.5 rounded-lg bg-white dark:bg-rose-950/80 border border-rose-300 dark:border-rose-800 font-black text-slate-800 dark:text-rose-200' },
+        '🏥 දැන්වීම්කරු: ' + (isPostAuthor ? (currentUser?.name || 'ඔබ') + ' (ඔබ)' : (post.userName || 'දැන්වීම්කරු'))
+      ),
+      h('span', { className: 'px-2 py-0.5 rounded-lg bg-rose-600 text-white font-black' },
+        '🩸 සහයක (පරිත්‍යාගශීලියා): ' + (!isPostAuthor ? (currentUser?.name || 'ඔබ') + ' (ඔබ)' : (activePartner?.name || 'පරිත්‍යාගශීලියා'))
+      )
+    ),
+    post.userPhone ? h('a', {
+      href: 'tel:' + post.userPhone,
+      className: 'px-2 py-0.5 rounded-lg bg-emerald-600 text-white font-mono font-black text-[10px] flex items-center gap-1'
+    }, h(Phone, { className: 'w-3 h-3' }), h('span', null, post.userPhone)) : null
+  ),
+  h('div', { className: 'grid grid-cols-4 gap-1 text-[10px] font-black text-center' },
+    h('div', { className: 'py-1 px-1 rounded-lg bg-emerald-600 text-white' }, '① ඉදිරිපත් වීම ✓'),
+    h('div', { className: 'py-1 px-1 rounded-lg ' + (post.isConfirmed ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-slate-950') }, post.isConfirmed ? '② තෝරාගැනීම ✓' : '② තෝරාගැනීම'),
+    h('div', { className: 'py-1 px-1 rounded-lg ' + (post.isConfirmed ? 'bg-sky-600 text-white' : 'bg-white/70 dark:bg-slate-800 text-slate-500') }, '③ රෝහලට පැමිණීම'),
+    h('div', { className: 'py-1 px-1 rounded-lg ' + (isBloodCompleted ? 'bg-emerald-600 text-white' : 'bg-white/70 dark:bg-slate-800 text-slate-500') }, isBloodCompleted ? '④ අවසන් ✓' : '④ අවසන් කිරීම')
+  )
+) : null,
 pinnedMessage ? h('div', {
   className: 'bg-gradient-to-r from-amber-500/20 via-amber-400/15 to-emerald-500/15 dark:from-amber-950/60 dark:to-[#071c12] border-b border-amber-400/40 px-3.5 py-2 flex items-center justify-between gap-2 text-xs shrink-0 animate-fadeIn'
 },
@@ -897,7 +1042,76 @@ h(Check, { className: 'w-3 h-3' }), h('span', null, 'Sent')
     ) : null
   ) : null
 ) : null
-) ); }), h('div', { ref: chatBottomRef }) ), h( 'div', { className: 'p-3 bg-white dark:bg-[#06180f] border-t border-slate-200 dark:border-[#0e3a24] shrink-0' },
+) ); }), h('div', { ref: chatBottomRef }) ),
+isBloodPost && !isBloodCompleted ? h('div', {
+  className: 'px-3 py-2 bg-rose-50/90 dark:bg-[#14080b] border-t border-rose-200 dark:border-rose-900/60 shrink-0 space-y-1.5'
+},
+  h('div', { className: 'text-[10px] font-black text-rose-800 dark:text-rose-300 flex items-center justify-between' },
+    h('span', null, isPostAuthor
+      ? '🏥 දැන්වීම්කරුගේ පියවර පණිවිඩ (1-Click යවන්න):'
+      : '🩸 ලේ පරිත්‍යාගශීලියාගේ (සහයක) පියවර පණිවිඩ (1-Click යවන්න):'
+    ),
+    h('span', { className: 'font-mono text-[9px] opacity-80' }, displayPostCode)
+  ),
+  h('div', { className: 'flex items-center gap-1.5 overflow-x-auto pb-0.5' },
+    ...(isPostAuthor
+      ? [
+          h('button', {
+            key: 'poster_step2',
+            type: 'button',
+            onClick: () => handleSendBloodStageMessage(
+              `✅ [පියවර 2/4 - පරිත්‍යාගශීලියා තහවුරු කිරීම]\n"${activePartner?.name || 'පරිත්‍යාගශීලියා'}", ඔබව ලේ පරිත්‍යාගය සඳහා තෝරාගෙන තහවුරු කරන ලදී. කරුණාකර ${post.locationName || 'රෝහල'} වෙත පැමිණෙන්න. දුරකථන: ${post.userPhone || ''}`,
+              'confirm_donor'
+            ),
+            className: 'px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black shrink-0 cursor-pointer shadow-xs active:scale-95'
+          }, '✅ 2. පරිත්‍යාගශීලියා තහවුරු කරන්න'),
+          h('button', {
+            key: 'poster_hosp',
+            type: 'button',
+            onClick: () => handleSendBloodStageMessage(
+              `📍 [රෝහල හා වාට්ටු විස්තර]\nරෝහල / ස්ථානය: ${post.locationName || 'රෝහල'}\nඅවශ්‍යතාවය: ${post.whatHappened || ''}\nදුරකථන: ${post.userPhone || ''}\nඔබ පැමිණෙන වේලාව දන්වන්න.`
+            ),
+            className: 'px-2.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-black shrink-0 cursor-pointer shadow-xs active:scale-95'
+          }, '📍 රෝහල / වාට්ටු විස්තර යවන්න'),
+          h('button', {
+            key: 'poster_step4',
+            type: 'button',
+            onClick: () => handleSendBloodStageMessage(
+              `🎉 [පියවර 4/4 - ගනුදෙනුව සාර්ථකව අවසන්]\n🩸 රෝගියා සඳහා අවශ්‍ය රුධිරය සාර්ථකව ලැබුණි. උතුම් ජීවිතයක් බේරාගැනීමට දායක වූ "${activePartner?.name || 'පරිත්‍යාගශීලියා'}" වෙත හදපිරි ස්තූතිය පුද කරමු! 🙏❤️`,
+              'complete_blood'
+            ),
+            className: 'px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-[11px] font-black shrink-0 cursor-pointer shadow-xs active:scale-95'
+          }, '🎉 4. ලේ ලැබුණා • ගනුදෙනුව අවසන් කරන්න')
+        ]
+      : [
+          h('button', {
+            key: 'donor_onway',
+            type: 'button',
+            onClick: () => handleSendBloodStageMessage(
+              `🚗 [පියවර 3/4 - පැමිණෙමින් සිටී]\nමම දැන් ${post.locationName || 'රෝහල'} වෙත ලේ ලබාදීම සඳහා පැමිණෙමින් සිටිමි.`
+            ),
+            className: 'px-2.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-black shrink-0 cursor-pointer shadow-xs active:scale-95'
+          }, '🚗 3. මම රෝහල වෙත පැමිණෙමින් සිටිමි'),
+          h('button', {
+            key: 'donor_arrived',
+            type: 'button',
+            onClick: () => handleSendBloodStageMessage(
+              `🏥 [පියවර 3/4 - රෝහලට පැමිණියා]\nමම දැන් ${post.locationName || 'රෝහල'} / ලේ බැංකුව වෙත පැමිණ සිටිමි. කරුණාකර මාව සම්බන්ධ කරගන්න.`
+            ),
+            className: 'px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black shrink-0 cursor-pointer shadow-xs active:scale-95'
+          }, '🏥 3. මම රෝහලට පැමිණියෙමි'),
+          h('button', {
+            key: 'donor_donated',
+            type: 'button',
+            onClick: () => handleSendBloodStageMessage(
+              `🩸 [පියවර 3/4 - ලේ පරිත්‍යාගය සිදු කළා]\nමම රෝගියා වෙනුවෙන් ලේ පරිත්‍යාගය සාර්ථකව සිදු කළෙමි. රෝගියාට ඉක්මන් සුවය ප්‍රාර්ථනා කරමි! 🙏`
+            ),
+            className: 'px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black shrink-0 cursor-pointer shadow-xs active:scale-95'
+          }, '🩸 3. ලේ පරිත්‍යාගය සිදු කළෙමි')
+        ])
+  )
+) : null,
+h( 'div', { className: 'p-3 bg-white dark:bg-[#06180f] border-t border-slate-200 dark:border-[#0e3a24] shrink-0' },
 isRecordingVoice ? h(AudioVoiceRecorder, { onSendAudio: handleSendVoiceAudio, onCancel: () => setIsRecordingVoice(false) }) : h( 'form',
 { onSubmit: handleSend, className: 'flex items-center gap-2' }, h( 'button', { type: 'button', onClick: () => setIsRecordingVoice(true),
 className: 'w-10 h-10 rounded-full bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0 transition-all active:scale-95 cursor-pointer',

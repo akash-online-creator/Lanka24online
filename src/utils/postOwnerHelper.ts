@@ -50,37 +50,75 @@ export const checkIsPostOwner = (
   if (!user || !post) return false;
   if ((user as any).isDemo) return false;
 
-  // 1. Primary check: Post's creator userId vs user's identifiers
-  const postUserId = post.userId ? String(post.userId).trim() : '';
-  const currentUserId = (user as any).userId || (user as any).uid ? String((user as any).userId || (user as any).uid).trim() : '';
-  const currentId = (user as any).id ? String((user as any).id).trim() : '';
+  const placeholderIds = new Set([
+    'anonymous_user',
+    'blood_requester',
+    'red_alert_reporter',
+    'helper_user',
+    'guest_user',
+    'unknown',
+  ]);
 
-  if (postUserId) {
-    if (currentUserId && postUserId.toLowerCase() === currentUserId.toLowerCase()) {
+  const userIdentifiers = new Set(
+    [
+      (user as any).userId,
+      (user as any).uid,
+      (user as any).id,
+      (user as any).nicNumber,
+      (user as any).nic,
+    ]
+      .filter(Boolean)
+      .map((v) => String(v).trim().toLowerCase())
+      .filter((v) => v.length > 0 && !placeholderIds.has(v))
+  );
+
+  const postIdentifiers = [
+    post.userId,
+    post.authorId,
+    (post as any).actualAuthorId,
+    (post as any).reportedByUserId,
+  ]
+    .filter(Boolean)
+    .map((v) => String(v).trim().toLowerCase())
+    .filter((v) => v.length > 0 && !placeholderIds.has(v));
+
+  for (const pid of postIdentifiers) {
+    if (userIdentifiers.has(pid)) {
       return true;
     }
-    if (currentId && postUserId.toLowerCase() === currentId.toLowerCase()) {
-      return true;
-    }
-    return false;
   }
 
-  // 2. Legacy fallback for old posts created without a post.userId:
-  const uPhone = normalizePhone((user as any).phone || (user as any).whatsappNumber);
-  const pPhone = normalizePhone(post.userPhone);
+  // Phone + Name fallback (also handles blood/disaster posts where contactNumber/contactPersonName was entered)
+  const uPhone = normalizePhone((user as any).phone || (user as any).whatsappPhone || (user as any).whatsappNumber);
+  const pPhones = [
+    normalizePhone(post.userPhone),
+    normalizePhone((post as any).contactNumber),
+    normalizePhone(post.contactPhone),
+  ].filter((p) => p.length >= 9);
+
   const phoneMatch = Boolean(
     uPhone &&
-    pPhone &&
     uPhone.length >= 9 &&
-    pPhone.length >= 9 &&
-    uPhone.slice(-9) === pPhone.slice(-9)
+    pPhones.some((pp) => pp.slice(-9) === uPhone.slice(-9))
   );
 
   const uName = ((user as any)?.name || '').trim().toLowerCase();
-  const pName = (post.userName || '').trim().toLowerCase();
-  const nameMatch = Boolean(uName && pName && uName === pName);
+  const pNames = [
+    post.userName,
+    (post as any).authorName,
+    (post as any).actualAuthorName,
+    (post as any).contactPersonName,
+  ]
+    .filter(Boolean)
+    .map((n) => String(n).trim().toLowerCase());
 
-  return phoneMatch && nameMatch;
+  const nameMatch = Boolean(uName && pNames.includes(uName));
+
+  if (postIdentifiers.length === 0) {
+    return Boolean(phoneMatch || nameMatch);
+  }
+
+  return Boolean(phoneMatch && (nameMatch || postIdentifiers.length === 0));
 };
 
 /**

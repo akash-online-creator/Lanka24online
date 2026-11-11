@@ -2345,6 +2345,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         lang={language}
         language={language}
         onUpdatePost={handleSaveUpdatedPost}
+        onOpenChat={setSelectedPostForChat as any}
       />
 
       {/* 4. Volunteer Support Opportunities Modal (Jobs / Gigs Hub) */}
@@ -2674,6 +2675,12 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onSubmitHelpPost={handleCreatePost}
         onOpenAidLedger={() => setIsAidLedgerModalOpen(true)}
         helpPosts={helpPosts}
+        onOfferSupport={(p) => setSelectedPostForOffer(p)}
+        onOpenChat={(p) => setSelectedPostForChat(p)}
+        onOpenSupportOffers={(p) => {
+          setTargetPostForOffers(p);
+          setIsSupportOffersModalOpen(true);
+        }}
       />
 
       {/* 24. Transparent Disaster Aid Ledger Modal (සහන ආධාර විනිවිදභාවය) */}

@@ -13,11 +13,13 @@ import {
   Trash2,
   UserX,
   XCircle,
-  AlertTriangle
+  AlertTriangle,
+  MessageCircle,
+  Phone
 } from 'lucide-react';
 import { HelpPost, PostReply, Language, LocationOption } from '../types';
 import { calculateMotorcycleRoadDistance } from '../utils/geoUtils';
-import { sendChatMessageToFirestore } from '../lib/firebase';
+import { sendChatMessageToFirestore, updateHelpPostInFirestore } from '../lib/firebase';
 
 interface SupportOffersModalProps {
   isOpen: boolean;
@@ -52,6 +54,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   onOpenConfirm,
   onSelectHelper,
   onCancelOffer,
+  onUpdatePost,
   targetPost,
 }) => {
   const [selectedPostIdFilter, setSelectedPostIdFilter] = useState<string>('all');
@@ -121,39 +124,113 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     .map((id) => (allOffers || []).find((o) => o?.post?.id === id)?.post)
     .filter((p): p is HelpPost => Boolean(p));
 
+  const isBloodPostCheck = (p: any): boolean => Boolean(
+    p?.postType === 'blood_request' ||
+    p?.serviceType === 'blood_donation' ||
+    String(p?.postCode || '').toUpperCase().startsWith('#BLD-') ||
+    (p?.tagName && (String(p.tagName).includes('ලේ') || String(p.tagName).toLowerCase().includes('blood')))
+  );
+
   const handleSelectAction = async (post: HelpPost, reply: PostReply) => {
-    // 1. Send automatic helper selection notification message
-    const postOwnerName = post.userName || 'ගැටලුව සිදුවු පුද්ගලයා';
-    const notificationText = `"${postOwnerName}" සහය සදහා ඔබ තොරාගෙන ඇත. ඔබ දෙදෙනා අතර ගැටලුවක් ඇති නොවන පරිදි සුහදශිලිව සහයවිමට වගබලාගන්න. ස්තුතියි ...!!!`;
+    const isBloodPost = isBloodPostCheck(post);
+    const isQuickService = Boolean(
+      !isBloodPost && (
+        (post as any).isQuickService ||
+        post.category === 'quick_service' ||
+        String(post.postCode || '').toUpperCase().startsWith('#QS-')
+      )
+    );
+
+    const postOwnerName = post.userName || 'දැන්වීම්කරු';
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+
+    const updatedReplies = (post.replies || []).map((r) =>
+      r.id === reply.id || (r.responderName === reply.responderName && r.responderPhone === reply.responderPhone)
+        ? { ...r, isAccepted: true, isConfirmed: true }
+        : r
+    );
+
+    const neededHelpers = post.helpersNeeded && post.helpersNeeded > 0 ? post.helpersNeeded : 1;
+    const totalAccepted = updatedReplies.filter((r) => r.isAccepted || r.isConfirmed).length;
+    const isComplete = totalAccepted >= neededHelpers;
+
+    const updatedPost: HelpPost = {
+      ...post,
+      replies: updatedReplies,
+      isConfirmed: true,
+      confirmedHelperId: reply.responderId || post.confirmedHelperId,
+      confirmedHelperName: reply.responderName || post.confirmedHelperName,
+      confirmedHelperPhone: reply.responderPhone || post.confirmedHelperPhone,
+      confirmedBy: reply.responderName || post.confirmedBy,
+      confirmedAt: nowIso,
+      serviceStage: 'in_progress' as any,
+    };
+
+    if (onUpdatePost) {
+      onUpdatePost(updatedPost);
+    }
+
+    try {
+      await updateHelpPostInFirestore(post.id, {
+        replies: updatedReplies,
+        isConfirmed: true,
+        confirmedHelperId: updatedPost.confirmedHelperId || '',
+        confirmedHelperName: updatedPost.confirmedHelperName || '',
+        confirmedHelperPhone: updatedPost.confirmedHelperPhone || '',
+        confirmedBy: updatedPost.confirmedBy || '',
+        confirmedAt: nowIso,
+        serviceStage: 'in_progress' as any,
+      });
+    } catch (err) {
+      console.warn('Firestore helper confirmation update note:', err);
+    }
+
+    // 1. Send automatic Step 2 helper selection notification message
+    const notificationText = isBloodPost
+      ? `✅ [පියවර 2/4 - පරිත්‍යාගශීලියා තෝරාගැනීම]\n🏥 දැන්වීම්කරු (${postOwnerName}) විසින් "${reply.responderName || 'පරිත්‍යාගශීලියා'}" ලේ පරිත්‍යාගය සඳහා තෝරාගෙන තහවුරු කරන ලදී.\n📍 ස්ථානය / රෝහල: ${post.locationName || 'රෝහල'}\n📞 දැන්වීම්කරුගේ දුරකථන: ${post.userPhone || ''}\nකරුණාකර රෝහල වෙත පැමිණෙන වේලාව පිළිබඳව මෙහි පණිවිඩයක් තබන්න. බොහොම ස්තූතියි!`
+      : `✅ "${postOwnerName}" සහය සදහා ඔබ තෝරාගෙන ඇත. ඔබ දෙදෙනා අතර ගැටලුවක් ඇති නොවන පරිදි සුහදශීලීව සහය වීමට වගබලාගන්න. ස්තුතියි!`;
 
     try {
       await sendChatMessageToFirestore(post.id, {
+        senderId: post.userId || (post as any).authorId || 'seeker',
         senderName: postOwnerName,
         senderRole: 'seeker',
-        text: notificationText,
-        timestamp: 'දැන්',
         senderPhone: post.userPhone || '',
+        text: notificationText,
+        message: notificationText,
+        recipientName: reply.responderName || '',
+        recipientPhone: reply.responderPhone || '',
+        recipientId: reply.responderId || '',
+        timestamp: 'දැන්',
+        createdAt: nowIso,
+        createdAtMs: nowMs,
       });
     } catch (err) {
       console.warn('Auto helper notification send note:', err);
     }
 
     if (onSelectHelper) {
-      onSelectHelper(post, reply);
-    }
-    if (onOpenConfirm) {
-      onOpenConfirm(post, reply);
+      onSelectHelper(updatedPost, reply);
     }
 
-    const neededHelpers = post.helpersNeeded && post.helpersNeeded > 0 ? post.helpersNeeded : 1;
-    const previouslyAccepted = (post.replies || []).filter(
-      (r) => r.id !== reply.id && (r.isAccepted || r.isConfirmed)
-    ).length;
-    const totalAccepted = previouslyAccepted + 1;
-    const isComplete = totalAccepted >= neededHelpers;
+    if (isQuickService && onOpenConfirm) {
+      onOpenConfirm(updatedPost, reply);
+    } else if (onOpenChat) {
+      setSuccessToast(
+        isBloodPost
+          ? `✅ "${reply.responderName || 'පරිත්‍යාගශීලියා'}" තෝරාගන්නා ලදී! දැන් පණිවිඩ හුවමාරුව (Chat) විවෘත වේ...`
+          : `✅ "${reply.responderName || 'සහායකයා'}" තෝරාගන්නා ලදී! (${totalAccepted}/${neededHelpers})`
+      );
+      setTimeout(() => {
+        onClose();
+        onOpenChat(updatedPost);
+      }, 650);
+      return;
+    }
 
     if (isComplete) {
-      setSuccessToast(`"${reply.responderName || 'සහායකයා'}" තෝරාගන්නා ලදී! අවශ්‍ය සහායකයින් ප්‍රමාණය සම්පූර්ණ බැවින් දැන්වීම ප්‍රධාන පුවරුවෙන් ඉවත් විය.`);
+      setSuccessToast(`"${reply.responderName || 'සහායකයා'}" තෝරාගන්නා ලදී! අවශ්‍ය සහායකයින් ප්‍රමාණය සම්පූර්ණයි.`);
     } else {
       setSuccessToast(`"${reply.responderName || 'සහායකයා'}" තෝරාගන්නා ලදී! (සහායකයින් ${totalAccepted}/${neededHelpers} තෝරාගෙන ඇත)`);
     }
@@ -330,6 +407,9 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
               const route = calculateMotorcycleRoadDistance(pLat, pLng, vLat, vLng, pName, vName, lang);
               const helperName = off.reply.responderName || 'නොදන්නා සහායක';
+              const helperPhone = off.reply.responderPhone || '';
+              const helperMessage = off.reply.message || '';
+              const isBloodOffer = isBloodPostCheck(off.post);
               const problemDesc = off.post.whatHappened || off.post.whatIsNeeded || 'ගැටලුවේ විස්තරය සටහන් කර නොමැත';
 
               return (
@@ -341,22 +421,39 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                       : 'bg-white dark:bg-[#0a1c12] border-orange-200/80 dark:border-orange-900/60 shadow-sm hover:shadow-md'
                   }`}
                 >
-                  {/* 1. කැමැත්ත පළකළ පුද්ගලයාගේ නම */}
+                  {/* 1. කැමැත්ත පළකළ පුද්ගලයාගේ නම හා භූමිකාව */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-lg shadow-sm shrink-0 ${
                         off.isSelected
                           ? 'bg-gradient-to-tr from-emerald-600 to-teal-600'
+                          : isBloodOffer
+                          ? 'bg-gradient-to-tr from-rose-600 to-red-600'
                           : 'bg-gradient-to-tr from-amber-500 to-orange-600'
                       }`}>
                         {(helperName || 'U').charAt(0).toUpperCase()}
                       </div>
 
                       <div className="min-w-0">
-                        <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                          කැමැත්ත පළකළ පුද්ගලයා:
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                            isBloodOffer
+                              ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border border-rose-300/60'
+                              : 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300/60'
+                          }`}>
+                            {isBloodOffer ? '🩸 ලේ පරිත්‍යාගශීලියා (සහයක)' : '🤝 සහයක (Helper)'}
+                          </span>
+                          {helperPhone && (
+                            <a
+                              href={`tel:${helperPhone}`}
+                              className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-300/50 hover:underline"
+                            >
+                              <Phone className="w-3 h-3" />
+                              <span>{helperPhone}</span>
+                            </a>
+                          )}
                         </div>
-                        <div className="text-base font-black text-slate-900 dark:text-white truncate">
+                        <div className="text-base font-black text-slate-900 dark:text-white truncate mt-0.5">
                           {helperName}
                         </div>
                       </div>
@@ -370,11 +467,23 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                     )}
                   </div>
 
+                  {/* සහයකයා එවූ පණිවිඩය (Step 1 Message) */}
+                  {helperMessage && (
+                    <div className="p-2.5 bg-emerald-50/70 dark:bg-[#071f14] rounded-xl border border-emerald-200 dark:border-emerald-900/60 space-y-1">
+                      <div className="text-[10px] font-black text-emerald-700 dark:text-emerald-300">
+                        💬 {isBloodOffer ? 'පරිත්‍යාගශීලියාගේ පණිවිඩය (පියවර 1):' : 'සහයකයාගේ පණිවිඩය:'}
+                      </div>
+                      <p className="text-xs font-semibold text-slate-800 dark:text-slate-100 whitespace-pre-wrap leading-relaxed">
+                        {helperMessage}
+                      </p>
+                    </div>
+                  )}
+
                   {/* 2. ගැටලුවේ විස්තරය */}
                   <div className="p-3 bg-slate-50 dark:bg-[#06140c] rounded-xl border border-slate-200/80 dark:border-slate-800/80 space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-black text-slate-700 dark:text-slate-300">
-                        ගැටලුවේ විස්තරය:
+                        {isBloodOffer ? 'ඔබගේ ලේ දැන්වීම:' : 'ගැටලුවේ විස්තරය:'}
                       </span>
                       <span className="text-[10px] font-mono font-black text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/80 px-2 py-0.2 rounded-md">
                         {off.post.postCode}
@@ -403,8 +512,8 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                     )}
                   </div>
 
-                  {/* 4. Action Buttons: 'තෝරාගන්න' (Select) and 'ඉවත් කරන්න' (Cancel) */}
-                  <div className="pt-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {/* 4. Action Buttons: 'තෝරාගන්න' (Select), 'පණිවිඩ (Chat)', and 'ඉවත් කරන්න' (Cancel) */}
+                  <div className="pt-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
                     {/* Select / Accepted Button */}
                     <button
                       type="button"
@@ -415,7 +524,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                           ? 'bg-emerald-600 text-white cursor-default opacity-95'
                           : 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-600/20 hover:shadow-emerald-600/40 border border-emerald-400/40'
                       }`}
-                      title={off.isSelected ? 'මෙම සහායකයා තෝරාගෙන ඇත' : 'මෙම සහායකයාව තෝරාගන්න'}
+                      title={off.isSelected ? 'මෙම සහායකයා තෝරාගෙන ඇත' : 'මෙම සහායකයාව තෝරාගන්න (පියවර 2)'}
                     >
                       {off.isSelected ? (
                         <>
@@ -425,10 +534,26 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                       ) : (
                         <>
                           <UserCheck className="w-4 h-4 text-white" />
-                          <span>{lang === 'en' ? 'Select Helper' : lang === 'ta' ? 'தேர்வு செய்க' : 'තෝරාගන්න'}</span>
+                          <span>{lang === 'en' ? 'Select' : lang === 'ta' ? 'தேர்வு செய்க' : 'තෝරාගන්න'}</span>
                         </>
                       )}
                     </button>
+
+                    {/* Direct Chat / Message Button */}
+                    {onOpenChat && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenChat(off.post);
+                        }}
+                        className="w-full py-2.5 sm:py-3 px-3 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-[0.98] bg-sky-600 hover:bg-sky-700 text-white shadow-sm"
+                        title="මෙම පරිත්‍යාගශීලියා / සහායකයා සමඟ පණිවිඩ හුවමාරු කරන්න"
+                      >
+                        <MessageCircle className="w-4 h-4 text-white" />
+                        <span>{lang === 'en' ? 'Chat' : lang === 'ta' ? 'அரட்டை' : 'පණිවිඩ (Chat)'}</span>
+                      </button>
+                    )}
 
                     {/* Cancel / Remove Offer Button */}
                     <button

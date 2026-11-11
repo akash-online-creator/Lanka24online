@@ -24,7 +24,8 @@ import {
   HeartHandshake,
   Trash2,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  MessageCircle
 } from 'lucide-react';
 import { BloodDonationRequest, VolunteerDonor, BloodGroup, Language, User as UserType } from '../types';
 import { maskName, maskPhone, maskAddress } from '../utils/demoDataMasker';
@@ -37,7 +38,7 @@ import {
   saveSupportedBloodIdsToStorage,
   purgeBloodRequestEverywhere,
 } from '../data/bloodAndDisasterData';
-import { checkIsAdmin } from '../utils/postOwnerHelper';
+import { checkIsAdmin, checkIsPostOwner } from '../utils/postOwnerHelper';
 import { 
   addDeletedBloodId, 
   addDeletedDonorId,
@@ -67,6 +68,9 @@ interface BloodAndDisasterModalProps {
   onOpenAidLedger?: () => void;
   onSubmitHelpPost?: (post: any) => Promise<any>;
   helpPosts?: any[];
+  onOfferSupport?: (post: any) => void;
+  onOpenChat?: (post: any) => void;
+  onOpenSupportOffers?: (post: any) => void;
 }
 
 export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
@@ -79,6 +83,9 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
   onOpenAidLedger,
   onSubmitHelpPost,
   helpPosts,
+  onOfferSupport,
+  onOpenChat,
+  onOpenSupportOffers,
 }) => {
   const isDemo = Boolean(currentUser?.isDemo);
   const [activeTab, setActiveTab] = useState<'blood_requests' | 'volunteer_donors'>(initialTab || 'blood_requests');
@@ -274,7 +281,12 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
         priorityLevel: 'emergency',
         isPinnedEmergency: true,
         contactNumber: newContactPhone,
-        contactPersonName: newContactName || 'සම්බන්ධීකාරක',
+        contactPersonName: newContactName || currentUser?.name || 'සම්බන්ධීකාරක',
+        userId: currentUser?.userId || (currentUser as any)?.id || currentUser?.nicNumber || 'blood_requester',
+        authorId: currentUser?.userId || (currentUser as any)?.id || currentUser?.nicNumber || 'blood_requester',
+        userName: newContactName || currentUser?.name || 'සම්බන්ධීකාරක',
+        userPhone: newContactPhone || currentUser?.phone || '',
+        helpersNeeded: Number(newUnitsNeeded) || 1,
         status: 'open',
       }).catch((e) => console.warn('Sync blood to help posts notice:', e));
     }
@@ -320,6 +332,43 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     }, 200);
   };
 
+  const resolveLinkedHelpPost = (req: BloodDonationRequest): any => {
+    const matched = (helpPosts || []).find(
+      (p) =>
+        p &&
+        (String(p.id) === String(req.id) ||
+          (req.postCode && p.postCode && String(p.postCode).toUpperCase() === String(req.postCode).toUpperCase()))
+    );
+    if (matched) return matched;
+    return {
+      id: req.id,
+      postCode: req.postCode || `#BLD-${String(req.id).slice(-4)}`,
+      category: 'emergency',
+      postType: 'blood_request',
+      serviceType: 'blood_donation',
+      bloodGroup: req.bloodGroup,
+      tagCategory: 'හදිසි / ආපදා',
+      tagName: `🩸 හදිසි ${req.bloodGroup} ලේ අවශ්‍යතාවය`,
+      title: `🩸 ${req.bloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${req.hospitalName}`,
+      headline: `🩸 ${req.bloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${req.hospitalName}`,
+      whatHappened: `🩸 ${req.bloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${req.hospitalName}`,
+      whatIsNeeded: `රෝගී නම: ${req.patientName} • ලේ වර්ගය: ${req.bloodGroup} • අවශ්‍ය ඒකක: ${req.unitsNeeded} • රෝහල: ${req.hospitalName} • දිස්ත්‍රික්කය: ${req.district} • අවශ්‍ය දිනය: ${req.neededDate || 'කඩිනමින්'} • සම්බන්ධීකාරක: ${req.contactName || 'සම්බන්ධීකාරක'} (${req.contactPhone})`,
+      locationName: `${req.hospitalName}, ${req.district}`,
+      district: req.district || 'කොළඹ',
+      userId: req.userId || 'blood_requester',
+      userName: req.contactName || req.patientName || 'දැන්වීම්කරු',
+      userPhone: req.contactPhone || '',
+      contactNumber: req.contactPhone || '',
+      contactPersonName: req.contactName || req.patientName || 'දැන්වීම්කරු',
+      helpersNeeded: req.unitsNeeded || 1,
+      status: req.status === 'fulfilled' ? 'resolved' : 'open',
+      isResolved: req.status === 'fulfilled',
+      createdAt: req.createdAt || 'දැන්',
+      createdAtMs: req.createdAtMs || Date.now(),
+      replies: [],
+    };
+  };
+
   // Support / Unlock Handlers
   const handleSupportBlood = (req: BloodDonationRequest) => {
     if (!supportedBloodIds.includes(req.id)) {
@@ -336,23 +385,38 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       setBloodRequests(updatedRequests);
       saveBloodRequestsToStorage(updatedRequests);
     }
-    alert(`ස්තූතියි! ${req.patientName} වෙනුවෙන් ලේ පරිත්‍යාගයට ඔබ සහය දැක්වීම අගය කරමු.\n\n📞 දුරකථන අංකය: ${req.contactPhone}\n(දැන් ඔබට සෘජුවම අමතා රෝගියාගේ පාර්ශවය හා සම්බන්ධ විය හැක)`);
+    const linkedPost = resolveLinkedHelpPost(req);
+    if (onOfferSupport) {
+      onClose();
+      onOfferSupport(linkedPost);
+      return;
+    }
+    if (onOpenChat) {
+      onClose();
+      onOpenChat(linkedPost);
+      return;
+    }
   };
 
   const isAdmin = checkIsAdmin(currentUser) || currentUser?.role === 'admin' || (currentUser as any)?.isAdmin === true;
 
-  const canDeleteBlood = (req: BloodDonationRequest) => {
-    if (isAdmin) return true;
+  const isPosterOfBloodReq = (req: BloodDonationRequest, linkedPost?: any) => {
     if (!currentUser || !req) return false;
-    const userPhone = (currentUser.phone || currentUser.whatsappNumber || '').replace(/\D/g, '');
+    if (linkedPost && checkIsPostOwner(currentUser, linkedPost)) return true;
+    const userPhone = (currentUser.phone || (currentUser as any).whatsappNumber || '').replace(/\D/g, '');
     const reqPhone = (req.contactPhone || '').replace(/\D/g, '');
     return Boolean(
-      (userPhone && reqPhone && userPhone === reqPhone) ||
+      (userPhone && reqPhone && (userPhone === reqPhone || userPhone.slice(-7) === reqPhone.slice(-7))) ||
       (currentUser?.name && req.contactName && currentUser?.name.trim().toLowerCase() === req.contactName.trim().toLowerCase()) ||
-      (currentUser.userId && req.userId && (currentUser.userId === req.userId || currentUser.id === req.userId)) ||
-      (currentUser.id && req.userId && (currentUser.id === req.userId || currentUser.userId === req.userId)) ||
+      (currentUser.userId && req.userId && (currentUser.userId === req.userId || (currentUser as any).id === req.userId)) ||
+      ((currentUser as any).id && req.userId && ((currentUser as any).id === req.userId || currentUser.userId === req.userId)) ||
       (currentUser.nicNumber && req.userId && currentUser.nicNumber === req.userId)
     );
+  };
+
+  const canDeleteBlood = (req: BloodDonationRequest) => {
+    if (isAdmin) return true;
+    return isPosterOfBloodReq(req);
   };
 
   const canDeleteDonor = (donor: VolunteerDonor) => {
@@ -734,11 +798,34 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
               </div>
             ) : (
               filteredBloodRequests.filter(Boolean).map((req, rIdx) => {
-                const isSupported = req.id ? supportedBloodIds.includes(req.id) : false;
+                const linkedPost = resolveLinkedHelpPost(req);
+                const isPoster = isPosterOfBloodReq(req, linkedPost);
+                const repliesList = Array.isArray(linkedPost?.replies) ? linkedPost.replies : [];
+                const offersCount = Math.max(repliesList.length, req.supportedCount || 0);
+                const viewerPhone = (currentUser?.phone || (currentUser as any)?.whatsappNumber || '').replace(/\D/g, '');
+                const myReply = !isPoster && currentUser
+                  ? repliesList.find((r: any) => {
+                      if (!r) return false;
+                      const rPhone = String(r.responderPhone || '').replace(/\D/g, '');
+                      return Boolean(
+                        (r.responderId && (r.responderId === currentUser.userId || r.responderId === (currentUser as any).id)) ||
+                        (viewerPhone && rPhone && (viewerPhone === rPhone || viewerPhone.slice(-7) === rPhone.slice(-7))) ||
+                        (currentUser.name && r.responderName && currentUser.name.trim().toLowerCase() === String(r.responderName).trim().toLowerCase())
+                      );
+                    })
+                  : null;
+                const isSupported = Boolean(myReply || (req.id ? supportedBloodIds.includes(req.id) : false));
+                const isMyReplyConfirmed = Boolean(myReply && (myReply.isConfirmed || myReply.isAccepted));
+                const isFulfilled = Boolean(req.status === 'fulfilled' || linkedPost?.isResolved || linkedPost?.status === 'resolved');
+
                 return (
                   <div
                     key={`blood_req_${req.id || 'r'}_${rIdx}`}
-                    className="p-4 bg-white dark:bg-[#071d12] border-2 border-rose-200 dark:border-rose-950 rounded-2xl shadow-xs hover:border-rose-400 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    className={`p-4 bg-white dark:bg-[#071d12] border-2 rounded-2xl shadow-xs transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                      isPoster
+                        ? 'border-emerald-400/80 dark:border-emerald-700'
+                        : 'border-rose-200 dark:border-rose-950 hover:border-rose-400'
+                    }`}
                   >
                     <div className="flex items-start gap-3">
                       {/* Big Blood Badge */}
@@ -752,10 +839,28 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                           <span className="font-mono text-xs font-black bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-200 px-2.5 py-0.5 rounded-md border border-rose-300 dark:border-rose-800">
                             {req.postCode}
                           </span>
+                          {isPoster ? (
+                            <span className="text-[10px] bg-emerald-600 text-white font-black px-2.5 py-0.5 rounded-full shadow-xs">
+                              👤 ඔබගේ දැන්වීම (දැන්වීම්කරු)
+                            </span>
+                          ) : isMyReplyConfirmed ? (
+                            <span className="text-[10px] bg-emerald-600 text-white font-black px-2.5 py-0.5 rounded-full shadow-xs">
+                              ✅ තෝරාගත් පරිත්‍යාගශීලියා (ඔබ)
+                            </span>
+                          ) : isSupported ? (
+                            <span className="text-[10px] bg-amber-500 text-slate-950 font-black px-2.5 py-0.5 rounded-full shadow-xs">
+                              ⏳ ඉදිරිපත් වී ඇත (සහයක)
+                            </span>
+                          ) : null}
+                          {isFulfilled && (
+                            <span className="text-[10px] bg-teal-600 text-white font-black px-2.5 py-0.5 rounded-full">
+                              🎉 ලේ ලැබුණා • අවසන්
+                            </span>
+                          )}
                           <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
                             {maskName(req.patientName, isDemo)} වෙනුවෙන් (පයින්ට් {req.unitsNeeded}ක්)
                           </h4>
-                          {req.urgency === 'urgent' && (
+                          {req.urgency === 'urgent' && !isFulfilled && (
                             <span className="text-[9px] bg-red-600 text-white font-extrabold px-2 py-0.5 rounded-full animate-pulse">
                               🚨 හදිසි (Urgent)
                             </span>
@@ -768,7 +873,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                               title={isAdmin ? "පරිපාලක ලෙස ලේ ඉල්ලීම ඉවත් කරන්න (Admin Delete)" : "ලේ ඉල්ලීම ඉවත් කරන්න (Delete)"}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
-                              <span>{isAdmin ? 'ඉවත් කරන්න (Admin)' : 'ඉවත් කරන්න'}</span>
+                              <span>{isAdmin && !isPoster ? 'ඉවත් කරන්න (Admin)' : 'ඉවත් කරන්න'}</span>
                             </button>
                           )}
                         </div>
@@ -780,11 +885,14 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
 
                         <div className="flex items-center gap-3 flex-wrap text-[11px] text-slate-500 dark:text-slate-400">
                           <span>
+                            🏥 දැන්වීම්කරු: <strong className="text-slate-700 dark:text-slate-300">{req.contactName || req.patientName}</strong>
+                          </span>
+                          <span>
                             🗓️ අවශ්‍ය දිනය: <strong className="text-slate-700 dark:text-slate-300">{req.neededDate}</strong>
                           </span>
                           <span className="flex items-center gap-1 font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-900">
                             <Users className="w-3 h-3" />
-                            <span>සහය දැක්වූවන්: {req.supportedCount || 0}ක්</span>
+                            <span>පරිත්‍යාගශීලීන්: {offersCount}ක්</span>
                           </span>
                         </div>
 
@@ -796,29 +904,75 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                       </div>
                     </div>
 
-                    {/* Contact & Support Button Area */}
+                    {/* Role-Aware Action Area for Poster vs Donor/Helper */}
                     <div className="flex items-center gap-2 shrink-0 self-end sm:self-center flex-wrap">
-                      {!isDemo && isSupported ? (
+                      {isPoster ? (
                         <div className="flex items-center gap-2 flex-wrap">
-                          <div className="px-3.5 py-2.5 bg-emerald-50 dark:bg-emerald-950/60 border-2 border-emerald-300 dark:border-emerald-800 rounded-2xl flex items-center gap-2 text-xs sm:text-sm text-emerald-800 dark:text-emerald-200 shadow-xs">
-                            <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
-                            <span className="font-mono font-black">{req.contactPhone}</span>
-                          </div>
-
+                          {onOpenSupportOffers && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onClose();
+                                onOpenSupportOffers(linkedPost);
+                              }}
+                              className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                            >
+                              <Users className="w-4 h-4" />
+                              <span>🩸 පරිත්‍යාගශීලීන් ({offersCount})</span>
+                            </button>
+                          )}
+                          {onOpenChat && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onClose();
+                                onOpenChat(linkedPost);
+                              }}
+                              className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                            >
+                              <MessageCircle className="w-4 h-4" />
+                              <span>පණිවිඩ (Chat)</span>
+                            </button>
+                          )}
+                        </div>
+                      ) : !isDemo && isSupported ? (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {onOpenChat && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onClose();
+                                onOpenChat(linkedPost);
+                              }}
+                              className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                            >
+                              <MessageCircle className="w-4 h-4" />
+                              <span>{isMyReplyConfirmed ? '✅ තෝරාගෙන ඇත • පණිවිඩ' : '💬 පණිවිඩ (Chat)'}</span>
+                            </button>
+                          )}
                           <a
                             href={`tel:${req.contactPhone}`}
-                            className="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg active:scale-95 transition-all cursor-pointer"
+                            className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
                           >
                             <Phone className="w-4 h-4" />
-                            <span>අමතන්න</span>
+                            <span>{req.contactPhone}</span>
                           </a>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 flex-wrap">
-                          <div className="px-3.5 py-2.5 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl flex items-center gap-2 text-xs sm:text-sm text-slate-500 font-bold">
-                            <Lock className="w-4 h-4 text-slate-400" />
-                            <span className="font-mono tracking-widest">{maskPhone(req.contactPhone, true)}</span>
-                          </div>
+                          {onOpenChat && !isDemo && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onClose();
+                                onOpenChat(linkedPost);
+                              }}
+                              className="px-3.5 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-black text-xs sm:text-sm flex items-center gap-1.5 border border-slate-300 dark:border-slate-700 cursor-pointer"
+                            >
+                              <MessageCircle className="w-4 h-4 text-emerald-600" />
+                              <span>පණිවිඩ</span>
+                            </button>
+                          )}
 
                           <button
                             type="button"
@@ -829,10 +983,10 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                               }
                               handleSupportBlood(req);
                             }}
-                            className="px-5 py-3 rounded-2xl bg-gradient-to-r from-rose-600 via-red-600 to-rose-700 hover:from-rose-700 hover:to-red-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg active:scale-95 transition-all cursor-pointer border-2 border-rose-300/80 hover:scale-105"
+                            className="px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl bg-gradient-to-r from-rose-600 via-red-600 to-rose-700 hover:from-rose-700 hover:to-red-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg active:scale-95 transition-all cursor-pointer border-2 border-rose-300/80 hover:scale-105"
                           >
                             <HeartHandshake className="w-4 h-4 text-rose-200" />
-                            <span>මම සහය වෙමි</span>
+                            <span>🩸 ලේ ලබාදෙන්න</span>
                           </button>
                         </div>
                       )}
