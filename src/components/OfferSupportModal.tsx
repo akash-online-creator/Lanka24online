@@ -113,7 +113,7 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
       message: finalMsg,
       createdAt: new Date().toLocaleString('si-LK'),
       createdAtMs: nowMs,
-      ...(isBloodPost ? { workflowStep: 2 } : {}),
+      workflowStep: 2,
     } as any;
 
     const existingReplies = Array.isArray(post.replies) ? post.replies : [];
@@ -136,13 +136,9 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
       replies: updatedReplies,
       repliesCount: updatedReplies.length,
       helpersCount: updatedReplies.length,
-      ...(isBloodPost
-        ? {
-            bloodWorkflowStep: 2,
-            lastStepUpdatedAtMs: nowMs,
-            lastStepByRole: 'helper',
-          }
-        : {}),
+      lastStepUpdatedAtMs: nowMs,
+      lastStepByRole: 'helper',
+      ...(isBloodPost ? { bloodWorkflowStep: 2 } : {}),
     } as any;
 
     if (onUpdatePost) {
@@ -157,7 +153,7 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
           if (Array.isArray(parsed)) {
             const nextBlood = parsed.map((b: any) => {
               if (b && (String(b.id) === String(post.id) || (b.postCode && b.postCode === post.postCode))) {
-                return { ...b, supportedCount: updatedReplies.length };
+                return { ...b, replies: updatedReplies, supportedCount: updatedReplies.length };
               }
               return b;
             });
@@ -175,16 +171,14 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
 
     try {
       await updateHelpPostInFirestore(post.id, {
+        postCode: post.postCode,
+        postType: post.postType,
         replies: updatedReplies,
         repliesCount: updatedReplies.length,
         helpersCount: updatedPost.helpersCount,
-        ...(isBloodPost
-          ? {
-              bloodWorkflowStep: 2,
-              lastStepUpdatedAtMs: nowMs,
-              lastStepByRole: 'helper',
-            }
-          : {}),
+        lastStepUpdatedAtMs: nowMs,
+        lastStepByRole: 'helper',
+        ...(isBloodPost ? { bloodWorkflowStep: 2 } : {}),
       } as any);
     } catch (_) {}
 
@@ -201,7 +195,7 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
     null,
     h(
       'div',
-      { className: 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fadeIn' },
+      { className: 'fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fadeIn' },
       h(
         'div',
         {

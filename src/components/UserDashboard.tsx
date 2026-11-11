@@ -229,6 +229,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const seenPostIdsRef = useRef<Set<string>>(new Set());
   const seenReplyCountsRef = useRef<Map<string, number>>(new Map());
   const seenWorkflowStepsRef = useRef<Map<string, number>>(new Map());
+  const seenStepTimestampsRef = useRef<Map<string, number>>(new Map());
   const isFirstPostsSnapshotRef = useRef(true);
 
   const t = translations[language];
@@ -415,6 +416,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             seenPostIdsRef.current.add(pid);
             seenReplyCountsRef.current.set(pid, Array.isArray(p.replies) ? p.replies.length : 0);
             seenWorkflowStepsRef.current.set(pid, getPostStepNumber(p));
+            seenStepTimestampsRef.current.set(pid, Number(p.lastStepUpdatedAtMs || 0));
             if (p.lastMessageTimeMs) {
               lastSeenChatTimestampsRef.current.set(p.id, Number(p.lastMessageTimeMs));
             }
@@ -436,6 +438,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               seenPostIdsRef.current.add(pid);
               seenReplyCountsRef.current.set(pid, Array.isArray(p.replies) ? p.replies.length : 0);
               seenWorkflowStepsRef.current.set(pid, getPostStepNumber(p));
+              seenStepTimestampsRef.current.set(pid, Number(p.lastStepUpdatedAtMs || 0));
               if (!isSelfCreated) {
                 const pCode = String(p.postCode || '');
                 const pTitle = String(p.headline || p.title || p.whatHappened || 'නව දැන්වීමක්');
@@ -468,11 +471,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               const prevReplyCount = seenReplyCountsRef.current.get(pid) || 0;
               const newStep = getPostStepNumber(p);
               const prevStep = seenWorkflowStepsRef.current.get(pid) || 1;
+              const newStepTime = Number(p.lastStepUpdatedAtMs || 0);
+              const prevStepTime = seenStepTimestampsRef.current.get(pid) || 0;
 
               seenReplyCountsRef.current.set(pid, currentReplies.length);
               seenWorkflowStepsRef.current.set(pid, newStep);
+              seenStepTimestampsRef.current.set(pid, newStepTime);
 
-              const myReply = !isOwner && currentU
+              const myReply = currentU
                 ? currentReplies.find((r: any) => {
                     if (!r) return false;
                     const rPhone = String(r.responderPhone || '').replace(/\D/g, '');
@@ -485,21 +491,36 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                   })
                 : null;
 
+              const isBlood =
+                String(p.postCode || '').toUpperCase().startsWith('#BLD-') ||
+                p.postType === 'blood_request' ||
+                p.serviceType === 'blood_donation' ||
+                Boolean(p.bloodGroup);
+
               // Step 1 completed by Helper/Donor -> Auto Pop-Up on Poster's screen for Step 2!
-              if (isOwner && (currentReplies.length > prevReplyCount || (newStep === 2 && prevStep < 2))) {
+              if (
+                isOwner &&
+                currentReplies.length > 0 &&
+                (currentReplies.length > prevReplyCount ||
+                  (newStep === 2 && prevStep < 2) ||
+                  (newStepTime > prevStepTime && p.lastStepByRole === 'helper' && newStep === 2))
+              ) {
                 const latestRep = currentReplies[currentReplies.length - 1];
-                const repPhone = String(latestRep?.responderPhone || '').replace(/\D/g, '');
-                const isRepFromMe = Boolean(
-                  (latestRep?.responderId && currentUserId && String(latestRep.responderId) === String(currentUserId)) ||
-                  (repPhone.length >= 9 && currentUserPhone.length >= 9 && repPhone.slice(-9) === currentUserPhone.slice(-9))
+                const isStrictlySameUserId = Boolean(
+                  latestRep?.responderId &&
+                    currentUserId &&
+                    String(latestRep.responderId) === String(currentUserId) &&
+                    p.lastStepByRole !== 'helper'
                 );
-                if (latestRep && !isRepFromMe) {
+                if (latestRep && !isStrictlySameUserId) {
                   setTargetPostForOffers(p);
                   setIsSupportOffersModalOpen(true);
                   triggerSupportOfferAlert({
                     postId: pid,
                     postAuthorId: currentUserId,
-                    postTitle: `"${latestRep.responderName || 'සහයකයා'}" සහය ලබාදීමට ඉදිරිපත් වී ඇත. තෝරාගන්නවාද?`,
+                    postTitle: isBlood
+                      ? `"${latestRep.responderName || 'පරිත්‍යාගශීලියා'}" ලේ ලබාදීමට ඉදිරිපත් වී ඇත. ඔබ මොහුව තෝරාගන්නවාද?`
+                      : `"${latestRep.responderName || 'සහයකයා'}" සහය ලබාදීමට ඉදිරිපත් වී ඇත. ඔබ මොහුව තෝරාගන්නවාද?`,
                     helperName: latestRep.responderName || 'සහයකයා',
                     helperPhone: latestRep.responderPhone || '',
                     helperMsg: latestRep.message || '',
@@ -509,13 +530,20 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               }
 
               // Step 2 completed by Poster -> Auto Pop-Up on Donor/Helper's screen for Step 3!
-              if (!isOwner && Boolean(myReply) && newStep === 3 && prevStep < 3) {
+              if (
+                (!isOwner || Boolean(myReply)) &&
+                Boolean(myReply) &&
+                newStep === 3 &&
+                (prevStep < 3 || (newStepTime > prevStepTime && p.lastStepByRole === 'poster'))
+              ) {
                 setTargetPostForOffers(p);
                 setIsSupportOffersModalOpen(true);
                 triggerSupportOfferAlert({
                   postId: pid,
                   postAuthorId: currentUserId,
-                  postTitle: 'දැන්වීම්කරු ඔබව තෝරාගෙන ඇත. ඔබ ලේ පරිත්‍යාගය සිදු කළාද?',
+                  postTitle: isBlood
+                    ? 'දැන්වීම්කරු ඔබව තෝරාගෙන ඇත. ඔබ රෝහලට ගොස් ලේ පරිත්‍යාගය සිදු කළාද?'
+                    : 'දැන්වීම්කරු ඔබව තෝරාගෙන ඇත. ඔබ අදාළ සහය ලබා දුන්නාද?',
                   helperName: p.userName || 'දැන්වීම්කරු',
                   helperPhone: p.userPhone || '',
                   helperMsg: '',
@@ -524,15 +552,22 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               }
 
               // Step 3 completed by Donor -> Auto Pop-Up on Poster's screen for Step 4!
-              if (isOwner && newStep === 4 && prevStep < 4) {
-                const activeRep = currentReplies.find((r: any) => r?.bloodDonatedByHelper || r?.isConfirmed) || currentReplies[0];
+              if (
+                isOwner &&
+                newStep === 4 &&
+                (prevStep < 4 || (newStepTime > prevStepTime && p.lastStepByRole === 'helper'))
+              ) {
+                const activeRep =
+                  currentReplies.find((r: any) => r?.bloodDonatedByHelper || r?.isConfirmed) || currentReplies[0];
                 setTargetPostForOffers(p);
                 setIsSupportOffersModalOpen(true);
                 triggerSupportOfferAlert({
                   postId: pid,
                   postAuthorId: currentUserId,
-                  postTitle: `"${activeRep?.responderName || 'පරිත්‍යාගශීලියා'}" ලේ පරිත්‍යාග කළ බව දන්වා ඇත. රුධිරය ලැබුණාද?`,
-                  helperName: activeRep?.responderName || 'පරිත්‍යාගශීලියා',
+                  postTitle: isBlood
+                    ? `"${activeRep?.responderName || 'පරිත්‍යාගශීලියා'}" ලේ පරිත්‍යාග කළ බව දන්වා ඇත. ඔබට රුධිරය ලැබුණාද?`
+                    : `"${activeRep?.responderName || 'සහයකයා'}" සහය ලබා දුන් බව දන්වා ඇත. ඔබට සහය ලැබුණාද?`,
+                  helperName: activeRep?.responderName || 'සහයකයා',
                   helperPhone: activeRep?.responderPhone || '',
                   helperMsg: '',
                   timestamp: Date.now(),
@@ -540,13 +575,20 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               }
 
               // Step 4 completed by Poster -> Auto Pop-Up final completion notice on Donor's screen!
-              if (!isOwner && Boolean(myReply) && newStep === 5 && prevStep < 5) {
+              if (
+                (!isOwner || Boolean(myReply)) &&
+                Boolean(myReply) &&
+                newStep === 5 &&
+                (prevStep < 5 || (newStepTime > prevStepTime && p.lastStepByRole === 'poster'))
+              ) {
                 setTargetPostForOffers(p);
                 setIsSupportOffersModalOpen(true);
                 triggerSupportOfferAlert({
                   postId: pid,
                   postAuthorId: currentUserId,
-                  postTitle: '🎉 ලේ පරිත්‍යාග කටයුත්ත සාර්ථකව අවසන් විය! බොහෝම ස්තූතියි.',
+                  postTitle: isBlood
+                    ? '🎉 ලේ පරිත්‍යාග කටයුත්ත සාර්ථකව අවසන් විය! බොහෝම ස්තූතියි.'
+                    : '🎉 සහය ලබාදීමේ කටයුත්ත සාර්ථකව අවසන් විය! බොහෝම ස්තූතියි.',
                   helperName: p.userName || 'දැන්වීම්කරු',
                   helperPhone: p.userPhone || '',
                   helperMsg: '',
@@ -1174,7 +1216,27 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   // Core Post Edit & Save Handler
   const handleSaveUpdatedPost = async (updatedPost: HelpPost) => {
-    setLocalHelpPosts((prev) => (prev || []).map((p) => (p && p.id === updatedPost.id ? updatedPost : p)));
+    const upCode = String(updatedPost.postCode || '').trim().toUpperCase();
+    let matchedAltId: string | null = null;
+
+    setLocalHelpPosts((prev) => {
+      const list = prev || [];
+      let found = false;
+      const next = list.map((p) => {
+        if (!p) return p;
+        const pCode = String(p.postCode || '').trim().toUpperCase();
+        if (p.id === updatedPost.id || (upCode && pCode && pCode === upCode)) {
+          found = true;
+          if (p.id !== updatedPost.id) matchedAltId = p.id;
+          return { ...p, ...updatedPost, id: p.id };
+        }
+        return p;
+      });
+      const finalNext = found ? next : [updatedPost, ...next];
+      saveHelpPostsToStorage(finalNext);
+      return finalNext;
+    });
+
     if (propOnUpdatePost) {
       propOnUpdatePost(updatedPost);
     }
@@ -1184,8 +1246,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     if (selectedPostForChat?.id === updatedPost.id) {
       setSelectedPostForChat(updatedPost);
     }
+    if (targetPostForOffers && (targetPostForOffers.id === updatedPost.id || (upCode && String(targetPostForOffers.postCode || '').trim().toUpperCase() === upCode))) {
+      setTargetPostForOffers((prev) => (prev ? { ...prev, ...updatedPost, id: prev.id } : updatedPost));
+    }
     try {
       await updateHelpPostInFirestore(updatedPost.id, updatedPost);
+      if (matchedAltId && matchedAltId !== updatedPost.id) {
+        await updateHelpPostInFirestore(matchedAltId, updatedPost);
+      }
     } catch (err) {
       console.warn('Updated locally, cloud notice:', err);
     }
@@ -1479,9 +1547,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       if (!isOwner && !isViewerAdmin) return false;
     }
 
-    // 01. දැන්වීමට අවශ්‍ය සහයකයින් ගණන තෝරාගත් පසු හෝ සේවාව අවසන් වූ පසු දැන්වීම ප්‍රධාන පුවරුවෙන් ඉවත් කිරීම
+    // 01. දැන්වීමට අවශ්‍ය සහයකයින් ගණන තෝරාගත් පසු හෝ සේවාව අවසන් වූ පසු දැන්වීම ප්‍රධාන පුවරුවෙන් ඉවත් කිරීම (දැන්වීම්කරුට අවසන් වන තුරුම පෙනේ)
     if (boardCategoryFilter !== 'resolved') {
-      if (isPostHelpersSatisfiedOrFilled(post)) {
+      const isOwner = checkIsPostOwner(user, post);
+      if (!isOwner && isPostHelpersSatisfiedOrFilled(post)) {
+        return false;
+      }
+      if (isOwner && (post.isResolved || post.status === 'resolved')) {
         return false;
       }
     }
@@ -1960,24 +2032,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  const isQuickActive = Boolean(
-                    myActivePost.postType === 'quick_service'
-                      ? true
-                      : myActivePost.category === 'quick_services'
-                      ? true
-                      : myActivePost.category === 'quick'
-                      ? true
-                      : myActivePost.serviceType === 'quick_services'
-                      ? true
-                      : myActivePost.tagCategory === 'ඉක්මන් සේවා'
-                  );
-                  if (isQuickActive) {
-                    setSelectedPostForDetail(myActivePost);
-                  } else {
-                    stopContinuousSupportBell();
-                    setTargetPostForOffers(myActivePost);
-                    setIsSupportOffersModalOpen(true);
-                  }
+                  stopContinuousSupportBell();
+                  setTargetPostForOffers(myActivePost);
+                  setIsSupportOffersModalOpen(true);
                 }}
                 className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black transition-all cursor-pointer shadow-xs active:scale-95"
               >
@@ -2156,22 +2213,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               setShowDemoRegisterPrompt(true);
               return;
             }
-            const isQuickPost = Boolean(
-              p?.postType === 'quick_service'
-                ? true
-                : p?.category === 'quick_services'
-                ? true
-                : p?.category === 'quick'
-                ? true
-                : p?.serviceType === 'quick_services'
-                ? true
-                : p?.tagCategory === 'ඉක්මන් සේවා'
-            );
-            if (isQuickPost) {
-              setSelectedPostForDetail(p);
-            } else {
-              setSelectedPostForOffer(p);
-            }
+            setSelectedPostForOffer(p);
           }}
           onEditPost={(p) => handleEditPost(p)}
           onToggleHidePost={(p) => handleToggleHidePost(p)}
@@ -2226,23 +2268,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               setShowDemoRegisterPrompt(true);
               return;
             }
-            const isQuickPost = Boolean(
-              p?.postType === 'quick_service'
-                ? true
-                : p?.category === 'quick_services'
-                ? true
-                : p?.category === 'quick'
-                ? true
-                : p?.serviceType === 'quick_services'
-                ? true
-                : p?.tagCategory === 'ඉක්මන් සේවා'
-            );
-            if (isQuickPost) {
-              setSelectedPostForDetail(p);
-            } else {
-              setTargetPostForOffers(p);
-              setIsSupportOffersModalOpen(true);
-            }
+            setTargetPostForOffers(p);
+            setIsSupportOffersModalOpen(true);
           }}
           onOpenCreateModal={(catKey?: string) => {
             if (user?.isDemo) {

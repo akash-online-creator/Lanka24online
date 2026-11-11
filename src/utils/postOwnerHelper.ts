@@ -50,12 +50,26 @@ export const checkIsPostOwner = (
   if (!user || !post) return false;
   if ((user as any).isDemo) return false;
 
+  // 1. Check if this post was created on this browser/device by the current local user
+  if (post.id && typeof window !== 'undefined') {
+    try {
+      const rawCreated = localStorage.getItem('sahaya_my_created_posts');
+      if (rawCreated) {
+        const parsed = JSON.parse(rawCreated);
+        if (Array.isArray(parsed) && parsed.includes(String(post.id))) {
+          return true;
+        }
+      }
+    } catch {}
+  }
+
   const placeholderIds = new Set([
     'anonymous_user',
     'blood_requester',
     'red_alert_reporter',
     'helper_user',
     'guest_user',
+    'usr_guest',
     'unknown',
   ]);
 
@@ -88,12 +102,33 @@ export const checkIsPostOwner = (
     }
   }
 
-  // Phone + Name fallback (also handles blood/disaster posts where contactNumber/contactPersonName was entered)
+  // Admin account check if post was authored by Admin
+  if (checkIsAdmin(user)) {
+    const adminPostNames = [
+      post.userName,
+      (post as any).authorName,
+      (post as any).actualAuthorName,
+      (post as any).contactPersonName,
+    ]
+      .filter(Boolean)
+      .map((n) => String(n).trim().toLowerCase());
+    if (
+      postIdentifiers.includes('usr_admin') ||
+      postIdentifiers.includes('970181547v') ||
+      postIdentifiers.includes('admin') ||
+      adminPostNames.some((n) => n.includes('පරිපාලක') || n.includes('admin'))
+    ) {
+      return true;
+    }
+  }
+
+  // Phone or Name fallback (handles blood/disaster posts where contactNumber/contactPersonName was entered)
   const uPhone = normalizePhone((user as any).phone || (user as any).whatsappPhone || (user as any).whatsappNumber);
   const pPhones = [
     normalizePhone(post.userPhone),
     normalizePhone((post as any).contactNumber),
     normalizePhone(post.contactPhone),
+    normalizePhone((post as any).actualAuthorPhone),
   ].filter((p) => p.length >= 9);
 
   const phoneMatch = Boolean(
@@ -103,6 +138,14 @@ export const checkIsPostOwner = (
   );
 
   const uName = ((user as any)?.name || '').trim().toLowerCase();
+  const genericNames = new Set([
+    'සම්බන්ධීකාරක',
+    'දැන්වීම්කරු',
+    'ලියාපදිංචි පරිශීලක',
+    'නිර්නාමික පරිශීලක (anonymous)',
+    'anonymous user',
+    'පරිශීලක (user)',
+  ]);
   const pNames = [
     post.userName,
     (post as any).authorName,
@@ -110,15 +153,12 @@ export const checkIsPostOwner = (
     (post as any).contactPersonName,
   ]
     .filter(Boolean)
-    .map((n) => String(n).trim().toLowerCase());
+    .map((n) => String(n).trim().toLowerCase())
+    .filter((n) => n.length > 0 && !genericNames.has(n));
 
-  const nameMatch = Boolean(uName && pNames.includes(uName));
+  const nameMatch = Boolean(uName && !genericNames.has(uName) && pNames.includes(uName));
 
-  if (postIdentifiers.length === 0) {
-    return Boolean(phoneMatch || nameMatch);
-  }
-
-  return Boolean(phoneMatch && (nameMatch || postIdentifiers.length === 0));
+  return Boolean(phoneMatch || nameMatch);
 };
 
 /**

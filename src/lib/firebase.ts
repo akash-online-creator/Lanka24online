@@ -744,15 +744,31 @@ export function subscribeToUsers(callback: (users: any[]) => void): () => void {
 // ==============================================================
 
 export function deduplicatePostReplies(replies: any[], post?: any): any[] {
-  if (!Array.isArray(replies) || replies.length === 0) return [];
-  const posterId = String(post?.userId || post?.authorId || '').trim();
-  const posterPhone = String(post?.userPhone || post?.contactPhone || '').replace(/\D/g, '');
-  const posterName = String(post?.userName || post?.authorName || '').trim().toLowerCase();
+  const combinedSource: any[] = Array.isArray(replies) ? [...replies] : [];
+  if (post && Array.isArray(post.applicants) && post.applicants.length > 0) {
+    for (const app of post.applicants) {
+      if (!app) continue;
+      combinedSource.push({
+        id: app.id || `app_${app.helperId || ''}`,
+        responderId: app.helperId || '',
+        responderName: app.helperName || 'සහායක',
+        responderPhone: app.helperPhone || '',
+        responderNic: app.helperNicMasked || '',
+        message: 'ඉක්මන් සේවාව සඳහා සහය වීමට කැමැත්ත පළ කර ඇත.',
+        createdAt: app.appliedAt || '',
+        distanceKm: app.distanceKm,
+        isAccepted: app.status === 'accepted',
+        isConfirmed: app.status === 'accepted',
+      });
+    }
+  }
+  if (combinedSource.length === 0) return [];
 
   const helperMap = new Map<string, any>();
 
-  for (const r of replies) {
+  for (const r of combinedSource) {
     if (!r || typeof r !== 'object') continue;
+    if (r.isFromCreator === true) continue;
     const msgText = String(r.message || r.text || '').trim();
     // Filter out system/poster chat messages that were accidentally added to replies earlier
     if (
@@ -767,16 +783,9 @@ export function deduplicatePostReplies(replies: any[], post?: any): any[] {
       continue;
     }
 
-    const rId = String(r.responderId || '').trim();
-    const rPhone = String(r.responderPhone || '').replace(/\D/g, '');
-    const rName = String(r.responderName || '').trim().toLowerCase();
-
-    // Skip if this reply was authored by the post owner themselves
-    const isSameAsPoster =
-      (rId && posterId && rId !== 'helper_user' && rId === posterId) ||
-      (rPhone.length >= 9 && posterPhone.length >= 9 && rPhone.slice(-9) === posterPhone.slice(-9)) ||
-      (rName && posterName && rName === posterName && !rPhone);
-    if (isSameAsPoster) continue;
+    const rId = String(r.responderId || r.userId || '').trim();
+    const rPhone = String(r.responderPhone || r.phone || '').replace(/\D/g, '');
+    const rName = String(r.responderName || r.userName || '').trim().toLowerCase();
 
     // Build a stable deduplication key per helper (prefer last 9 digits of phone, then responderId, then name)
     const dedupeKey =
@@ -790,7 +799,12 @@ export function deduplicatePostReplies(replies: any[], post?: any): any[] {
 
     const existing = helperMap.get(dedupeKey);
     if (!existing) {
-      helperMap.set(dedupeKey, r);
+      helperMap.set(dedupeKey, {
+        ...r,
+        responderId: rId || r.responderId,
+        responderName: r.responderName || r.userName || 'සහායක',
+        responderPhone: r.responderPhone || r.phone || '',
+      });
     } else {
       // Merge flags so confirmation / step progress is never lost, and prefer clean user message over chat-prefixed text
       const existingCleanMsg = String(existing.message || '').startsWith('🩸 [පියවර 1/4')
@@ -800,9 +814,9 @@ export function deduplicatePostReplies(replies: any[], post?: any): any[] {
         ...existing,
         ...r,
         id: existing.id || r.id,
-        responderId: existing.responderId && existing.responderId !== 'helper_user' ? existing.responderId : r.responderId,
-        responderName: existing.responderName || r.responderName,
-        responderPhone: existing.responderPhone || r.responderPhone,
+        responderId: existing.responderId && existing.responderId !== 'helper_user' ? existing.responderId : rId || r.responderId,
+        responderName: existing.responderName || r.responderName || r.userName || 'සහායක',
+        responderPhone: existing.responderPhone || r.responderPhone || r.phone || '',
         message: existingCleanMsg,
         isConfirmed: Boolean(existing.isConfirmed || r.isConfirmed),
         isAccepted: Boolean(existing.isAccepted || r.isAccepted),
@@ -824,7 +838,7 @@ export function subscribeToHelpPosts(callback: (posts: any[]) => void): () => vo
     const map = new Map();
     [...fallbackPosts, ...legacyPosts, ...primaryPosts].forEach((p) => {
       if (p && p.id && !p.isDeleted && p.status !== 'deleted' && p.status !== 'archived') {
-        const cleanReplies = Array.isArray(p.replies) ? deduplicatePostReplies(p.replies, p) : [];
+        const cleanReplies = deduplicatePostReplies(Array.isArray(p.replies) ? p.replies : [], p);
         map.set(String(p.id), {
           ...p,
           replies: cleanReplies,
@@ -954,12 +968,49 @@ export async function addHelpPostToFirestore(postData: any) {
 }
 
 export async function updateHelpPostInFirestore(postId: string, updateData: any) {
-  const sanitized = sanitizeForFirestore(updateData);
+  if (!postId || !updateData) return;
+  const rawSanitized = sanitizeForFirestore(updateData) || {};
+  // Omit immutable ownership/timestamp fields during updates so Firestore rule isSafePostUpdate(postId) never rejects helper/donor updates
+  const { userId: _u, authorId: _a, createdAt: _c, ...sanitized } = rawSanitized;
   try {
     await setDoc(doc(db, POSTS_COLLECTION, postId), sanitized, { merge: true });
     setDoc(doc(db, 'helpPosts', postId), sanitized, { merge: true }).catch(() => {});
     if (fallbackDb !== db) {
       setDoc(doc(fallbackDb, POSTS_COLLECTION, postId), sanitized, { merge: true }).catch(() => {});
+    }
+    const isBloodDoc =
+      String(postId).startsWith('bld_') ||
+      rawSanitized.postType === 'blood_request' ||
+      rawSanitized.serviceType === 'blood_donation' ||
+      String(rawSanitized.postCode || '').toUpperCase().startsWith('#BLD-') ||
+      rawSanitized.bloodWorkflowStep !== undefined;
+    if (isBloodDoc && String(postId).startsWith('bld_')) {
+      const bloodSyncPayload: Record<string, any> = {};
+      if (Array.isArray(sanitized.replies)) {
+        bloodSyncPayload.replies = sanitized.replies;
+        bloodSyncPayload.supportedCount = sanitized.replies.length;
+      }
+      if (sanitized.bloodWorkflowStep !== undefined) {
+        bloodSyncPayload.bloodWorkflowStep = sanitized.bloodWorkflowStep;
+      }
+      if (sanitized.lastStepUpdatedAtMs !== undefined) {
+        bloodSyncPayload.lastStepUpdatedAtMs = sanitized.lastStepUpdatedAtMs;
+      }
+      if (sanitized.lastStepByRole !== undefined) {
+        bloodSyncPayload.lastStepByRole = sanitized.lastStepByRole;
+      }
+      if (sanitized.isConfirmed !== undefined) {
+        bloodSyncPayload.isConfirmed = sanitized.isConfirmed;
+      }
+      if (sanitized.bloodDonatedByHelper !== undefined) {
+        bloodSyncPayload.bloodDonatedByHelper = sanitized.bloodDonatedByHelper;
+      }
+      if (sanitized.isResolved === true || sanitized.status === 'resolved') {
+        bloodSyncPayload.status = 'fulfilled';
+      }
+      if (Object.keys(bloodSyncPayload).length > 0) {
+        setDoc(doc(db, 'blood_requests', postId), bloodSyncPayload, { merge: true }).catch(() => {});
+      }
     }
   } catch (err) {
     try {

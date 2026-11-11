@@ -101,8 +101,28 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
   const livePostsList: HelpPost[] = (() => {
     const base = Array.isArray(userPosts) ? [...userPosts] : [];
-    if (targetPost && targetPost.id && !base.some((p) => p && p.id === targetPost.id)) {
-      base.unshift(targetPost);
+    if (targetPost && targetPost.id) {
+      const idx = base.findIndex(
+        (p) =>
+          p &&
+          (String(p.id) === String(targetPost.id) ||
+            (targetPost.postCode && p.postCode && String(p.postCode).toUpperCase() === String(targetPost.postCode).toUpperCase()))
+      );
+      if (idx === -1) {
+        base.unshift(targetPost);
+      } else {
+        const existing = base[idx];
+        const mergedReps = deduplicatePostReplies(
+          [...(Array.isArray(existing.replies) ? existing.replies : []), ...(Array.isArray(targetPost.replies) ? targetPost.replies : [])],
+          existing
+        );
+        base[idx] = {
+          ...targetPost,
+          ...existing,
+          replies: mergedReps,
+          repliesCount: mergedReps.length,
+        };
+      }
     }
     return base;
   })();
@@ -111,17 +131,21 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
   livePostsList.forEach((post) => {
     if (!post || !post.id || post.status === 'deleted' || post.isDeleted) return;
-    const isOwner = checkIsPostOwner(currentUser, post);
+    const isTargetMatch = Boolean(
+      targetPost &&
+        (String(targetPost.id) === String(post.id) ||
+          (targetPost.postCode && post.postCode && String(targetPost.postCode).toUpperCase() === String(post.postCode).toUpperCase()))
+    );
+    const rawIsOwner = checkIsPostOwner(currentUser, post);
     const cleanReplies = deduplicatePostReplies(post.replies || [], post);
 
     if (cleanReplies.length > 0) {
       cleanReplies.forEach((rep) => {
         if (!rep) return;
         const isMine = isMyReplyMatch(rep);
-        if (!isOwner && !isMine && !isAdminUser && (!targetPost || targetPost.id !== post.id)) {
-          return;
-        }
-        if (!isOwner && !isAdminUser && !isMine) {
+        const effectiveIsOwner = rawIsOwner || (!isMine && (isAdminUser || isTargetMatch));
+
+        if (!effectiveIsOwner && !isMine && !isAdminUser) {
           return;
         }
 
@@ -141,10 +165,10 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
           post: { ...post, replies: cleanReplies, repliesCount: cleanReplies.length },
           reply: rep,
           isSelected,
-          isPostOwner: isOwner,
+          isPostOwner: effectiveIsOwner,
         });
       });
-    } else if (post.isConfirmed && (post.confirmedHelperName || post.confirmedBy) && (isOwner || isAdminUser)) {
+    } else if (post.isConfirmed && (post.confirmedHelperName || post.confirmedBy) && (rawIsOwner || isAdminUser || isTargetMatch)) {
       allOffers.push({
         post,
         reply: {
@@ -157,7 +181,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
           isAccepted: true,
         },
         isSelected: true,
-        isPostOwner: isOwner,
+        isPostOwner: true,
       });
     }
   });
@@ -165,7 +189,12 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   const filteredOffers =
     selectedPostIdFilter === 'all'
       ? allOffers
-      : allOffers.filter((off) => off.post && off.post.id === selectedPostIdFilter);
+      : allOffers.filter(
+          (off) =>
+            off.post &&
+            (String(off.post.id) === String(selectedPostIdFilter) ||
+              (targetPost?.postCode && off.post.postCode && String(off.post.postCode).toUpperCase() === String(targetPost.postCode).toUpperCase()))
+        );
 
   const isBloodPostCheck = (p: any): boolean =>
     Boolean(
@@ -379,7 +408,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     <div
       onClick={handleAcknowledgeBell}
       onTouchStart={handleAcknowledgeBell}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn"
+      className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn"
     >
       <div
         id="support-offers-modal"
@@ -438,6 +467,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
               const posterName = (off.post as any).contactPersonName || off.post.userName || 'දැන්වීම්කරු';
               const posterPhone = (off.post as any).contactNumber || off.post.userPhone || off.post.contactPhone || '';
               const isBloodOffer = isBloodPostCheck(off.post);
+              const isMineOffer = isMyReplyMatch(off.reply);
 
               const otherPartyName = off.isPostOwner ? helperName : posterName;
               const otherPartyPhone = off.isPostOwner ? helperPhone : posterPhone;
@@ -542,7 +572,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
                       {/* STEP 3 */}
                       {currentStep === 3 && (
-                        !off.isPostOwner ? (
+                        !off.isPostOwner || isMineOffer ? (
                           <div className="space-y-3">
                             <p className="text-sm sm:text-base font-black text-slate-900 dark:text-white leading-snug">
                               දැන්වීම්කරු ඔබව තෝරාගෙන ඇත. ඔබ ලේ පරිත්‍යාගය සිදු කළාද?

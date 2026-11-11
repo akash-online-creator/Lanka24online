@@ -73,6 +73,18 @@ export function isPostHelpersSatisfiedOrFilled(post: HelpPost): boolean {
     return true;
   }
 
+  // Blood requests have a 4-step workflow and must remain active until Step 4 (resolved / bloodWorkflowStep >= 5) is completed
+  const isBloodPost = Boolean(
+    post.postType === 'blood_request' ||
+      post.serviceType === 'blood_donation' ||
+      String(post.postCode || '').toUpperCase().startsWith('#BLD-') ||
+      (post as any).bloodWorkflowStep !== undefined ||
+      (post.tagName && String(post.tagName).includes('ලේ'))
+  );
+  if (isBloodPost) {
+    return Number((post as any).bloodWorkflowStep || 0) >= 5;
+  }
+
   // 2. If status is already confirmed or filled
   if (post.status === 'confirmed' || (post.status as string) === 'filled') {
     return true;
@@ -249,65 +261,30 @@ export async function applyToHelpPost(params: {
     ? existingReplies.map((r: any) => (r && (r.responderId === helperIdVal ? true : r.id === applicantId) ? { ...r, ...syncedReply } : r))
     : [...existingReplies, syncedReply];
 
+  const nowMs = Date.now();
   const updatedPost: HelpPost = {
-
     ...post,
-
     applicants: updatedApplicants,
     replies: updatedReplies,
-  };
+    repliesCount: updatedReplies.length,
+    helpersCount: updatedReplies.length,
+    lastStepUpdatedAtMs: nowMs,
+    lastStepByRole: 'helper',
+  } as any;
 
   try {
-
-    triggerPickMeAlert({
-
-      kind: 'quick_service',
-
-      title: '🔔 සහය සේවා අයදුම්පතක්!',
-
-      message: newApplicant.helperName + ' (' + newApplicant.helperNicMasked + ') ඔබගේ #' + (post.postCode ? post.postCode : post.id) + ' දැන්වීමට සහය දැක්වීමට ඉදිරිපත් වී ඇත.',
-
-      locationName: post.locationName,
-
-      targetModal: 'quick_service',
-
-      targetPostId: post.id,
-
-    });
-
-    broadcastAppNotification({
-
-      title: '🔔 නව සහායක අයදුම්පතක්!',
-
-      message: newApplicant.helperName + ' ඔබගේ සේවාවට ඉදිරිපත් වී ඇත. තෝරාගැනීමට ක්ලික් කරන්න.',
-
-      type: 'general',
-
-      targetModal: 'quick_service',
-
-      targetPostId: post.id,
-
-    });
-
-  } catch (err) {}
-
-  try {
-
     if (post.id) {
-
       await updateHelpPostInFirestore(post.id, {
-
         replies: updatedReplies,
+        repliesCount: updatedReplies.length,
+        helpersCount: updatedReplies.length,
         applicants: updatedApplicants,
-
+        lastStepUpdatedAtMs: nowMs,
+        lastStepByRole: 'helper',
       });
-
     }
-
   } catch (e) {
-
     console.error('Failed to update applicants in Firestore:', e);
-
   }
 
   return updatedPost;

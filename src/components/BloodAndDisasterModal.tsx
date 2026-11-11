@@ -212,6 +212,10 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       return;
     }
 
+    const actualAuthorIdVal = currentUser?.userId || (currentUser as any)?.id || currentUser?.nicNumber || (currentUser as any)?.nic || '';
+    const actualAuthorNameVal = currentUser?.name || '';
+    const actualAuthorPhoneVal = currentUser?.phone || (currentUser as any)?.whatsappPhone || (currentUser as any)?.whatsappNumber || '';
+
     const newRequest: BloodDonationRequest = {
       id: `bld_${Date.now()}`,
       postCode: `#BLD-${Math.floor(100 + Math.random() * 900)}`,
@@ -222,13 +226,13 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       district: newDistrict,
       urgency: newUrgency,
       neededDate: newNeededDate,
-      contactName: newContactName || 'සම්බන්ධීකාරක',
+      contactName: newContactName || currentUser?.name || 'සම්බන්ධීකාරක',
       contactPhone: newContactPhone,
       additionalNotes: newNotes,
       status: 'active',
       createdAt: 'දැන් (Just now)',
       createdAtMs: Date.now(),
-      userId: currentUser?.userId || currentUser?.id,
+      userId: actualAuthorIdVal,
     };
 
     const updated = [newRequest, ...bloodRequests];
@@ -248,7 +252,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
         urgency: 'critical',
         badgeText: `ලේ (${newBloodGroup})`,
         targetModal: 'blood',
-        senderId: currentUser?.userId || (currentUser as any)?.id || currentUser?.nicNumber || '',
+        senderId: actualAuthorIdVal,
         senderName: newContactName || currentUser?.name || '',
       });
     }
@@ -278,13 +282,16 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
         isPinnedEmergency: true,
         contactNumber: newContactPhone,
         contactPersonName: newContactName || currentUser?.name || 'සම්බන්ධීකාරක',
-        userId: currentUser?.userId || (currentUser as any)?.id || currentUser?.nicNumber || 'blood_requester',
-        authorId: currentUser?.userId || (currentUser as any)?.id || currentUser?.nicNumber || 'blood_requester',
+        userId: actualAuthorIdVal || 'blood_requester',
+        authorId: actualAuthorIdVal || 'blood_requester',
+        actualAuthorId: actualAuthorIdVal,
+        actualAuthorName: actualAuthorNameVal,
+        actualAuthorPhone: actualAuthorPhoneVal,
         userName: newContactName || currentUser?.name || 'සම්බන්ධීකාරක',
-        userPhone: newContactPhone || currentUser?.phone || '',
+        userPhone: newContactPhone || actualAuthorPhoneVal || '',
         helpersNeeded: Number(newUnitsNeeded) || 1,
         status: 'open',
-      }).catch((e) => console.warn('Sync blood to help posts notice:', e));
+      } as any).catch((e) => console.warn('Sync blood to help posts notice:', e));
     }
 
     setTimeout(() => {
@@ -329,13 +336,26 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
   };
 
   const resolveLinkedHelpPost = (req: BloodDonationRequest): any => {
+    const reqReplies = Array.isArray((req as any).replies) ? (req as any).replies : [];
     const matched = (helpPosts || []).find(
       (p) =>
         p &&
         (String(p.id) === String(req.id) ||
           (req.postCode && p.postCode && String(p.postCode).toUpperCase() === String(req.postCode).toUpperCase()))
     );
-    if (matched) return matched;
+    if (matched) {
+      const mergedReplies = deduplicatePostReplies(
+        [...(Array.isArray(matched.replies) ? matched.replies : []), ...reqReplies],
+        matched
+      );
+      return {
+        ...matched,
+        replies: mergedReplies,
+        repliesCount: mergedReplies.length,
+        bloodWorkflowStep: Math.max(Number((matched as any).bloodWorkflowStep || 0), Number((req as any).bloodWorkflowStep || 0)) || undefined,
+      };
+    }
+    const cleanReqReplies = deduplicatePostReplies(reqReplies, req);
     return {
       id: req.id,
       postCode: req.postCode || `#BLD-${String(req.id).slice(-4)}`,
@@ -361,7 +381,9 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       isResolved: req.status === 'fulfilled',
       createdAt: req.createdAt || 'දැන්',
       createdAtMs: req.createdAtMs || Date.now(),
-      replies: [],
+      replies: cleanReqReplies,
+      repliesCount: cleanReqReplies.length,
+      bloodWorkflowStep: (req as any).bloodWorkflowStep,
     };
   };
 

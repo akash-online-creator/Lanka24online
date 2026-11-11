@@ -587,9 +587,13 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
           return false;
         }
       }
-      // 01. දැන්වීමට අවශ්‍ය සහයකයින් ගණන තෝරාගත් පසු හෝ සේවාව අවසන් වූ පසු දැන්වීම ප්‍රධාන පුවරුවෙන් ඉවත් කිරීම
+      // 01. දැන්වීමට අවශ්‍ය සහයකයින් ගණන තෝරාගත් පසු හෝ සේවාව අවසන් වූ පසු දැන්වීම ප්‍රධාන පුවරුවෙන් ඉවත් කිරීම (දැන්වීම්කරුට අවසන් වන තුරුම පෙනේ)
       if (boardCategoryFilter !== 'resolved') {
-        if (isPostHelpersSatisfiedOrFilled(p)) {
+        const isOwner = checkIsPostOwner(user, p);
+        if (!isOwner && isPostHelpersSatisfiedOrFilled(p)) {
+          return false;
+        }
+        if (isOwner && (p.isResolved || p.status === 'resolved')) {
           return false;
         }
       }
