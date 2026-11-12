@@ -3793,6 +3793,7 @@ Return ONLY a valid JSON object with these exact keys:
 
   app.get('/sw.js', (req, res) => {
     res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Service-Worker-Allowed', '/');
     res.sendFile(path.join(publicPath, 'sw.js'));
   });
@@ -3805,8 +3806,26 @@ Return ONLY a valid JSON object with these exact keys:
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use(
+      express.static(distPath, {
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('index.html')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          }
+        },
+      })
+    );
     app.get('*', (req, res) => {
+      if (
+        req.path.startsWith('/assets/') ||
+        req.path.endsWith('.js') ||
+        req.path.endsWith('.mjs') ||
+        req.path.endsWith('.css') ||
+        req.path.endsWith('.map')
+      ) {
+        return res.status(404).end();
+      }
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

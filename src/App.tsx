@@ -830,7 +830,7 @@ export const App: React.FC = () => {
           />
         )}
 
-        {activeView === 'login' && (
+        {(activeView === 'login' || (!currentUser && (activeView === 'dashboard' || activeView === 'admin' || activeView === 'pending'))) && (
           <LoginForm
             onLogin={handleLogin}
             onSuccessfulPinLogin={handlePinLoginSuccess}

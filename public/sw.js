@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sahaya-sewa-v13';
+const CACHE_NAME = 'sahaya-sewa-v14';
 
 const PRECACHE_ASSETS = ['/', '/index.html', '/manifest.json', '/logo.jpg', '/mixkit-manual-siren-fire-alert-1652.wav', '/siren.wav'];
 
@@ -434,9 +434,7 @@ self.addEventListener('fetch', event => {
   if (
     event.request.mode === 'navigate' ||
     url.pathname === '/' ||
-    url.pathname.endsWith('.html') ||
-    url.pathname.endsWith('.js') ||
-    url.pathname.endsWith('.css')
+    url.pathname.endsWith('.html')
   ) {
     event.respondWith(
       fetch(event.request)
@@ -449,6 +447,28 @@ self.addEventListener('fetch', event => {
         })
         .catch(() => {
           return caches.match('/index.html').then(r => (r ? r : caches.match('/')));
+        })
+    );
+    return;
+  }
+
+  if (
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.mjs') ||
+    url.pathname.endsWith('.css')
+  ) {
+    event.respondWith(
+      fetch(event.request)
+        .then(networkResponse => {
+          const contentType = (networkResponse && networkResponse.headers && networkResponse.headers.get('content-type')) || '';
+          if (networkResponse && networkResponse.status === 200 && !contentType.includes('text/html')) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match(event.request);
         })
     );
     return;

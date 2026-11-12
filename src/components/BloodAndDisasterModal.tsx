@@ -25,8 +25,7 @@ import {
   Trash2,
   Sparkles,
   ArrowRight,
-  MessageCircle,
-  Navigation
+  MessageCircle
 } from 'lucide-react';
 import { BloodDonationRequest, VolunteerDonor, BloodGroup, Language, User as UserType } from '../types';
 import { maskName, maskPhone, maskAddress } from '../utils/demoDataMasker';
@@ -153,46 +152,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
   const [newNeededDate, setNewNeededDate] = useState('අද දින (Today)');
   const [newContactName, setNewContactName] = useState(currentUser?.name || '');
   const [newContactPhone, setNewContactPhone] = useState(currentUser?.phone || '');
-  const [newNotes, setNewNotes] = useState("");
-  const [newWardNumber, setNewWardNumber] = useState("");
-  const [newRequestSlipNumber, setNewRequestSlipNumber] = useState("");
-  const [newRequestSlipPhotoUrl, setNewRequestSlipPhotoUrl] = useState("");
-  const [hospitalPinLat, setHospitalPinLat] = useState<number | null>(null);
-  const [hospitalPinLng, setHospitalPinLng] = useState<number | null>(null);
-  const [viewingSlipPhoto, setViewingSlipPhoto] = useState<string | null>(null);
-
-  useEffect(() => {
-    const handleBloodModalClose = () => {
-      onClose();
-    };
-    window.addEventListener("sahaya_blood_modal_close", handleBloodModalClose);
-    return () => window.removeEventListener("sahaya_blood_modal_close", handleBloodModalClose);
-  }, [onClose]);
-
-  const handleSlipPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setNewRequestSlipPhotoUrl(String(event.target?.result || ""));
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handlePinLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setHospitalPinLat(pos.coords.latitude);
-          setHospitalPinLng(pos.coords.longitude);
-          alert("📍 රෝහල් පිහිටීම සාර්ථකව Pin කරන ලදී!");
-        },
-        () => {
-          alert("GPS පිහිටීම ලබාගැනීමට නොහැකි විය. කරුණාකර රෝහලේ නම හා දිස්ත්‍රික්කය සටහන් කරන්න.");
-        }
-      );
-    }
-  };
+  const [newNotes, setNewNotes] = useState('');
 
   // Donor Register Form state
   const [donorName, setDonorName] = useState(currentUser?.name || '');
@@ -269,12 +229,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       contactName: newContactName || currentUser?.name || 'සම්බන්ධීකාරක',
       contactPhone: newContactPhone,
       additionalNotes: newNotes,
-      wardNumber: newWardNumber,
-      requestSlipNumber: newRequestSlipNumber,
-      requestSlipPhotoUrl: newRequestSlipPhotoUrl,
-      hospitalPinLat: hospitalPinLat || undefined,
-      hospitalPinLng: hospitalPinLng || undefined,
-      status: "active",
+      status: 'active',
       createdAt: 'දැන් (Just now)',
       createdAtMs: Date.now(),
       userId: actualAuthorIdVal,
@@ -315,6 +270,11 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
         postType: 'blood_request',
         serviceType: 'blood_donation',
         bloodGroup: newBloodGroup,
+        patientName: newPatientName,
+        hospitalName: newHospitalName,
+        unitsNeeded: Number(newUnitsNeeded) || 1,
+        neededDate: newNeededDate || 'කඩිනමින් (හදිසි)',
+        additionalNotes: newNotes || '',
         tagCategory: 'හදිසි / ආපදා',
         tagName: `🩸 හදිසි ${newBloodGroup} ලේ අවශ්‍යතාවය`,
         title: `🩸 ${newBloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${newHospitalName}`,
@@ -323,12 +283,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
         whatIsNeeded: `රෝගී නම: ${newPatientName} • ලේ වර්ගය: ${newBloodGroup} • අවශ්‍ය ඒකක: ${newUnitsNeeded} • රෝහල: ${newHospitalName} • දිස්ත්‍රික්කය: ${newDistrict} • අවශ්‍ය දිනය: ${newNeededDate || 'කඩිනමින්'} • සම්බන්ධීකාරක: ${newContactName || 'සම්බන්ධීකාරක'} (${newContactPhone}) ${newNotes ? `• සටහන්: ${newNotes}` : ''}`,
         locationName: `${newHospitalName}, ${newDistrict}`,
         district: newDistrict,
-        wardNumber: newWardNumber,
-        requestSlipNumber: newRequestSlipNumber,
-        requestSlipPhotoUrl: newRequestSlipPhotoUrl,
-        hospitalPinLat: hospitalPinLat || undefined,
-        hospitalPinLng: hospitalPinLng || undefined,
-        priorityLevel: "emergency",
+        priorityLevel: 'emergency',
         isPinnedEmergency: true,
         contactNumber: newContactPhone,
         contactPersonName: newContactName || currentUser?.name || 'සම්බන්ධීකාරක',
@@ -400,6 +355,12 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       );
       return {
         ...matched,
+        bloodGroup: matched.bloodGroup || req.bloodGroup,
+        patientName: (matched as any).patientName || req.patientName,
+        hospitalName: (matched as any).hospitalName || req.hospitalName,
+        unitsNeeded: (matched as any).unitsNeeded || req.unitsNeeded || 1,
+        neededDate: (matched as any).neededDate || req.neededDate || 'කඩිනමින් (හදිසි)',
+        additionalNotes: (matched as any).additionalNotes || req.additionalNotes || '',
         replies: mergedReplies,
         repliesCount: mergedReplies.length,
         bloodWorkflowStep: Math.max(Number((matched as any).bloodWorkflowStep || 0), Number((req as any).bloodWorkflowStep || 0)) || undefined,
@@ -413,6 +374,11 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       postType: 'blood_request',
       serviceType: 'blood_donation',
       bloodGroup: req.bloodGroup,
+      patientName: req.patientName,
+      hospitalName: req.hospitalName,
+      unitsNeeded: req.unitsNeeded || 1,
+      neededDate: req.neededDate || 'කඩිනමින් (හදිසි)',
+      additionalNotes: req.additionalNotes || '',
       tagCategory: 'හදිසි / ආපදා',
       tagName: `🩸 හදිසි ${req.bloodGroup} ලේ අවශ්‍යතාවය`,
       title: `🩸 ${req.bloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${req.hospitalName}`,
@@ -955,24 +921,10 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                           )}
                         </div>
 
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1">
-                            <Building className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                            <span>{req.hospitalName} ({req.district})</span>
-                          </p>
-                          {req.hospitalName && (
-                            <a
-                              href={"https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(req.hospitalName + ", " + (req.district || "") + ", Sri Lanka")}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800 text-[11px] font-bold transition-all hover:scale-105"
-                              title="Google Maps Navigation හරහා රෝහලට Navigation බලන්න"
-                            >
-                              <Navigation className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                              <span>📍 Navigation (Maps)</span>
-                            </a>
-                          )}
-                        </div>
+                        <p className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1">
+                          <Building className="w-3.5 h-3.5 text-rose-600" />
+                          <span>{req.hospitalName} ({req.district})</span>
+                        </p>
 
                         <div className="flex items-center gap-3 flex-wrap text-[11px] text-slate-500 dark:text-slate-400">
                           <span>
@@ -987,28 +939,6 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                           </span>
                         </div>
 
-                        {/* Ward, Slip No and Photo details */}
-                        <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-700 dark:text-slate-300 pt-0.5">
-                          {req.wardNumber && (
-                            <span className="font-bold bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                              🚪 {req.wardNumber}
-                            </span>
-                          )}
-                          {req.requestSlipNumber && (
-                            <span className="font-bold font-mono bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                              📄 {req.requestSlipNumber}
-                            </span>
-                          )}
-                          {req.requestSlipPhotoUrl && (
-                            <button
-                              type="button"
-                              onClick={() => setViewingSlipPhoto(req.requestSlipPhotoUrl || null)}
-                              className="font-black text-rose-600 dark:text-rose-400 underline flex items-center gap-1 cursor-pointer hover:text-rose-700"
-                            >
-                              📷 පත්‍රිකාවේ ඡායාරූපය බලන්න
-                            </button>
-                          )}
-                        </div>
                         {req.additionalNotes && (
                           <p className="text-[11px] text-slate-600 dark:text-slate-300 bg-rose-50/60 dark:bg-rose-950/40 p-2 rounded-xl border border-rose-200/60 dark:border-rose-900/40">
                             {req.additionalNotes}

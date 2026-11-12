@@ -20,17 +20,47 @@ L.Icon.Default.mergeOptions({
 
 initSirenSettings();
 
-if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js', { scope: '/' })
-      .then((reg) => {
-        if (reg && reg.active) {
-          reg.active.postMessage({ type: 'START_BACKGROUND_ALERT_WATCHER' });
-        }
-      })
-      .catch((err) => console.debug('SW registration notice:', err));
+if (typeof window !== 'undefined') {
+  const purgeStaleCachesAndReload = () => {
+    const reloadKey = 'sahaya_sw_chunk_reload_ts';
+    const lastReload = Number(sessionStorage.getItem(reloadKey) || '0');
+    if (Date.now() - lastReload < 15000) return;
+    sessionStorage.setItem(reloadKey, String(Date.now()));
+    if (window.caches && typeof window.caches.keys === 'function') {
+      window.caches
+        .keys()
+        .then((keys) => Promise.all(keys.map((k) => window.caches.delete(k))))
+        .finally(() => window.location.reload());
+    } else {
+      window.location.reload();
+    }
+  };
+
+  window.addEventListener('vite:preloadError', purgeStaleCachesAndReload);
+  window.addEventListener('error', (event) => {
+    const msg = String(event?.message || '');
+    if (
+      msg.includes('Failed to fetch dynamically imported module') ||
+      msg.includes('Importing a module script failed') ||
+      msg.includes('Expected a JavaScript module script')
+    ) {
+      purgeStaleCachesAndReload();
+    }
   });
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker
+        .register('/sw.js', { scope: '/', updateViaCache: 'none' })
+        .then((reg) => {
+          reg.update().catch(() => {});
+          if (reg && reg.active) {
+            reg.active.postMessage({ type: 'START_BACKGROUND_ALERT_WATCHER' });
+          }
+        })
+        .catch((err) => console.debug('SW registration notice:', err));
+    });
+  }
 }
 
 const rootElement = document.getElementById('root');

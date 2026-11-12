@@ -1,6 +1,7 @@
 import { removeNotificationsForPost } from "../utils/notificationManager";
+import { stopContinuousSupportBell } from "../utils/supportBellRingtone";
 import React, { useState, useEffect } from 'react';
-import { Heart, ThumbsDown, MessageSquare, Trash2, Eye, Clock, Pencil, Phone, MessageCircle, HelpCircle, Zap, Bookmark, UserCheck, MapPin, Send, Lock, User as UserIcon, ChevronDown, ChevronUp, Car, Banknote, FileText, ExternalLink, Copy, Check, BarChart3, Calendar, Maximize2, X } from 'lucide-react';
+import { Heart, ThumbsDown, MessageSquare, Trash2, Eye, Clock, Pencil, Phone, MessageCircle, HelpCircle, Zap, Bookmark, UserCheck, MapPin, Send, Lock, User as UserIcon, ChevronDown, ChevronUp, Car, Banknote, FileText, ExternalLink, Copy, Check, BarChart3, Calendar, Maximize2, X, Navigation, Droplet } from 'lucide-react';
 import { HelpPost, User, Language, LocationOption, PostComment } from '../types';
 import { checkIsPostOwner, checkIsAdmin } from '../utils/postOwnerHelper';
 import {
@@ -694,7 +695,7 @@ const renderInteractiveActionBar = () => {
       : myReply
         ? isBloodCardType
           ? cardBloodStep === 5
-            ? getLangText('🎉 උතුම් පරිත්‍යාගය අවසන් (4/4 ✓)', '🎉 Completed (4/4 ✓)', '🎉 முடிந்தது (4/4 ✓)')
+            ? getLangText('🎉 ගනුදෙනුව අවසන් (4/4 ✓)', '🎉 Completed (4/4 ✓)', '🎉 முடிந்தது (4/4 ✓)')
             : cardBloodStep === 4
             ? getLangText('⏳ පියවර 4/4 • අවසන් තහවුරු කිරීම', '⏳ Step 4/4 • Finalizing', '⏳ படி 4/4')
             : cardBloodStep === 3
@@ -781,11 +782,37 @@ const rawFullDesc = post.content ? post.content : post.whatHappened ? post.whatH
 const fullDesc = rawFullDesc && rawFullDesc.trim() !== rawHeadline.trim() ? rawFullDesc : '';
 const neededText = post.whatIsNeeded && post.whatIsNeeded.trim() !== rawHeadline.trim() && post.whatIsNeeded.trim() !== fullDesc.trim() ? post.whatIsNeeded : '';
 const condText = post.conditions ? post.conditions : '';
-const noticeText = post.specialNotice ? post.specialNotice : '';
+const noticeText = post.specialNotice ? post.specialNotice : (post as any).additionalNotes ? (post as any).additionalNotes : '';
 const transportText = post.transport ? post.transport : post.deliveryOption ? post.deliveryOption : '';
 const paymentText = post.payment ? post.payment : post.rewardDetails ? post.rewardDetails : '';
 const imgUrl = post.imageUrl ? post.imageUrl : post.photoUrl ? post.photoUrl : post.image;
 const fontStyle = getFontFamilyById(post.selectedFont);
+
+const rawNeededStr = String(post.whatIsNeeded || '');
+const parseBulletField = (label: string): string => {
+  const regex = new RegExp(`${label}\\s*:\\s*([^•\\n]+)`, 'i');
+  const match = rawNeededStr.match(regex);
+  return match && match[1] ? match[1].trim() : '';
+};
+
+const bgMatch = (post.bloodGroup || rawHeadline || post.tagName || rawNeededStr).match(/(AB|A|B|O)[+-]/i);
+const bloodGroupVal = post.bloodGroup || parseBulletField('ලේ වර්ගය') || (bgMatch ? bgMatch[0].toUpperCase() : '');
+const hospitalFromTitle = rawHeadline.includes(':') ? rawHeadline.split(':').slice(1).join(':').trim() : '';
+const hospitalVal = (post as any).hospitalName || parseBulletField('රෝහල') || hospitalFromTitle || post.locationName || nearestCity || '';
+const patientVal = (post as any).patientName || parseBulletField('රෝගී නම') || (post as any).contactPersonName || authorName || '';
+const unitsVal = (post as any).unitsNeeded || parseBulletField('අවශ්‍ය ඒකක') || post.helpersNeeded || 1;
+const districtVal = post.district || parseBulletField('දිස්ත්‍රික්කය') || nearestCity || '';
+const neededDateVal = (post as any).neededDate || parseBulletField('අවශ්‍ය දිනය') || 'කඩිනමින් (හදිසි)';
+const contactPersonVal = (post as any).contactPersonName || parseBulletField('සම්බන්ධීකාරක') || authorName || '';
+
+const pLat = typeof post.latitude === 'number' ? post.latitude : typeof post.lat === 'number' ? post.lat : null;
+const pLng = typeof post.longitude === 'number' ? post.longitude : typeof post.lng === 'number' ? post.lng : null;
+const mapDestQuery = pLat !== null && pLng !== null
+  ? `${pLat},${pLng}`
+  : `${hospitalVal || post.locationName || nearestCity}${districtVal && !(hospitalVal || '').includes(districtVal) ? `, ${districtVal}` : ''}, Sri Lanka`;
+const googleMapsNavUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(mapDestQuery)}&travelmode=driving`;
+const googleMapsEmbedUrl = `https://maps.google.com/maps?q=${encodeURIComponent(mapDestQuery)}&z=14&output=embed`;
+
 return h('div', {
 className: 'fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 animate-fadeIn',
 onClick: () => setIsExpandedFullModal(false)
@@ -802,7 +829,64 @@ durationSec: post.audioDurationSec
 })) : null, rawHeadline ? h('div', { className: 'w-full px-4 py-3 rounded-2xl bg-gradient-to-r from-emerald-200/90 via-white to-emerald-100/90 dark:from-emerald-800/80 dark:via-[#0b291a] dark:to-emerald-900/80 border-2 border-emerald-500 shadow-xs' }, h('h2', {
 className: 'text-base sm:text-xl font-black text-slate-950 dark:text-white leading-snug',
 style: { fontFamily: fontStyle }
-}, rawHeadline)) : null, imgUrl ? h('div', { className: 'w-full rounded-2xl overflow-hidden bg-black border-2 border-emerald-500/60 shadow-lg' }, h('img', {
+}, rawHeadline)) : null,
+isBloodCardType ? h('div', { className: 'p-4 rounded-2xl bg-rose-50/80 dark:bg-rose-950/30 border-2 border-rose-500/60 space-y-3' },
+  h('div', { className: 'flex items-center justify-between gap-2 border-b border-rose-200 dark:border-rose-800/60 pb-2' },
+    h('span', { className: 'text-sm sm:text-base font-black text-rose-700 dark:text-rose-300 flex items-center gap-1.5' },
+      h(Droplet, { className: 'w-4 h-4 fill-current' }),
+      h('span', null, 'අවශ්‍ය රුධිර වර්ගය: ' + (bloodGroupVal || 'හදිසි'))
+    ),
+    h('span', { className: 'px-3 py-1 rounded-full bg-rose-600 text-white text-xs font-black' }, 'ඒකක ' + unitsVal)
+  ),
+  h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs' },
+    h('div', { className: 'p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-rose-200/70 dark:border-slate-800' },
+      h('span', { className: 'font-bold text-slate-500 block mb-0.5' }, '🏥 රෝහල / ස්ථානය:'),
+      h('span', { className: 'font-black text-slate-900 dark:text-white text-xs sm:text-sm' }, hospitalVal || nearestCity)
+    ),
+    h('div', { className: 'p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-rose-200/70 dark:border-slate-800' },
+      h('span', { className: 'font-bold text-slate-500 block mb-0.5' }, '📍 දිස්ත්‍රික්කය / නගරය:'),
+      h('span', { className: 'font-black text-slate-900 dark:text-white text-xs sm:text-sm' }, districtVal || post.locationName || nearestCity)
+    ),
+    h('div', { className: 'p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-rose-200/70 dark:border-slate-800' },
+      h('span', { className: 'font-bold text-slate-500 block mb-0.5' }, '👤 රෝගියාගේ නම:'),
+      h('span', { className: 'font-black text-slate-900 dark:text-white text-xs sm:text-sm' }, patientVal)
+    ),
+    h('div', { className: 'p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-rose-200/70 dark:border-slate-800' },
+      h('span', { className: 'font-bold text-slate-500 block mb-0.5' }, '📅 අවශ්‍ය දිනය / හදිසිභාවය:'),
+      h('span', { className: 'font-black text-rose-600 dark:text-rose-400 text-xs sm:text-sm' }, neededDateVal)
+    ),
+    h('div', { className: 'p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-rose-200/70 dark:border-slate-800 sm:col-span-2 flex items-center justify-between gap-2 flex-wrap' },
+      h('div', null,
+        h('span', { className: 'font-bold text-slate-500 block mb-0.5' }, '📞 සම්බන්ධීකාරක සහ දුරකථන අංකය:'),
+        h('span', { className: 'font-black text-slate-900 dark:text-white text-xs sm:text-sm' }, contactPersonVal + (displayPhone ? ' • ' + displayPhone : ''))
+      ),
+      phoneNumber && !isDemo ? h('a', {
+        href: 'tel:' + phoneNumber,
+        className: 'px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-1.5 shadow-sm'
+      }, h(Phone, { className: 'w-3.5 h-3.5' }), h('span', null, 'දැන් අමතන්න')) : null
+    )
+  )
+) : h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs' },
+  h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' },
+    h('span', { className: 'font-black text-slate-500 block mb-0.5' }, '👤 දැන්වීම්කරු:'),
+    h('span', { className: 'font-black text-slate-900 dark:text-white' }, authorName)
+  ),
+  h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2' },
+    h('div', null,
+      h('span', { className: 'font-black text-slate-500 block mb-0.5' }, '📞 දුරකථන අංකය:'),
+      h('span', { className: 'font-black text-slate-900 dark:text-white font-mono' }, displayPhone || 'සඳහන් කර නැත')
+    ),
+    phoneNumber && !isDemo ? h('a', {
+      href: 'tel:' + phoneNumber,
+      className: 'px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-1'
+    }, h(Phone, { className: 'w-3.5 h-3.5' }), h('span', null, 'අමතන්න')) : null
+  ),
+  h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 sm:col-span-2' },
+    h('span', { className: 'font-black text-slate-500 block mb-0.5' }, '📍 ස්ථානය / ලිපිනය:'),
+    h('span', { className: 'font-black text-slate-900 dark:text-white' }, (post.locationName || nearestCity) + (rawDistance !== null ? ` (${rawDistance.toFixed(1)} km)` : ''))
+  )
+),
+imgUrl ? h('div', { className: 'w-full rounded-2xl overflow-hidden bg-black border-2 border-emerald-500/60 shadow-lg' }, h('img', {
 src: imgUrl,
 alt: rawHeadline,
 loading: 'lazy',
@@ -811,7 +895,31 @@ className: 'w-full max-h-[65vh] object-contain mx-auto'
 })) : null, fullDesc ? h('div', { className: 'p-4 rounded-2xl bg-emerald-50/50 dark:bg-[#06180f] border border-emerald-200 dark:border-emerald-800 space-y-1' }, h('span', { className: 'text-[11px] font-black text-emerald-700 dark:text-emerald-400 block' }, 'සම්පූර්ණ විස්තරය:'), h('p', {
 className: 'text-sm sm:text-base text-slate-900 dark:text-zinc-100 font-bold whitespace-pre-wrap leading-relaxed',
 style: { fontFamily: fontStyle }
-}, fullDesc)) : null, neededText ? h('div', { className: 'p-3.5 rounded-2xl bg-slate-50 dark:bg-[#06180f] border border-slate-200 dark:border-emerald-900 space-y-1' }, h('span', { className: 'text-xs font-black text-emerald-700 dark:text-emerald-400 block' }, 'වියයුතු දේ / අවශ්‍යතාවය:'), h('p', { className: 'text-xs sm:text-sm text-slate-800 dark:text-zinc-200 font-bold whitespace-pre-wrap leading-relaxed' }, neededText)) : null, (condText ? true : Boolean(noticeText) ? true : Boolean(transportText) ? true : Boolean(paymentText)) ? h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs' }, condText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'කොන්දේසි:'), h('span', { className: 'font-bold text-slate-900 dark:text-white' }, condText)) : null, noticeText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'විශේෂ දැනුවත් කිරීම:'), h('span', { className: 'font-bold text-slate-900 dark:text-white' }, noticeText)) : null, transportText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'ප්‍රවාහනය / ලබාදීම:'), h('span', { className: 'font-bold text-slate-900 dark:text-white' }, transportText)) : null, paymentText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'ගෙවීම් / ප්‍රතිලාභ:'), h('span', { className: 'font-bold text-emerald-700 dark:text-emerald-400' }, paymentText)) : null) : null, renderPollBox(), renderExternalLinkBar(), renderValidityDurationForPoster(), renderInteractiveActionBar(), renderCommentsSection())));
+}, fullDesc)) : null, neededText ? h('div', { className: 'p-3.5 rounded-2xl bg-slate-50 dark:bg-[#06180f] border border-slate-200 dark:border-emerald-900 space-y-1' }, h('span', { className: 'text-xs font-black text-emerald-700 dark:text-emerald-400 block' }, 'වියයුතු දේ / අවශ්‍යතාවය:'), h('p', { className: 'text-xs sm:text-sm text-slate-800 dark:text-zinc-200 font-bold whitespace-pre-wrap leading-relaxed' }, neededText)) : null, (condText ? true : Boolean(noticeText) ? true : Boolean(transportText) ? true : Boolean(paymentText)) ? h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs' }, condText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'කොන්දේසි:'), h('span', { className: 'font-bold text-slate-900 dark:text-white' }, condText)) : null, noticeText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'විශේෂ දැනුවත් කිරීම:'), h('span', { className: 'font-bold text-slate-900 dark:text-white' }, noticeText)) : null, transportText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'ප්‍රවාහනය / ලබාදීම:'), h('span', { className: 'font-bold text-slate-900 dark:text-white' }, transportText)) : null, paymentText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'ගෙවීම් / ප්‍රතිලාභ:'), h('span', { className: 'font-bold text-emerald-700 dark:text-emerald-400' }, paymentText)) : null) : null,
+h('div', { className: 'p-3.5 rounded-2xl bg-slate-50 dark:bg-[#06180f] border border-emerald-300 dark:border-emerald-800/80 space-y-2.5' },
+  h('div', { className: 'flex items-center justify-between gap-2' },
+    h('span', { className: 'text-xs font-black text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5' },
+      h(MapPin, { className: 'w-4 h-4 text-emerald-600' }),
+      h('span', null, '🗺️ ස්ථානය සහ Map Navigation (මගපෙන්වීම)')
+    ),
+    h('a', {
+      href: googleMapsNavUrl,
+      target: '_blank',
+      rel: 'noopener noreferrer',
+      className: 'px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-black text-xs flex items-center gap-1.5 shadow-sm'
+    }, h(Navigation, { className: 'w-3.5 h-3.5' }), h('span', null, 'Google Maps මගපෙන්වීම'))
+  ),
+  h('div', { className: 'w-full h-44 rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700 bg-slate-900' },
+    h('iframe', {
+      title: 'Post Location Map',
+      src: googleMapsEmbedUrl,
+      className: 'w-full h-full border-0',
+      loading: 'lazy',
+      referrerPolicy: 'no-referrer-when-downgrade'
+    })
+  )
+),
+renderPollBox(), renderExternalLinkBar(), renderValidityDurationForPoster(), renderInteractiveActionBar(), renderCommentsSection())));
 };
 const rawHeadline = post.headline ? post.headline : post.title ? post.title : '';
 const rawDesc = post.content ? post.content : post.whatHappened ? post.whatHappened : '';
@@ -836,6 +944,7 @@ const shouldCap16x9 = Boolean(isLongText ? true : hasValidImage);
 const shortDesc = isLongText ? effectiveDesc.slice(0, 165) + '...' : effectiveDesc;
 return h(React.Fragment, null, h('div', {
 onClick: () => {
+stopContinuousSupportBell();
 if ((post as any)?.rawRedAlert && onViewPost) {
 onViewPost(post);
 return;
