@@ -153,7 +153,46 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
   const [newNeededDate, setNewNeededDate] = useState('අද දින (Today)');
   const [newContactName, setNewContactName] = useState(currentUser?.name || '');
   const [newContactPhone, setNewContactPhone] = useState(currentUser?.phone || '');
-  const [newNotes, setNewNotes] = useState('');
+  const [newNotes, setNewNotes] = useState("");
+  const [newWardNumber, setNewWardNumber] = useState("");
+  const [newRequestSlipNumber, setNewRequestSlipNumber] = useState("");
+  const [newRequestSlipPhotoUrl, setNewRequestSlipPhotoUrl] = useState("");
+  const [hospitalPinLat, setHospitalPinLat] = useState<number | null>(null);
+  const [hospitalPinLng, setHospitalPinLng] = useState<number | null>(null);
+  const [viewingSlipPhoto, setViewingSlipPhoto] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleBloodModalClose = () => {
+      onClose();
+    };
+    window.addEventListener("sahaya_blood_modal_close", handleBloodModalClose);
+    return () => window.removeEventListener("sahaya_blood_modal_close", handleBloodModalClose);
+  }, [onClose]);
+
+  const handleSlipPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setNewRequestSlipPhotoUrl(String(event.target?.result || ""));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePinLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setHospitalPinLat(pos.coords.latitude);
+          setHospitalPinLng(pos.coords.longitude);
+          alert("📍 රෝහල් පිහිටීම සාර්ථකව Pin කරන ලදී!");
+        },
+        () => {
+          alert("GPS පිහිටීම ලබාගැනීමට නොහැකි විය. කරුණාකර රෝහලේ නම හා දිස්ත්‍රික්කය සටහන් කරන්න.");
+        }
+      );
+    }
+  };
 
   // Donor Register Form state
   const [donorName, setDonorName] = useState(currentUser?.name || '');
@@ -230,7 +269,12 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       contactName: newContactName || currentUser?.name || 'සම්බන්ධීකාරක',
       contactPhone: newContactPhone,
       additionalNotes: newNotes,
-      status: 'active',
+      wardNumber: newWardNumber,
+      requestSlipNumber: newRequestSlipNumber,
+      requestSlipPhotoUrl: newRequestSlipPhotoUrl,
+      hospitalPinLat: hospitalPinLat || undefined,
+      hospitalPinLng: hospitalPinLng || undefined,
+      status: "active",
       createdAt: 'දැන් (Just now)',
       createdAtMs: Date.now(),
       userId: actualAuthorIdVal,
@@ -279,7 +323,12 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
         whatIsNeeded: `රෝගී නම: ${newPatientName} • ලේ වර්ගය: ${newBloodGroup} • අවශ්‍ය ඒකක: ${newUnitsNeeded} • රෝහල: ${newHospitalName} • දිස්ත්‍රික්කය: ${newDistrict} • අවශ්‍ය දිනය: ${newNeededDate || 'කඩිනමින්'} • සම්බන්ධීකාරක: ${newContactName || 'සම්බන්ධීකාරක'} (${newContactPhone}) ${newNotes ? `• සටහන්: ${newNotes}` : ''}`,
         locationName: `${newHospitalName}, ${newDistrict}`,
         district: newDistrict,
-        priorityLevel: 'emergency',
+        wardNumber: newWardNumber,
+        requestSlipNumber: newRequestSlipNumber,
+        requestSlipPhotoUrl: newRequestSlipPhotoUrl,
+        hospitalPinLat: hospitalPinLat || undefined,
+        hospitalPinLng: hospitalPinLng || undefined,
+        priorityLevel: "emergency",
         isPinnedEmergency: true,
         contactNumber: newContactPhone,
         contactPersonName: newContactName || currentUser?.name || 'සම්බන්ධීකාරක',
@@ -938,6 +987,28 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                           </span>
                         </div>
 
+                        {/* Ward, Slip No and Photo details */}
+                        <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-700 dark:text-slate-300 pt-0.5">
+                          {req.wardNumber && (
+                            <span className="font-bold bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                              🚪 {req.wardNumber}
+                            </span>
+                          )}
+                          {req.requestSlipNumber && (
+                            <span className="font-bold font-mono bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                              📄 {req.requestSlipNumber}
+                            </span>
+                          )}
+                          {req.requestSlipPhotoUrl && (
+                            <button
+                              type="button"
+                              onClick={() => setViewingSlipPhoto(req.requestSlipPhotoUrl || null)}
+                              className="font-black text-rose-600 dark:text-rose-400 underline flex items-center gap-1 cursor-pointer hover:text-rose-700"
+                            >
+                              📷 පත්‍රිකාවේ ඡායාරූපය බලන්න
+                            </button>
+                          )}
+                        </div>
                         {req.additionalNotes && (
                           <p className="text-[11px] text-slate-600 dark:text-slate-300 bg-rose-50/60 dark:bg-rose-950/40 p-2 rounded-xl border border-rose-200/60 dark:border-rose-900/40">
                             {req.additionalNotes}

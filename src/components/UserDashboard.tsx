@@ -653,10 +653,22 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     const handleGlobalPostDeleted = () => {
       setLocalHelpPosts((prev) => filterNonDeletedPosts(prev || []));
     };
-    window.addEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
+    window.addEventListener("sahaya_post_deleted", handleGlobalPostDeleted);
+    const handleGlobalPostCreated = (e: any) => {
+      const newPost = e?.detail?.post;
+      if (newPost) {
+        setLocalHelpPosts((prev) => {
+          const next = [newPost, ...(prev || []).filter((p) => p && p.id !== newPost.id)];
+          saveHelpPostsToStorage(next);
+          return next;
+        });
+      }
+    };
+    window.addEventListener("sahaya_post_created", handleGlobalPostCreated);
     window.addEventListener('sahaya_sync_all_services', handleSync);
     return () => {
-      window.removeEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
+      window.removeEventListener("sahaya_post_deleted", handleGlobalPostDeleted);
+      window.removeEventListener("sahaya_post_created", handleGlobalPostCreated);
       window.removeEventListener('sahaya_sync_all_services', handleSync);
       unsubPro();
       unsubPosts();

@@ -1,3 +1,4 @@
+export * from '../utils/bloodEligibilityUtils';
 export type Role = 'user' | 'admin' | 'super_admin' | 'member';
 export type UserStatus = 'pending' | 'approved' | 'rejected' | 'blocked';
 export type IssueStatus = 'pending' | 'in_progress' | 'resolved';
@@ -27,6 +28,10 @@ export interface PostReply {
   responderId?: string;
   responderNic?: string;
   distanceKm?: number;
+  donorBloodGroup?: string;
+  eligibilityReport?: any;
+  donorLiveLocation?: any;
+  declinedByPoster?: boolean;
 }
 
 export interface MultilingualText {
@@ -170,6 +175,12 @@ export interface HelpPost {
   confirmedAt?: string;
   confirmedHelperName?: string;
   confirmedHelperPhone?: string;
+  wardNumber?: string;
+  requestSlipNumber?: string;
+  requestSlipPhotoUrl?: string;
+  hospitalPinLat?: number;
+  hospitalPinLng?: number;
+  donorLiveLocation?: any;
   isCompleted?: boolean;
   completedAt?: string;
   completedBy?: string;
@@ -938,6 +949,12 @@ export interface BloodDonationRequest {
   contactName: string;
   contactPhone: string;
   additionalNotes?: string;
+  wardNumber?: string;
+  requestSlipNumber?: string;
+  requestSlipPhotoUrl?: string;
+  hospitalPinLat?: number;
+  hospitalPinLng?: number;
+  donorLiveLocation?: any;
   status: 'active' | 'fulfilled' | 'cancelled';
   createdAt: string;
   createdAtMs?: number;

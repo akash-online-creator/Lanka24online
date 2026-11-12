@@ -1046,7 +1046,7 @@ const renderBloodDonationStepsPage = () => {
       h(
         'div',
         { className: 'flex items-center justify-between gap-2 flex-wrap' },
-        h('span', { className: 'text-xs font-black text-rose-700 dark:text-rose-300' }, '🩸 ලේ පරිත්‍යාග ගනුදෙනුවේ දෙපාර්ශ්වය'),
+        h('span', { className: 'text-xs font-black text-rose-700 dark:text-rose-300' }, '🩸 ලේ පරිත්‍යාගයේ දෙපාර්ශ්වය'),
         h('span', { className: 'text-[11px] font-mono font-black px-2 py-0.5 rounded-lg bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300' }, displayPostCode)
       ),
       h(
@@ -1312,20 +1312,20 @@ const renderBloodDonationStepsPage = () => {
             ? h(
                 'div',
                 { className: 'mt-3 space-y-2' },
-                h('p', { className: 'text-xs text-slate-600 dark:text-slate-300' }, 'රෝගියා වෙනුවෙන් රුධිරය ලැබුණු බව තහවුරු කර පරිත්‍යාගශීලියාට ස්තූති කරමින් ගනුදෙනුව අවසන් කරන්න:'),
+                h('p', { className: 'text-xs text-slate-600 dark:text-slate-300' }, 'රෝගියා වෙනුවෙන් රුධිරය ලැබුණු බව තහවුරු කර පරිත්‍යාගශීලියාට ස්තූති කරමින් මෙම උතුම් සත්කාරය අවසන් කරන්න:'),
                 h(
                   'button',
                   {
                     type: 'button',
                     onClick: () =>
                       handleSendBloodStageMessage(
-                        `🎉 [පියවර 4/4 - ගනුදෙනුව සාර්ථකව අවසන්]\n🩸 රෝගියා සඳහා අවශ්‍ය රුධිරය සාර්ථකව ලැබුණි. උතුම් ජීවිතයක් බේරාගැනීමට දායක වූ "${activePartner?.name || 'පරිත්‍යාගශීලියා'}" වෙත හදපිරි ස්තූතිය පුද කරමු! 🙏❤️`,
+                        `🎉 [පියවර 4/4 - උතුම් පරිත්‍යාගය සාර්ථකව අවසන්]\n🩸 රෝගියා සඳහා අවශ්‍ය රුධිරය සාර්ථකව ලැබුණි. උතුම් ජීවිතයක් බේරාගැනීමට දායක වූ "${activePartner?.name || 'පරිත්‍යාගශීලියා'}" වෙත හදපිරි ස්තූතිය පුද කරමු! 🙏❤️`,
                         'complete_blood'
                       ),
                     className:
                       'w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm shadow-md cursor-pointer active:scale-95 transition-all',
                   },
-                  '🎉 4. ලේ ලැබුණා • ස්තූති කර ගනුදෙනුව අවසන් කරන්න'
+                  '🎉 4. ලේ ලැබුණා • ස්තූති කර පරිත්‍යාගය අවසන් කරන්න'
                 )
               )
             : h(
@@ -1334,7 +1334,7 @@ const renderBloodDonationStepsPage = () => {
                 '⏳ ඔබ ලේ පරිත්‍යාග කළ බව දන්වා ඇත. දැන්වීම්කරු විසින් අවසන් තහවුරු කිරීම සිදු කරන තෙක් රැඳී සිටින්න.'
               )
           : currentBloodStep > 4
-          ? h('p', { className: 'mt-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300' }, '🎉 රුධිර පරිත්‍යාග ගනුදෙනුව සාර්ථකව අවසන් වී ඇත! බොහෝම ස්තූතියි.')
+          ? h('p', { className: 'mt-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300' }, '🎉 රුධිර පරිත්‍යාග සත්කාරය සාර්ථකව අවසන් වී ඇත! බොහෝම ස්තූතියි.')
           : h('p', { className: 'mt-1 text-[11px] text-slate-500' }, 'තුන්වන පියවර (ලේ පරිත්‍යාග කිරීම) අවසන් වූ පසු මෙය සක්‍රීය වේ.')
       )
     ),

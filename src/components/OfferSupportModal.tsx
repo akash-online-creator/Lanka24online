@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Send, Phone, CheckCircle2 } from 'lucide-react';
-import { HelpPost, Language, LocationOption, User, PostReply } from '../types';
+import { HelpPost, Language, LocationOption, User, PostReply, BloodGroup } from '../types';
+import { checkBloodCompatibility, BloodEligibilityReport } from '../utils/bloodEligibilityUtils'; import { AlertCircle, ShieldCheck } from 'lucide-react';
 import { inspectAndSanitizeMessage, getUserStrikes, recordPolicyViolation, isUserPolicyBlocked } from '../utils/policyGuard';
 import { PolicyViolationModal } from './PolicyViolationModal';
 import { updateHelpPostInFirestore } from '../lib/firebase';
@@ -32,7 +33,18 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
 }) => {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState("");
+  const patientBloodGroup = String((post as any)?.bloodGroup || "").trim();
+  const [donorGroup, setDonorGroup] = useState<string>(() => {
+    return (currentUser as any)?.bloodGroup || patientBloodGroup || "O+";
+  });
+  const [lastDonatedStatus, setLastDonatedStatus] = useState<"first_time" | "more_than_4_months" | "recent">("more_than_4_months");
+  const [weightOk, setWeightOk] = useState(true);
+  const [healthOk, setHealthOk] = useState(true);
+
+  const isCompatible = !isBloodPost || !patientBloodGroup ? true : checkBloodCompatibility(donorGroup, patientBloodGroup);
+  const isIntervalOk = !isBloodPost || lastDonatedStatus !== "recent";
+  const isTestPassed = !isBloodPost || (isCompatible && isIntervalOk && weightOk && healthOk);
   const [submitted, setSubmitted] = useState(false);
 
   const pCodeStr = String(post?.postCode || '').toUpperCase();
@@ -78,6 +90,10 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !msg.trim() || !post.id) return;
+    if (isBloodPost && !isTestPassed) {
+      alert("කරුණාකර රුධිර පරිත්‍යාග සුදුසුකම් පරීක්ෂණය සම්පූර්ණ කර සමත් විය යුතුය.");
+      return;
+    }
 
     if (!isBloodPost && isUserPolicyBlocked(userKey)) {
       setIsBlocked(true);
@@ -111,9 +127,23 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
       responderName: name.trim(),
       responderPhone: phone.trim(),
       message: finalMsg,
-      createdAt: new Date().toLocaleString('si-LK'),
+      createdAt: new Date().toLocaleString("si-LK"),
       createdAtMs: nowMs,
       workflowStep: 2,
+      ...(isBloodPost ? {
+        donorBloodGroup: donorGroup,
+        eligibilityReport: {
+          passed: isTestPassed,
+          donorBloodGroup: donorGroup,
+          patientBloodGroup: patientBloodGroup || "නොදන්වා ඇත",
+          isCompatible,
+          lastDonatedStatus,
+          weightOk,
+          healthOk,
+          completedAt: new Date().toISOString(),
+          summary: `${donorGroup} ගැලපේ • අවසන් පරිත්‍යාගය: ${lastDonatedStatus === "first_time" ? "ප්‍රථම වර" : "මාස 4+ පෙර"} • සෞඛ්‍ය තත්ත්වය: සමත්`
+        }
+      } : {}),
     } as any;
 
     const existingReplies = Array.isArray(post.replies) ? post.replies : [];
@@ -231,7 +261,65 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
             )
           : h(
               'form',
-              { onSubmit: handleSubmit, className: 'space-y-3' },
+              { onSubmit: handleSubmit, className: 'space-y-3 max-h-[80vh] overflow-y-auto pr-1' },
+              isBloodPost ? h(
+                'div',
+                { className: 'p-3 rounded-2xl bg-rose-50/80 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 space-y-2.5 text-xs' },
+                h('div', { className: 'flex items-center justify-between pb-1.5 border-b border-rose-200 dark:border-rose-900/40' },
+                  h('span', { className: 'font-black text-rose-800 dark:text-rose-200 flex items-center gap-1' },
+                    h(ShieldCheck, { className: 'w-4 h-4 text-rose-600' }),
+                    '🩺 පූර්ව සුදුසුකම් පරීක්ෂාව (Eligibility Screening)'
+                  ),
+                  patientBloodGroup ? h('span', { className: 'font-bold text-[10px] bg-rose-200 dark:bg-rose-900 px-2 py-0.5 rounded-full text-rose-900 dark:text-rose-100' }, `අවශ්‍ය ලේ: ${patientBloodGroup}`) : null
+                ),
+                h('div', null,
+                  h('label', { className: 'block font-bold text-slate-700 dark:text-slate-300 mb-1 text-[11px]' }, '1. ඔබගේ රුධිර වර්ගය (Your Blood Group) *'),
+                  h('select', {
+                    value: donorGroup,
+                    onChange: (e: any) => setDonorGroup(e.target.value),
+                    className: 'w-full p-2 rounded-xl bg-white dark:bg-[#071710] border border-slate-300 dark:border-slate-700 font-bold text-xs'
+                  },
+                    ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((bg) =>
+                      h('option', { key: bg, value: bg }, bg)
+                    )
+                  ),
+                  !isCompatible ? h('p', { className: 'text-[10px] text-red-600 font-bold mt-1' }, `❌ ${donorGroup} රුධිරය ${patientBloodGroup} රෝගියාට නොගැලපේ.`) : h('p', { className: 'text-[10px] text-emerald-600 font-bold mt-1' }, `✅ ${donorGroup} රුධිරය ${patientBloodGroup} රෝගියාට ගැළපේ.`)
+                ),
+                h('div', null,
+                  h('label', { className: 'block font-bold text-slate-700 dark:text-slate-300 mb-1 text-[11px]' }, '2. අවසන් වරට ලේ ලබාදුන් කාලය *'),
+                  h('select', {
+                    value: lastDonatedStatus,
+                    onChange: (e: any) => setLastDonatedStatus(e.target.value),
+                    className: 'w-full p-2 rounded-xl bg-white dark:bg-[#071710] border border-slate-300 dark:border-slate-700 font-bold text-xs'
+                  },
+                    h('option', { value: 'first_time' }, 'ප්‍රථම වතාවට ලේ පරිත්‍යාග කරමි (First Time)'),
+                    h('option', { value: 'more_than_4_months' }, 'මාස 4කට පෙර හෝ ඊට වැඩි (4+ Months Ago)'),
+                    h('option', { value: 'recent' }, 'පසුගිය මාස 4 ඇතුළත (Within 4 Months - නුසුදුසුයි)')
+                  ),
+                  lastDonatedStatus === 'recent' ? h('p', { className: 'text-[10px] text-red-600 font-bold mt-1' }, '❌ නැවත ලේ දීමට අවම වශයෙන් මාස 4ක් සම්පූර්ණ විය යුතුය.') : null
+                ),
+                h('div', { className: 'space-y-1.5 pt-1' },
+                  h('label', { className: 'flex items-center gap-2 cursor-pointer text-[11px] font-bold text-slate-700 dark:text-slate-300' },
+                    h('input', {
+                      type: 'checkbox',
+                      checked: weightOk,
+                      onChange: (e: any) => setWeightOk(e.target.checked),
+                      className: 'rounded text-rose-600'
+                    }),
+                    'ශරීර බර 50kg ට වැඩි සහ නීරෝගී තත්ත්වයේ සිටිමි.'
+                  ),
+                  h('label', { className: 'flex items-center gap-2 cursor-pointer text-[11px] font-bold text-slate-700 dark:text-slate-300' },
+                    h('input', {
+                      type: 'checkbox',
+                      checked: healthOk,
+                      onChange: (e: any) => setHealthOk(e.target.checked),
+                      className: 'rounded text-rose-600'
+                    }),
+                    'පසුගිය දින 7 තුළ උණ, සෙම්ප්‍රතිශ්‍යාව හෝ ඖෂධ නොමැත.'
+                  )
+                ),
+                isTestPassed ? h('div', { className: 'p-2 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-400 text-emerald-800 dark:text-emerald-200 font-black text-center text-[11px]' }, '✅ සුදුසුකම් පරීක්ෂණය සමත්! (Eligible to Donate)') : h('div', { className: 'p-2 rounded-xl bg-red-100 dark:bg-red-950/60 border border-red-400 text-red-800 dark:text-red-200 font-bold text-center text-[10px]' }, '⚠️ පූර්ව කොන්දේසි සපුරා නොමැති බැවින් ලේ පරිත්‍යාග කළ නොහැක.')
+              ) : null,
               h(
                 'div',
                 { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2.5' },
