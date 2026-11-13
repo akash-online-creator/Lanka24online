@@ -777,6 +777,7 @@ return h('div', { className: 'mt-3 px-3.5 py-2.5 rounded-2xl bg-amber-500/10 dar
 };
 const renderExpandedFullModal = () => {
 if (!isExpandedFullModal) return null;
+const canSeeBloodConfidential = Boolean(ownerCheck || isAdmin || isMyReplyConfirmed);
 const rawHeadlineOrig = post.headline ? post.headline : post.title ? post.title : '';
 const rawHeadline = (isBloodCardType && !ownerCheck && !isAdmin && !isMyReplyConfirmed && rawHeadlineOrig.includes(':'))
   ? rawHeadlineOrig.split(':')[0].trim() + (post.district ? ` (${post.district})` : '')
@@ -841,22 +842,22 @@ isBloodCardType ? h('div', { className: 'p-4 rounded-2xl bg-rose-50/80 dark:bg-r
     ),
     h('span', { className: 'px-3 py-1 rounded-full bg-rose-600 text-white text-xs font-black' }, 'ඒකක ' + unitsVal)
   ),
-  h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs' },
+  canSeeBloodConfidential ? h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs' },
     h('div', { className: 'p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-rose-200/70 dark:border-slate-800' },
       h('span', { className: 'font-bold text-slate-500 block mb-0.5' }, '🏥 රෝහල / ස්ථානය:'),
       h('span', { className: 'font-black text-slate-900 dark:text-white text-xs sm:text-sm' }, hospitalVal || nearestCity)
     ),
     h('div', { className: 'p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-rose-200/70 dark:border-slate-800' },
-      h('span', { className: 'font-bold text-slate-500 block mb-0.5' }, '📍 දිස්ත්‍රික්කය / නගරය:'),
-      h('span', { className: 'font-black text-slate-900 dark:text-white text-xs sm:text-sm' }, districtVal || post.locationName || nearestCity)
+      h('span', { className: 'font-bold text-slate-500 block mb-0.5' }, '🚪 වාට්ටු අංකය:'),
+      h('span', { className: 'font-black text-rose-700 dark:text-rose-300 text-xs sm:text-sm' }, (post as any).wardNumber || parseBulletField('වාට්ටු අංකය') || 'රුධිර බැංකුව')
+    ),
+    h('div', { className: 'p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-rose-200/70 dark:border-slate-800' },
+      h('span', { className: 'font-bold text-slate-500 block mb-0.5' }, '📄 ගොනු අංකය:'),
+      h('span', { className: 'font-mono font-black text-slate-900 dark:text-white text-xs sm:text-sm' }, (post as any).requestSlipNumber || parseBulletField('ගොනු අංකය') || post.postCode)
     ),
     h('div', { className: 'p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-rose-200/70 dark:border-slate-800' },
       h('span', { className: 'font-bold text-slate-500 block mb-0.5' }, '👤 රෝගියාගේ නම:'),
       h('span', { className: 'font-black text-slate-900 dark:text-white text-xs sm:text-sm' }, patientVal)
-    ),
-    h('div', { className: 'p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-rose-200/70 dark:border-slate-800' },
-      h('span', { className: 'font-bold text-slate-500 block mb-0.5' }, '📅 අවශ්‍ය දිනය / හදිසිභාවය:'),
-      h('span', { className: 'font-black text-rose-600 dark:text-rose-400 text-xs sm:text-sm' }, neededDateVal)
     ),
     h('div', { className: 'p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-rose-200/70 dark:border-slate-800 sm:col-span-2 flex items-center justify-between gap-2 flex-wrap' },
       h('div', null,
@@ -867,6 +868,25 @@ isBloodCardType ? h('div', { className: 'p-4 rounded-2xl bg-rose-50/80 dark:bg-r
         href: 'tel:' + phoneNumber,
         className: 'px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-1.5 shadow-sm'
       }, h(Phone, { className: 'w-3.5 h-3.5' }), h('span', null, 'දැන් අමතන්න')) : null
+    )
+  ) : h('div', { className: 'space-y-2.5 text-xs' },
+    h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2.5' },
+      h('div', { className: 'p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-rose-200/70 dark:border-slate-800' },
+        h('span', { className: 'font-bold text-slate-500 block mb-0.5' }, '📍 දිස්ත්‍රික්කය / ප්‍රදේශය:'),
+        h('span', { className: 'font-black text-slate-900 dark:text-white text-xs sm:text-sm' }, districtVal || 'ශ්‍රී ලංකාව')
+      ),
+      h('div', { className: 'p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-rose-200/70 dark:border-slate-800' },
+        h('span', { className: 'font-bold text-slate-500 block mb-0.5' }, '📅 අවශ්‍ය දිනය / හදිසිභාවය:'),
+        h('span', { className: 'font-black text-rose-600 dark:text-rose-400 text-xs sm:text-sm' }, neededDateVal)
+      )
+    ),
+    h('div', { className: 'p-3 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 space-y-1' },
+      h('div', { className: 'font-black text-xs flex items-center gap-1.5' },
+        h('span', null, '🔒 රෝහල, වාට්ටු අංකය, ගොනු අංකය සහ දුරකථන අංකය ආරක්ෂිතව සඟවා ඇත')
+      ),
+      h('p', { className: 'text-[11px] font-bold leading-relaxed' },
+        'පරිත්‍යාගශීලියෙකු තෝරාගන්නා තුරු රෝහල, වාට්ටු අංකය, ගොනු අංකය සහ දුරකථන අංක පෙන්වනු නොලැබේ. ලේ පරිත්‍යාග කිරීමට පහත "🩸 ලේ ලබාදෙන්න" බොත්තම ඔබා සුදුසුකම් පරීක්ෂාවට ඉදිරිපත් වන්න.'
+      )
     )
   )
 ) : h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs' },
@@ -924,7 +944,10 @@ style: { fontFamily: fontStyle }
 ) : null,
 renderPollBox(), renderExternalLinkBar(), renderValidityDurationForPoster(), renderInteractiveActionBar(), renderCommentsSection())));
 };
-const rawHeadline = post.headline ? post.headline : post.title ? post.title : '';
+const rawHeadlineCardOrig = post.headline ? post.headline : post.title ? post.title : '';
+const rawHeadline = (isBloodCardType && !ownerCheck && !isAdmin && !isMyReplyConfirmed && rawHeadlineCardOrig.includes(':'))
+  ? rawHeadlineCardOrig.split(':')[0].trim() + (post.district ? ` (${post.district})` : '')
+  : rawHeadlineCardOrig;
 const rawDesc = post.content ? post.content : post.whatHappened ? post.whatHappened : '';
 const imgUrl = post.imageUrl ? post.imageUrl : post.photoUrl ? post.photoUrl : post.image;
 const fontStyle = getFontFamilyById(post.selectedFont);
