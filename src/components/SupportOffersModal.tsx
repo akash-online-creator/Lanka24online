@@ -198,6 +198,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   const [selectedPostIdFilter, setSelectedPostIdFilter] = useState<string>('all');
   const [bellRinging, setBellRinging] = useState<boolean>(() => isSupportBellRinging());
   const [viewingSlipPhoto, setViewingSlipPhoto] = useState<string | null>(null);
+  const [showUberPickerForConfirm, setShowUberPickerForConfirm] = useState<boolean>(false);
   const [isSharingLocation, setIsSharingLocation] = useState(false);
   const [completedCelebration, setCompletedCelebration] = useState<{
     donorName: string;
@@ -1023,10 +1024,10 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                                   </label>
                                   <button
                                     type="button"
-                                    onClick={handlePosterPinGps}
+                                    onClick={() => setShowUberPickerForConfirm(true)}
                                     className="px-2 py-0.5 rounded bg-blue-600 text-white font-black text-[10px] cursor-pointer"
                                   >
-                                    {posterPinLat ? '📍 GPS Pin සටහන් විය ✓' : '📍 GPS Drop Location ගන්න'}
+                                    {posterPinLat ? '🚕 සිතියමේ ස්ථානය වෙනස් කරන්න ✓' : '🚕 Uber Map එක හරහා ස්ථානය තෝරන්න'}
                                   </button>
                                 </div>
                                 <input
@@ -1226,27 +1227,15 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                                     </div>
                                   </div>
 
-                                  {/* Embedded Map + Turn-by-Turn Google Maps Drop Location Navigation */}
-                                  <div className="space-y-2 pt-1">
-                                    <div className="w-full h-40 rounded-xl overflow-hidden border border-emerald-500/50 bg-slate-900 relative">
-                                      <iframe
-                                        title="Hospital Drop Location Navigation"
-                                        src={parsedDetails.googleMapsEmbedUrl}
-                                        className="w-full h-full border-0"
-                                        loading="lazy"
-                                        referrerPolicy="no-referrer-when-downgrade"
-                                      />
-                                    </div>
-                                    <a
-                                      href={parsedDetails.googleMapsNavUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-95"
-                                    >
-                                      <Navigation className="w-4 h-4" />
-                                      <span>🗺️ අදාල ස්ථානයේ Drop ලොකේෂන් එක වෙත යන්න (Google Maps)</span>
-                                      <ExternalLink className="w-3.5 h-3.5 opacity-80" />
-                                    </a>
+                                  {/* Uber Taxi-Style Live Route Map (Pickup -> Hospital Drop-Off) */}
+                                  <div className="pt-1">
+                                    <UberBloodRouteMap
+                                      hospitalName={parsedDetails.hospitalName}
+                                      district={parsedDetails.district}
+                                      destLat={(off.post as any).hospitalPinLat || off.post.latitude || null}
+                                      destLng={(off.post as any).hospitalPinLng || off.post.longitude || null}
+                                      googleMapsNavUrl={parsedDetails.googleMapsNavUrl}
+                                    />
                                   </div>
                                 </div>
 
@@ -1455,6 +1444,15 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
       </div>
 
       {/* Slip Photo Zoom Preview Modal */}
+      <UberBloodLocationModal
+        isOpen={showUberPickerForConfirm}
+        onClose={() => setShowUberPickerForConfirm(false)}
+        onConfirmLocation={(loc) => {
+          setPosterPinLat(loc.lat);
+          setPosterPinLng(loc.lng);
+          setPosterDropLocationUrl(loc.dropLocationUrl);
+        }}
+      />
       {viewingSlipPhoto && (
         <div
           className="fixed inset-0 z-[120] bg-black/85 flex items-center justify-center p-4 cursor-pointer"

@@ -12,6 +12,7 @@ import {
 } from '../types';
 import { inspectAndSanitizeMessage, getUserStrikes, recordPolicyViolation, isUserPolicyBlocked } from '../utils/policyGuard';
 import { PolicyViolationModal } from './PolicyViolationModal';
+import { UberBloodRouteMap } from './UberBloodLocationModal';
 import { updateHelpPostInFirestore } from '../lib/firebase';
 
 export interface OfferSupportModalProps {
@@ -46,7 +47,7 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
   // 'questions' -> 01. රුධිර ගැලපුම සහ සුදුසුකම් ප්‍රශ්නාවලිය
   // 'guidelines' -> 02. රෝහලට යනතුරු පිළිපැදිය යුතු උපදෙස් + "තේරුම් ගත්තෙමි" බොත්තම
   // 'patient_details' -> 02B. රෝගියාගේ නම, වාට්ටු අංකය, විස්තර ගොනුවේ අංකය/ඡායාරූපය සහ Drop Location
-  const [bloodStage, setBloodStage] = useState<'questions' | 'guidelines' | 'patient_details'>('questions');
+  const [bloodStage, setBloodStage] = useState<'questions' | 'awaiting_selection' | 'guidelines' | 'patient_details'>('questions');
   const [viewingSlipPhoto, setViewingSlipPhoto] = useState<string | null>(null);
 
   const pCodeStr = String(post?.postCode || '').toUpperCase();
@@ -67,28 +68,71 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
     const match = rawNeededStr.match(regex);
     return match && match[1] ? match[1].trim() : '';
   };
+
   const bgMatch = (post?.bloodGroup || post?.title || post?.headline || post?.tagName || rawNeededStr).match(/(AB|A|B|O)[+-]/i);
   const patientBloodGroup = String(
     post?.bloodGroup || parseBulletField('ලේ වර්ගය') || (bgMatch ? bgMatch[0].toUpperCase() : 'O+')
   ).trim().toUpperCase();
 
-  const [donorGroup, setDonorGroup] = useState<string>(() => {
-    return (currentUser as any)?.bloodGroup || patientBloodGroup || 'O+';
+  // Check if current user is already selected/confirmed by the poster
+  const existingMyReply = (post?.replies || []).find((r) => {
+    const uid = currentUser?.id || currentUser?.userId;
+    const uphone = currentUser?.phone || currentUser?.whatsappPhone;
+    return (
+      (uid && (r.responderId === uid || r.userId === uid)) ||
+      (uphone && r.responderPhone && r.responderPhone.replace(/\D/g, '') === uphone.replace(/\D/g, ''))
+    );
   });
-  const [qBloodMatchConfirmed, setQBloodMatchConfirmed] = useState<'yes' | 'no' | null>('yes');
-  const [qAgeWeightOk, setQAgeWeightOk] = useState<'yes' | 'no' | null>('yes');
-  const [qIntervalOk, setQIntervalOk] = useState<'first_time' | 'more_than_4_months' | 'recent'>('more_than_4_months');
-  const [qHealthOk, setQHealthOk] = useState<'yes' | 'no' | null>('yes');
+  const isSelectedByPoster = Boolean(
+    existingMyReply && (existingMyReply.isConfirmed || existingMyReply.isAccepted)
+  );
 
-  const isCompatible = !isBloodPost || !patientBloodGroup ? true : checkBloodCompatibility(donorGroup, patientBloodGroup);
-  const isIntervalValid = !isBloodPost || qIntervalOk !== 'recent';
+  // 03. ඔහුගේ නිවැරදි රුධිර වර්ගය අසා එය රෝගියාට ගැළපෙනවාද යන්න system එකෙන් auto පරීක්ෂා කිරීම
+  const [donorGroup, setDonorGroup] = useState<string>(() => {
+    return (currentUser as any)?.bloodGroup || '';
+  });
+  const [qAgeWeightOk, setQAgeWeightOk] = useState<'yes' | 'no' | null>(null);
+  const [qIntervalOk, setQIntervalOk] = useState<'first_time' | 'more_than_4_months' | 'recent' | ''>('');
+  const [qHealthOk, setQHealthOk] = useState<'yes' | 'no' | null>(null);
+
+  const hasSelectedBloodGroup = Boolean(donorGroup && donorGroup.trim());
+  const isCompatible =
+    !isBloodPost || !patientBloodGroup
+      ? true
+      : hasSelectedBloodGroup
+      ? checkBloodCompatibility(donorGroup, patientBloodGroup)
+      : false;
+  const isIntervalValid = !isBloodPost || (qIntervalOk !== '' && qIntervalOk !== 'recent');
+  const allQuestionsAnswered =
+    hasSelectedBloodGroup &&
+    qAgeWeightOk !== null &&
+    qIntervalOk !== '' &&
+    qHealthOk !== null;
+
+  // 04. අවශ්‍ය තොරතුරු ලබාදීමෙන් පසු ඔහු සුදුසුද නුසුදුසුද යන්න තීරණය කරන්නේ ඇප් එක මගින්ය
   const isTestPassed =
     !isBloodPost ||
-    (isCompatible &&
-      qBloodMatchConfirmed === 'yes' &&
+    (allQuestionsAnswered &&
+      isCompatible &&
       qAgeWeightOk === 'yes' &&
       isIntervalValid &&
       qHealthOk === 'yes');
+
+  const ineligibilityReasons: string[] = [];
+  if (isBloodPost && hasSelectedBloodGroup && !isCompatible) {
+    ineligibilityReasons.push(
+      `ඔබගේ (${donorGroup}) රුධිර වර්ගය රෝගියාට අවශ්‍ය (${patientBloodGroup}) රුධිර වර්ගයට නොගැළපේ.`
+    );
+  }
+  if (isBloodPost && qAgeWeightOk === 'no') {
+    ineligibilityReasons.push('වයස අවුරුදු 18 - 60 අතර සහ ශරීර බර 50kg ට වැඩි විය යුතුය.');
+  }
+  if (isBloodPost && qIntervalOk === 'recent') {
+    ineligibilityReasons.push('අවසන් වරට ලේ පරිත්‍යාග කර අවම වශයෙන් මාස 4ක කාලයක් ගතවී තිබිය යුතුය.');
+  }
+  if (isBloodPost && qHealthOk === 'no') {
+    ineligibilityReasons.push('පසුගිය දින 7 තුළ උණ/සෙම්ප්‍රතිශ්‍යාව/ප්‍රතිජීවක ඖෂධ හෝ පැය 24 තුළ මත්පැන් භාවිතයෙන් තොරව නීරෝගීව සිටිය යුතුය.');
+  }
 
   useEffect(() => {
     if (isOpen) {
@@ -100,13 +144,20 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
         : '';
       setName(defaultName);
       setPhone(defaultPhone);
-      const initBg = (currentUser as any)?.bloodGroup || patientBloodGroup || 'O+';
+      const initBg = (currentUser as any)?.bloodGroup || '';
       setDonorGroup(initBg);
-      setQBloodMatchConfirmed('yes');
-      setQAgeWeightOk('yes');
-      setQIntervalOk('more_than_4_months');
-      setQHealthOk('yes');
-      setBloodStage('questions');
+      setQAgeWeightOk(null);
+      setQIntervalOk('');
+      setQHealthOk(null);
+      if (isSelectedByPoster) {
+        setBloodStage(
+          existingMyReply?.guidelinesAccepted || existingMyReply?.step3GuidelinesAccepted
+            ? 'patient_details'
+            : 'guidelines'
+        );
+      } else {
+        setBloodStage('questions');
+      }
       setMsg(
         isBloodPost
           ? `මම ${patientBloodGroup} රෝගියා වෙනුවෙන් නොමිලේ ලේ පරිත්‍යාග කිරීමට සූදානම්.`
@@ -115,7 +166,7 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
       setSubmitted(false);
       setShowPolicyModal(false);
     }
-  }, [isOpen, currentUser, isBloodPost, post?.id, patientBloodGroup]);
+  }, [isOpen, currentUser, isBloodPost, post?.id, patientBloodGroup, isSelectedByPoster]);
 
   const userKey = phone ? phone : name ? name : 'helper_user';
   const [showPolicyModal, setShowPolicyModal] = useState(false);

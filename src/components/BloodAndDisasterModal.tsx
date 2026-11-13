@@ -159,6 +159,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
   const [newDropLocationUrl, setNewDropLocationUrl] = useState("");
   const [hospitalPinLat, setHospitalPinLat] = useState<number | null>(null);
   const [hospitalPinLng, setHospitalPinLng] = useState<number | null>(null);
+  const [showUberMapPicker, setShowUberMapPicker] = useState<boolean>(false);
   const [viewingSlipPhoto, setViewingSlipPhoto] = useState<string | null>(null);
 
   useEffect(() => {
@@ -323,9 +324,9 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
         additionalNotes: newNotes || '',
         tagCategory: 'හදිසි / ආපදා',
         tagName: `🩸 හදිසි ${newBloodGroup} ලේ අවශ්‍යතාවය`,
-        title: `🩸 ${newBloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${newHospitalName}`,
-        headline: `🩸 ${newBloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${newHospitalName}`,
-        whatHappened: `🩸 ${newBloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${newHospitalName}`,
+        title: `🩸 හදිසි ${newBloodGroup} රුධිර අවශ්‍යතාවයක් (${newDistrict})`,
+        headline: `🩸 හදිසි ${newBloodGroup} රුධිර අවශ්‍යතාවයක් (${newDistrict})`,
+        whatHappened: `🩸 ${newDistrict} ප්‍රදේශයේ රෝගියෙකු සඳහා ${newBloodGroup} රුධිරය (ඒකක ${newUnitsNeeded}ක්) හදිසියේ අවශ්‍ය වී ඇත.`,
         whatIsNeeded: `රෝගී නම: ${newPatientName} • ලේ වර්ගය: ${newBloodGroup} • අවශ්‍ය ඒකක: ${newUnitsNeeded} • රෝහල: ${newHospitalName} • වාට්ටු අංකය: ${newWardNumber || "රුධිර බැංකුව"} • ගොනු අංකය: ${newRequestSlipNumber || "රෝහල් ගොනුව"} • දිස්ත්‍රික්කය: ${newDistrict} • අවශ්‍ය දිනය: ${newNeededDate || "කඩිනමින්"} • සම්බන්ධීකාරක: ${newContactName || "සම්බන්ධීකාරක"} (${newContactPhone}) ${newNotes ? `• සටහන්: ${newNotes}` : ""}`,
         locationName: `${newHospitalName}, ${newDistrict}`,
         district: newDistrict,
@@ -445,9 +446,9 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       hospitalPinLng: req.hospitalPinLng,
       tagCategory: "හදිසි / ආපදා",
       tagName: `🩸 හදිසි ${req.bloodGroup} ලේ අවශ්‍යතාවය`,
-      title: `🩸 ${req.bloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${req.hospitalName}`,
-      headline: `🩸 ${req.bloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${req.hospitalName}`,
-      whatHappened: `🩸 ${req.bloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${req.hospitalName}`,
+      title: `🩸 හදිසි ${req.bloodGroup} රුධිර අවශ්‍යතාවයක් (${req.district})`,
+      headline: `🩸 හදිසි ${req.bloodGroup} රුධිර අවශ්‍යතාවයක් (${req.district})`,
+      whatHappened: `🩸 ${req.district} ප්‍රදේශයේ රෝගියෙකු සඳහා ${req.bloodGroup} රුධිරය (ඒකක ${req.unitsNeeded}ක්) හදිසියේ අවශ්‍ය වී ඇත.`,
       whatIsNeeded: `රෝගී නම: ${req.patientName} • ලේ වර්ගය: ${req.bloodGroup} • අවශ්‍ය ඒකක: ${req.unitsNeeded} • රෝහල: ${req.hospitalName} • දිස්ත්‍රික්කය: ${req.district} • අවශ්‍ය දිනය: ${req.neededDate || 'කඩිනමින්'} • සම්බන්ධීකාරක: ${req.contactName || 'සම්බන්ධීකාරක'} (${req.contactPhone})`,
       locationName: `${req.hospitalName}, ${req.district}`,
       district: req.district || 'කොළඹ',
@@ -965,7 +966,9 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                             </span>
                           )}
                           <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
-                            {maskName(req.patientName, isDemo)} වෙනුවෙන් (පයින්ට් {req.unitsNeeded}ක්)
+                            {isPoster || isAdmin || isMyReplyConfirmed
+                              ? `${maskName(req.patientName, isDemo)} වෙනුවෙන් (පයින්ට් ${req.unitsNeeded}ක්)`
+                              : `${req.bloodGroup} රුධිර අවශ්‍යතාවයක් (පයින්ට් ${req.unitsNeeded}ක්)`}
                           </h4>
                           {req.urgency === 'urgent' && !isFulfilled && (
                             <span className="text-[9px] bg-red-600 text-white font-extrabold px-2 py-0.5 rounded-full animate-pulse">
@@ -1072,13 +1075,15 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                               <span>💬 Chat</span>
                             </button>
                           )}
-                          <a
-                            href={`tel:${req.contactPhone}`}
-                            className="px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
-                          >
-                            <Phone className="w-4 h-4" />
-                            <span>{req.contactPhone}</span>
-                          </a>
+                          {isMyReplyConfirmed && req.contactPhone && (
+                            <a
+                              href={`tel:${req.contactPhone}`}
+                              className="px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                            >
+                              <Phone className="w-4 h-4" />
+                              <span>{req.contactPhone}</span>
+                            </a>
+                          )}
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 flex-wrap">
@@ -1511,27 +1516,37 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                   )}
                 </div>
 
-                {/* Drop Location Pin / Link */}
-                <div className="p-2.5 rounded-xl bg-sky-50/70 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-900/60 space-y-2">
+                {/* Drop Location Pin / Link via Uber-style Map Picker */}
+                <div className="p-3 rounded-xl bg-slate-900 text-white border-2 border-slate-700 space-y-2.5">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <label className="font-bold text-slate-700 dark:text-slate-300">
-                      📍 අදාල ස්ථානයේ Drop ලොකේෂන් එක (Drop Location):
-                    </label>
+                    <div>
+                      <label className="font-black text-xs text-white block">
+                        🚕 අදාල ස්ථානයේ Drop ලොකේෂන් එක (Uber Map ක්‍රමයට):
+                      </label>
+                      <span className="text-[10px] text-slate-400">
+                        සිතියම හරහා නිවැරදි රෝහල හෝ ලේ ලබාදෙන ස්ථානය ලකුණු කරන්න
+                      </span>
+                    </div>
                     <button
                       type="button"
-                      onClick={handlePinLocation}
-                      className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-black text-[11px] flex items-center gap-1 cursor-pointer"
+                      onClick={() => setShowUberMapPicker(true)}
+                      className="px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md cursor-pointer"
                     >
-                      <MapPin className="w-3 h-3" />
-                      <span>{hospitalPinLat ? "📍 GPS Pin සටහන් විය ✓" : "📍 GPS Drop Location ගන්න"}</span>
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>{hospitalPinLat ? '🚕 සිතියමේ ස්ථානය වෙනස් කරන්න ✓' : '🚕 Map එක හරහා ස්ථානය තෝරන්න'}</span>
                     </button>
                   </div>
+                  {hospitalPinLat && hospitalPinLng && (
+                    <div className="text-[11px] font-bold text-emerald-400 bg-slate-950 px-2.5 py-1.5 rounded-lg border border-emerald-800/60">
+                      ✅ ස්ථානය සිතියමේ ලකුණු කර ඇත (GPS: {hospitalPinLat.toFixed(4)}, {hospitalPinLng.toFixed(4)})
+                    </div>
+                  )}
                   <input
                     type="text"
                     value={newDropLocationUrl}
                     onChange={(e) => setNewDropLocationUrl(e.target.value)}
-                    placeholder="Google Maps Drop Location Link එක හෝ රෝහල් පිහිටීම..."
-                    className="w-full p-2 bg-white dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl text-[11px]"
+                    placeholder="හෝ Google Maps Drop Location Link එක මෙහි ඇතුළත් කරන්න..."
+                    className="w-full p-2 bg-slate-950 border border-slate-700 rounded-xl text-[11px] text-white"
                   />
                 </div>
 
@@ -1662,7 +1677,21 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
         )}
 
       </div>
+      <UberBloodLocationModal
+        isOpen={showUberMapPicker}
+        onClose={() => setShowUberMapPicker(false)}
+        initialLat={hospitalPinLat}
+        initialLng={hospitalPinLng}
+        initialHospitalName={newHospitalName}
+        onConfirmLocation={(loc) => {
+          setHospitalPinLat(loc.lat);
+          setHospitalPinLng(loc.lng);
+          setNewDropLocationUrl(loc.dropLocationUrl);
+          if (!newHospitalName.trim() && loc.placeName) {
+            setNewHospitalName(loc.placeName);
+          }
+        }}
+      />
     </div>
   );
 };
-

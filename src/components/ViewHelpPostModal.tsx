@@ -71,6 +71,19 @@ onOpenChat(post);
 }
 };
 const repliesList = Array.isArray(post.replies) ? post.replies : [];
+const isBloodPostModal = Boolean(
+  post.serviceType === 'blood_donation' ||
+  post.postType === 'blood_request' ||
+  String(post.postCode || '').startsWith('#BLD') ||
+  Boolean(post.bloodGroup)
+);
+const isConfirmedBloodDonor = repliesList.some(
+  (r) =>
+    currentUser &&
+    (r.responderId === currentUser.id || r.userId === currentUser.id) &&
+    (r.isConfirmed || r.isAccepted)
+);
+const canSeeBloodConfidentialModal = Boolean(canModify || isConfirmedBloodDonor);
 const pLat = typeof post.latitude === 'number' ? post.latitude : typeof post.lat === 'number' ? post.lat : null;
 const pLng = typeof post.longitude === 'number' ? post.longitude : typeof post.lng === 'number' ? post.lng : null;
 const locStr = (post as any).hospitalName || post.locationName || post.city || (post as any).district || 'Sri Lanka';
@@ -123,12 +136,12 @@ onClose();
 onBoostPost(p);
 } : undefined
 }),
-(post.whatIsNeeded || post.whatHappened || post.content) ? h('div', { className: 'p-3.5 rounded-2xl bg-white dark:bg-[#071d12] border border-emerald-400/60 space-y-1.5 text-xs' },
+(!isBloodPostModal && (post.whatIsNeeded || post.whatHappened || post.content)) ? h('div', { className: 'p-3.5 rounded-2xl bg-white dark:bg-[#071d12] border border-emerald-400/60 space-y-1.5 text-xs' },
   h('span', { className: 'font-black text-emerald-700 dark:text-emerald-400 block' }, '📋 සම්පූර්ණ විස්තරය:'),
   post.whatHappened ? h('p', { className: 'font-bold text-slate-900 dark:text-white leading-relaxed whitespace-pre-wrap' }, post.whatHappened) : null,
   post.whatIsNeeded ? h('p', { className: 'font-bold text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap' }, post.whatIsNeeded) : null
 ) : null,
-h('div', { className: 'p-3.5 rounded-2xl bg-white dark:bg-[#071d12] border border-emerald-400/60 space-y-2' },
+(!isBloodPostModal || canSeeBloodConfidentialModal) ? h('div', { className: 'p-3.5 rounded-2xl bg-white dark:bg-[#071d12] border border-emerald-400/60 space-y-2' },
   h('div', { className: 'flex items-center justify-between gap-2' },
     h('span', { className: 'text-xs font-black text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5' },
       h(MapPin, { className: 'w-4 h-4 text-emerald-600' }),
@@ -150,7 +163,7 @@ h('div', { className: 'p-3.5 rounded-2xl bg-white dark:bg-[#071d12] border borde
       referrerPolicy: 'no-referrer-when-downgrade'
     })
   )
-), Boolean(canModify && repliesList.length >= 1) ? h('div', { className: 'mt-4 bg-white dark:bg-[#071d12] border-2 border-emerald-500/50 rounded-2xl p-4 space-y-3' }, h('div', { className: 'flex items-center justify-between' }, h('h4', { className: 'text-xs font-black text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5' }, h(MessageSquare, { className: 'w-4 h-4 text-emerald-600 dark:text-emerald-400' }), h('span', null, getLangText(`ලැබී ඇති පිළිතුරු සහ පණිවිඩ (${repliesList.length}):`, `Received Replies & Messages (${repliesList.length}):`, `பெறப்பட்ட பதில்கள் மற்றும் செய்திகள் (${repliesList.length}):`))), onOpenChat ? h('button', {
+) : null, Boolean(canModify && repliesList.length >= 1) ? h('div', { className: 'mt-4 bg-white dark:bg-[#071d12] border-2 border-emerald-500/50 rounded-2xl p-4 space-y-3' }, h('div', { className: 'flex items-center justify-between' }, h('h4', { className: 'text-xs font-black text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5' }, h(MessageSquare, { className: 'w-4 h-4 text-emerald-600 dark:text-emerald-400' }), h('span', null, getLangText(`ලැබී ඇති පිළිතුරු සහ පණිවිඩ (${repliesList.length}):`, `Received Replies & Messages (${repliesList.length}):`, `பெறப்பட்ட பதில்கள் மற்றும் செய்திகள் (${repliesList.length}):`))), onOpenChat ? h('button', {
 type: 'button',
 onClick: handleChatClick,
 className: 'text-xs font-black text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer'
