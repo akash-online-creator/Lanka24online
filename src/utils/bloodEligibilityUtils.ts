@@ -96,10 +96,33 @@ export function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lo
 }
 
 // 04. අවසානයේ සාමාන්‍ය සේවා හරහා නොමිලේ ලේ පරිත්‍යාග කළ තැනැත්තාට ස්තූති කරමින් නම සහ ස්ථානය සඳහන් කර දීර්ඝායුෂ ප්‍රාර්ථනා කිරීම
-export function createBloodDonationHonorPost(donorName: string, hospitalName: string, district?: string): HelpPost {
-  const cleanDonor = (donorName || "උතුම් පරිත්‍යාගශීලියා").trim();
-  const cleanHosp = (hospitalName || "රෝහල").trim();
-  const cleanDist = district && !cleanHosp.includes(district) ? ` (${district})` : "";
+export function createBloodDonationHonorPost(
+  donorNameOrParams:
+    | string
+    | {
+        donorName: string;
+        donorId?: string;
+        bloodGroup?: string;
+        hospitalName?: string;
+        location?: string;
+        posterName?: string;
+        posterId?: string;
+        originalPostCode?: string;
+      },
+  hospitalNameArg?: string,
+  districtArg?: string
+): HelpPost {
+  const isObj = typeof donorNameOrParams === 'object' && donorNameOrParams !== null;
+  const cleanDonor = (
+    (isObj ? donorNameOrParams.donorName : donorNameOrParams) || 'උතුම් පරිත්‍යාගශීලියා'
+  ).trim();
+  const cleanHosp = (
+    (isObj ? donorNameOrParams.hospitalName || donorNameOrParams.location : hospitalNameArg) ||
+    'රෝහල'
+  ).trim();
+  const district = isObj ? donorNameOrParams.location : districtArg;
+  const cleanDist =
+    district && !cleanHosp.includes(district) ? ` (${district})` : '';
   const nowIso = new Date().toISOString();
   const nowMs = Date.now();
   const postCode = `#SRV-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -117,25 +140,31 @@ export function createBloodDonationHonorPost(donorName: string, hospitalName: st
     postCode,
     title,
     headline: title,
+    description: body,
     whatHappened: body,
     content: body,
     whatIsNeeded: `ලේ පරිත්‍යාග කළ පුද්ගලයා: ${cleanDonor} • ලේ පරිත්‍යාග කළ ස්ථානය: ${cleanHosp}${cleanDist} • දීර්ඝායුෂ ප්‍රාර්ථනා කරමු! 🙏`,
-    category: "සාමාන්‍ය සේවා",
-    postType: "blood_donation_honor" as any,
-    serviceType: "general_service" as any,
-    tagName: "සෞඛ්‍ය හා සත්කාර",
-    tagCategory: "සාමාන්‍ය සේවා",
+    category: 'සාමාන්‍ය සේවා',
+    postType: 'blood_donation_honor' as any,
+    serviceType: 'general_service' as any,
+    tagName: 'සෞඛ්‍ය හා සත්කාර',
+    tagCategory: 'සාමාන්‍ය සේවා',
+    location: `${cleanHosp}${cleanDist}`,
     locationName: `${cleanHosp}${cleanDist}`,
-    district: district || "ශ්‍රී ලංකා",
-    createdAt: nowIso,
+    district: district || 'ශ්‍රී ලංකා',
+    date: 'මේ දැන්',
+    createdAt: nowMs,
     createdAtIso: nowIso,
     createdAtMs: nowMs,
-    userName: "සහය සේවා ප්‍රණාම පුවරුව (නොමිලේ)",
-    payment: "නොමිලේ (රු. 0.00)",
+    posterId: (isObj && donorNameOrParams.posterId) || 'system_honor',
+    posterName: 'සහය සේවා ප්‍රණාම පුවරුව (නොමිලේ)',
+    userName: 'සහය සේවා ප්‍රණාම පුවරුව (නොමිලේ)',
+    payment: 'නොමිලේ (රු. 0.00)',
     isPinnedEmergency: false,
-    priorityLevel: "normal",
+    priorityLevel: 'normal',
+    isResolved: false,
     likesCount: 1,
     replies: [],
-    status: "active",
+    status: 'active',
   } as any;
 }
