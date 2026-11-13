@@ -80,7 +80,7 @@ export const ResolutionPromptModal: React.FC<ResolutionPromptModalProps> = ({
                 </span>
               </div>
               <h2 className="text-base sm:text-lg font-black tracking-tight text-white mt-0.5">
-                සහය සහ බිල්පත් තහවුරු කිරීම
+                {isBloodPost ? '🩸 උතුම් රුධිර පරිත්‍යාගය තහවුරු කිරීම' : 'සහය සහ බිල්පත් තහවුරු කිරීම'}
               </h2>
             </div>
           </div>
@@ -120,10 +120,10 @@ export const ResolutionPromptModal: React.FC<ResolutionPromptModalProps> = ({
               <HelpCircle className="w-5 h-5 animate-pulse" />
             </div>
             <h3 className="text-base font-black text-slate-900 dark:text-white leading-snug">
-              ඔබගේ ගැටලුව සහ ගණුදෙනු සාර්ථකව විසඳී අවසන් ද?
+              {isBloodPost ? 'රුධිර පරිත්‍යාගය සාර්ථකව සිදු කෙරුණා ද?' : 'ඔබගේ ගැටලුව සහ ගණුදෙනු සාර්ථකව විසඳී අවසන් ද?'}
             </h3>
             <p className="text-[11px] text-slate-600 dark:text-slate-300 max-w-sm mx-auto leading-relaxed">
-              පහත සඳහන් බිල්පත සහ සිදුකළ ක්‍රියාකාරකම් සලකා බලා ගණුදෙනුව අවසන් නම් දකුණට අදින්න.
+              {isBloodPost ? 'ලේ පරිත්‍යාග කළ පුද්ගලයාට සාමාන්‍ය සේවා හරහා නොමිලේ ස්තුතිය පළකර දීර්ඝායුෂ ප්‍රාර්ථනා කිරීමට දකුණට අදින්න.' : 'පහත සඳහන් බිල්පත සහ සිදුකළ ක්‍රියාකාරකම් සලකා බලා ගණුදෙනුව අවසන් නම් දකුණට අදින්න.'}
             </p>
           </div>
 

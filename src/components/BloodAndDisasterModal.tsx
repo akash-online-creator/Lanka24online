@@ -152,7 +152,47 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
   const [newNeededDate, setNewNeededDate] = useState('අද දින (Today)');
   const [newContactName, setNewContactName] = useState(currentUser?.name || '');
   const [newContactPhone, setNewContactPhone] = useState(currentUser?.phone || '');
-  const [newNotes, setNewNotes] = useState('');
+  const [newNotes, setNewNotes] = useState("");
+  const [newWardNumber, setNewWardNumber] = useState("");
+  const [newRequestSlipNumber, setNewRequestSlipNumber] = useState("");
+  const [newRequestSlipPhotoUrl, setNewRequestSlipPhotoUrl] = useState("");
+  const [newDropLocationUrl, setNewDropLocationUrl] = useState("");
+  const [hospitalPinLat, setHospitalPinLat] = useState<number | null>(null);
+  const [hospitalPinLng, setHospitalPinLng] = useState<number | null>(null);
+  const [viewingSlipPhoto, setViewingSlipPhoto] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleBloodModalClose = () => {
+      onClose();
+    };
+    window.addEventListener("sahaya_blood_modal_close", handleBloodModalClose);
+    return () => window.removeEventListener("sahaya_blood_modal_close", handleBloodModalClose);
+  }, [onClose]);
+
+  const handleSlipPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setNewRequestSlipPhotoUrl(String(event.target?.result || ""));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePinLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setHospitalPinLat(pos.coords.latitude);
+          setHospitalPinLng(pos.coords.longitude);
+          setNewDropLocationUrl(`https://www.google.com/maps/dir/?api=1&destination=${pos.coords.latitude},${pos.coords.longitude}&travelmode=driving`);
+        },
+        () => {
+          alert("GPS පිහිටීම ලබාගැනීමට නොහැකි විය. කරුණාකර Google Maps Link එක හෝ රෝහලේ නම ඇතුළත් කරන්න.");
+        }
+      );
+    }
+  };
 
   // Donor Register Form state
   const [donorName, setDonorName] = useState(currentUser?.name || '');
@@ -229,7 +269,13 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       contactName: newContactName || currentUser?.name || 'සම්බන්ධීකාරක',
       contactPhone: newContactPhone,
       additionalNotes: newNotes,
-      status: 'active',
+      wardNumber: newWardNumber,
+      requestSlipNumber: newRequestSlipNumber,
+      requestSlipPhotoUrl: newRequestSlipPhotoUrl,
+      dropLocationUrl: newDropLocationUrl,
+      hospitalPinLat: hospitalPinLat || undefined,
+      hospitalPinLng: hospitalPinLng || undefined,
+      status: "active",
       createdAt: 'දැන් (Just now)',
       createdAtMs: Date.now(),
       userId: actualAuthorIdVal,
@@ -280,10 +326,16 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
         title: `🩸 ${newBloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${newHospitalName}`,
         headline: `🩸 ${newBloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${newHospitalName}`,
         whatHappened: `🩸 ${newBloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${newHospitalName}`,
-        whatIsNeeded: `රෝගී නම: ${newPatientName} • ලේ වර්ගය: ${newBloodGroup} • අවශ්‍ය ඒකක: ${newUnitsNeeded} • රෝහල: ${newHospitalName} • දිස්ත්‍රික්කය: ${newDistrict} • අවශ්‍ය දිනය: ${newNeededDate || 'කඩිනමින්'} • සම්බන්ධීකාරක: ${newContactName || 'සම්බන්ධීකාරක'} (${newContactPhone}) ${newNotes ? `• සටහන්: ${newNotes}` : ''}`,
+        whatIsNeeded: `රෝගී නම: ${newPatientName} • ලේ වර්ගය: ${newBloodGroup} • අවශ්‍ය ඒකක: ${newUnitsNeeded} • රෝහල: ${newHospitalName} • වාට්ටු අංකය: ${newWardNumber || "රුධිර බැංකුව"} • ගොනු අංකය: ${newRequestSlipNumber || "රෝහල් ගොනුව"} • දිස්ත්‍රික්කය: ${newDistrict} • අවශ්‍ය දිනය: ${newNeededDate || "කඩිනමින්"} • සම්බන්ධීකාරක: ${newContactName || "සම්බන්ධීකාරක"} (${newContactPhone}) ${newNotes ? `• සටහන්: ${newNotes}` : ""}`,
         locationName: `${newHospitalName}, ${newDistrict}`,
         district: newDistrict,
-        priorityLevel: 'emergency',
+        wardNumber: newWardNumber,
+        requestSlipNumber: newRequestSlipNumber,
+        requestSlipPhotoUrl: newRequestSlipPhotoUrl,
+        dropLocationUrl: newDropLocationUrl,
+        hospitalPinLat: hospitalPinLat || undefined,
+        hospitalPinLng: hospitalPinLng || undefined,
+        priorityLevel: "emergency",
         isPinnedEmergency: true,
         contactNumber: newContactPhone,
         contactPersonName: newContactName || currentUser?.name || 'සම්බන්ධීකාරක',
@@ -360,7 +412,13 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
         hospitalName: (matched as any).hospitalName || req.hospitalName,
         unitsNeeded: (matched as any).unitsNeeded || req.unitsNeeded || 1,
         neededDate: (matched as any).neededDate || req.neededDate || 'කඩිනමින් (හදිසි)',
-        additionalNotes: (matched as any).additionalNotes || req.additionalNotes || '',
+        additionalNotes: (matched as any).additionalNotes || req.additionalNotes || "",
+        wardNumber: (matched as any).wardNumber || req.wardNumber || "",
+        requestSlipNumber: (matched as any).requestSlipNumber || req.requestSlipNumber || "",
+        requestSlipPhotoUrl: (matched as any).requestSlipPhotoUrl || req.requestSlipPhotoUrl || "",
+        dropLocationUrl: (matched as any).dropLocationUrl || req.dropLocationUrl || "",
+        hospitalPinLat: (matched as any).hospitalPinLat || req.hospitalPinLat,
+        hospitalPinLng: (matched as any).hospitalPinLng || req.hospitalPinLng,
         replies: mergedReplies,
         repliesCount: mergedReplies.length,
         bloodWorkflowStep: Math.max(Number((matched as any).bloodWorkflowStep || 0), Number((req as any).bloodWorkflowStep || 0)) || undefined,
@@ -378,8 +436,14 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       hospitalName: req.hospitalName,
       unitsNeeded: req.unitsNeeded || 1,
       neededDate: req.neededDate || 'කඩිනමින් (හදිසි)',
-      additionalNotes: req.additionalNotes || '',
-      tagCategory: 'හදිසි / ආපදා',
+      additionalNotes: req.additionalNotes || "",
+      wardNumber: req.wardNumber || "",
+      requestSlipNumber: req.requestSlipNumber || "",
+      requestSlipPhotoUrl: req.requestSlipPhotoUrl || "",
+      dropLocationUrl: req.dropLocationUrl || "",
+      hospitalPinLat: req.hospitalPinLat,
+      hospitalPinLng: req.hospitalPinLng,
+      tagCategory: "හදිසි / ආපදා",
       tagName: `🩸 හදිසි ${req.bloodGroup} ලේ අවශ්‍යතාවය`,
       title: `🩸 ${req.bloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${req.hospitalName}`,
       headline: `🩸 ${req.bloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${req.hospitalName}`,
@@ -522,7 +586,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
           continue;
         }
         const pCode = String(p.postCode || '');
-        if (pCode.startsWith('#RED-') || pCode.startsWith('#EMG-') || p.postType === 'disaster_relief') {
+        if (pCode.startsWith("#RED-") || pCode.startsWith("#EMG-") || pCode.startsWith("#HON-") || pCode.startsWith("#SRV-") || p.postType === "disaster_relief" || p.postType === ("blood_donation_honor" as any)) {
           continue;
         }
         const isBlood =
@@ -1400,9 +1464,80 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      වාට්ටු අංකය (Ward No) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={newWardNumber}
+                      onChange={(e) => setNewWardNumber(e.target.value)}
+                      placeholder="උදා: වාට්ටු අංක 14 / ICU"
+                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      ලේ ලබාදීමේ විස්තර ගොනුවේ අංකය
+                    </label>
+                    <input
+                      type="text"
+                      value={newRequestSlipNumber}
+                      onChange={(e) => setNewRequestSlipNumber(e.target.value)}
+                      placeholder="උදා: BHT / Blood Bank File No"
+                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-mono font-bold"
+                    />
+                  </div>
+                </div>
+
+                {/* File / Slip Photo Upload */}
+                <div className="p-2.5 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 space-y-2">
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block">
+                    📷 හෝ ලේ ලබාදීමට අදාල විස්තර ගොනුවේ ඡායාරූපයක් එක් කරන්න:
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleSlipPhotoChange}
+                    className="w-full text-[11px] text-slate-600 dark:text-slate-300 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-black file:bg-rose-600 file:text-white cursor-pointer"
+                  />
+                  {newRequestSlipPhotoUrl && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <img src={newRequestSlipPhotoUrl} alt="Slip preview" className="w-14 h-14 object-cover rounded-lg border border-rose-400" />
+                      <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300">✅ ගොනුවේ ඡායාරූපය එක් කරන ලදී</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Drop Location Pin / Link */}
+                <div className="p-2.5 rounded-xl bg-sky-50/70 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-900/60 space-y-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <label className="font-bold text-slate-700 dark:text-slate-300">
+                      📍 අදාල ස්ථානයේ Drop ලොකේෂන් එක (Drop Location):
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handlePinLocation}
+                      className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-black text-[11px] flex items-center gap-1 cursor-pointer"
+                    >
+                      <MapPin className="w-3 h-3" />
+                      <span>{hospitalPinLat ? "📍 GPS Pin සටහන් විය ✓" : "📍 GPS Drop Location ගන්න"}</span>
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={newDropLocationUrl}
+                    onChange={(e) => setNewDropLocationUrl(e.target.value)}
+                    placeholder="Google Maps Drop Location Link එක හෝ රෝහල් පිහිටීම..."
+                    className="w-full p-2 bg-white dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl text-[11px]"
+                  />
+                </div>
+
                 <div>
                   <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    අමතර විස්තර / වාට්ටු අංකය (Notes)
+                    අමතර විස්තර (Notes)
                   </label>
                   <textarea
                     rows={2}

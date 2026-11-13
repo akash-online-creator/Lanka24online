@@ -12,9 +12,23 @@ import {
   MapPin,
   Navigation,
   ExternalLink,
+  ShieldCheck,
+  Sparkles,
+  FileText,
+  Eye,
+  Heart,
 } from 'lucide-react';
-import { HelpPost, PostReply, Language, LocationOption } from '../types';
-import { updateHelpPostInFirestore, deduplicatePostReplies } from '../lib/firebase';
+import {
+  HelpPost,
+  PostReply,
+  Language,
+  LocationOption,
+  PRE_DONATION_GUIDELINES,
+  calculateDistanceKm,
+  createBloodDonationHonorPost,
+} from '../types';
+import { updateHelpPostInFirestore, deduplicatePostReplies, addHelpPostToFirestore } from '../lib/firebase';
+import { getStoredHelpPosts, saveHelpPostsToStorage } from '../utils/storage';
 import { checkIsPostOwner, checkIsAdmin } from '../utils/postOwnerHelper';
 
 interface SupportOffersModalProps {
@@ -97,16 +111,56 @@ function extractParsedBloodDetails(post: any) {
     post?.specialNotice ||
     '';
 
-  const lat = typeof post?.latitude === 'number' ? post.latitude : typeof post?.lat === 'number' ? post.lat : null;
-  const lng = typeof post?.longitude === 'number' ? post.longitude : typeof post?.lng === 'number' ? post.lng : null;
+  const wardNumber =
+    post?.wardNumber ||
+    parsePart('වාට්ටු අංකය') ||
+    parsePart('වාට්ටුව') ||
+    additionalNotes ||
+    'රුධිර බැංකුව (Blood Bank)';
+
+  const requestSlipNumber =
+    post?.requestSlipNumber ||
+    parsePart('ගොනු අංකය') ||
+    parsePart('පත්‍රිකා අංකය') ||
+    post?.postCode ||
+    'රුධිර බැංකු ගොනුව';
+
+  const requestSlipPhotoUrl =
+    post?.requestSlipPhotoUrl ||
+    post?.imageUrl ||
+    post?.photoUrl ||
+    post?.image ||
+    '';
+
+  const dropLocationUrl = post?.dropLocationUrl || post?.externalLink || '';
+
+  const lat =
+    typeof post?.hospitalPinLat === 'number'
+      ? post.hospitalPinLat
+      : typeof post?.latitude === 'number'
+      ? post.latitude
+      : typeof post?.lat === 'number'
+      ? post.lat
+      : null;
+  const lng =
+    typeof post?.hospitalPinLng === 'number'
+      ? post.hospitalPinLng
+      : typeof post?.longitude === 'number'
+      ? post.longitude
+      : typeof post?.lng === 'number'
+      ? post.lng
+      : null;
 
   const mapQuery =
     lat !== null && lng !== null
       ? `${lat},${lng}`
       : `${hospitalName}${district && !hospitalName.includes(district) ? `, ${district}` : ''}, Sri Lanka`;
 
-  const googleMapsNavUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(mapQuery)}&travelmode=driving`;
-  const googleMapsEmbedUrl = `https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=14&output=embed`;
+  const googleMapsNavUrl =
+    dropLocationUrl && /^https?:\/\//i.test(dropLocationUrl)
+      ? dropLocationUrl
+      : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(mapQuery)}&travelmode=driving`;
+  const googleMapsEmbedUrl = `https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=15&output=embed`;
 
   return {
     bloodGroup,
@@ -116,6 +170,12 @@ function extractParsedBloodDetails(post: any) {
     district,
     neededDate,
     additionalNotes,
+    wardNumber,
+    requestSlipNumber,
+    requestSlipPhotoUrl,
+    dropLocationUrl,
+    lat,
+    lng,
     rawNeeded,
     rawHeadline,
     mapQuery,
@@ -137,14 +197,46 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 }) => {
   const [selectedPostIdFilter, setSelectedPostIdFilter] = useState<string>('all');
   const [bellRinging, setBellRinging] = useState<boolean>(() => isSupportBellRinging());
+  const [viewingSlipPhoto, setViewingSlipPhoto] = useState<string | null>(null);
+  const [isSharingLocation, setIsSharingLocation] = useState(false);
+  const [completedCelebration, setCompletedCelebration] = useState<{
+    donorName: string;
+    hospitalName: string;
+  } | null>(null);
+  const [celebrationCountdown, setCelebrationCountdown] = useState<number>(5);
+
+  // Poster Step 2 editable fields (so poster can verify/provide Patient Name, Ward No, Slip No/Photo, Drop Location)
+  const [posterPatientName, setPosterPatientName] = useState('');
+  const [posterWardNumber, setPosterWardNumber] = useState('');
+  const [posterSlipNumber, setPosterSlipNumber] = useState('');
+  const [posterSlipPhotoUrl, setPosterSlipPhotoUrl] = useState('');
+  const [posterDropLocationUrl, setPosterDropLocationUrl] = useState('');
+  const [posterPinLat, setPosterPinLat] = useState<number | null>(null);
+  const [posterPinLng, setPosterPinLng] = useState<number | null>(null);
+
+  // Donor Step 3 "තේරුම් ගත්තෙමි" acknowledgment state per post
+  const [acknowledgedMap, setAcknowledgedMap] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (targetPost && targetPost.id) {
       setSelectedPostIdFilter(targetPost.id);
+      const parsed = extractParsedBloodDetails(targetPost);
+      setPosterPatientName(parsed.patientName !== 'රෝගියා' ? parsed.patientName : '');
+      setPosterWardNumber(
+        parsed.wardNumber !== 'රුධිර බැංකුව (Blood Bank)' ? parsed.wardNumber : ''
+      );
+      setPosterSlipNumber(
+        parsed.requestSlipNumber !== 'රුධිර බැංකු ගොනුව' ? parsed.requestSlipNumber : ''
+      );
+      setPosterSlipPhotoUrl(parsed.requestSlipPhotoUrl || '');
+      setPosterDropLocationUrl(parsed.dropLocationUrl || '');
+      setPosterPinLat(parsed.lat);
+      setPosterPinLng(parsed.lng);
     } else {
       setSelectedPostIdFilter('all');
     }
     setBellRinging(isSupportBellRinging());
+    setCompletedCelebration(null);
   }, [isOpen, targetPost?.id]);
 
   useEffect(() => {
@@ -164,7 +256,35 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   const handleCloseModal = () => {
     stopContinuousSupportBell();
     setBellRinging(false);
+    setCompletedCelebration(null);
     onClose();
+  };
+
+  const handlePosterSlipPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setPosterSlipPhotoUrl(String(ev.target?.result || ''));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePosterPinGps = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setPosterPinLat(pos.coords.latitude);
+          setPosterPinLng(pos.coords.longitude);
+          setPosterDropLocationUrl(
+            `https://www.google.com/maps/dir/?api=1&destination=${pos.coords.latitude},${pos.coords.longitude}&travelmode=driving`
+          );
+        },
+        () => {
+          alert('GPS පිහිටීම ලබාගැනීමට නොහැකි විය. කරුණාකර Google Maps Link එක ඇතුළත් කරන්න.');
+        }
+      );
+    }
   };
 
   const myUserId = String(currentUser?.userId || currentUser?.id || '').trim();
@@ -212,7 +332,6 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   })();
 
   const allOffers: FlattenedOffer[] = [];
-
   livePostsList.forEach((post) => {
     if (!post || !post.id || post.status === 'deleted' || post.isDeleted) return;
     const isTargetMatch = Boolean(
@@ -225,14 +344,12 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
     if (cleanReplies.length > 0) {
       cleanReplies.forEach((rep) => {
-        if (!rep) return;
+        if (!rep || (rep as any).declinedByPoster) return;
         const isMine = isMyReplyMatch(rep);
         const effectiveIsOwner = rawIsOwner || (!isMine && (isAdminUser || isTargetMatch));
-
         if (!effectiveIsOwner && !isMine && !isAdminUser) {
           return;
         }
-
         const isSelected = Boolean(
           rep.isConfirmed ||
             rep.isAccepted ||
@@ -244,7 +361,6 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                   String(post.confirmedHelperPhone).replace(/\D/g, '').slice(-9) ===
                     String(rep.responderPhone).replace(/\D/g, '').slice(-9))))
         );
-
         allOffers.push({
           post: { ...post, replies: cleanReplies, repliesCount: cleanReplies.length },
           reply: rep,
@@ -280,7 +396,6 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
               (targetPost?.postCode && off.post.postCode && String(off.post.postCode).toUpperCase() === String(targetPost.postCode).toUpperCase()))
         );
 
-  // Automatically turn off bell tone as soon as any offer on the current post is selected!
   const isAnyOfferSelected = filteredOffers.some(
     (off) =>
       off.isSelected ||
@@ -300,10 +415,11 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
   const isBloodPostCheck = (p: any): boolean =>
     Boolean(
-      p?.postType === 'blood_request' ||
-        p?.serviceType === 'blood_donation' ||
-        String(p?.postCode || '').toUpperCase().startsWith('#BLD-') ||
-        (p?.tagName && (String(p.tagName).includes('ලේ') || String(p.tagName).toLowerCase().includes('blood')))
+      p?.postType !== 'blood_donation_honor' &&
+        (p?.postType === 'blood_request' ||
+          p?.serviceType === 'blood_donation' ||
+          String(p?.postCode || '').toUpperCase().startsWith('#BLD-') ||
+          (p?.tagName && (String(p.tagName).includes('ලේ') || String(p.tagName).toLowerCase().includes('blood'))))
     );
 
   const isReplySameHelper = (r: any, targetReply: PostReply) => {
@@ -317,7 +433,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     return Boolean(rNm && tNm && rNm === tNm);
   };
 
-  // STEP 2 ACTION (Poster selects & confirms Donor -> Immediately stops Bell Tone!)
+  // STEP 2 ACTION (Poster selects & confirms Donor and sends Patient Name, Ward No, File No/Photo, Drop Location)
   const handleSelectAction = async (post: HelpPost, reply: PostReply) => {
     handleAcknowledgeBell();
     try {
@@ -336,13 +452,26 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
           String(post.postCode || '').toUpperCase().startsWith('#QS-'))
     );
 
+    const parsed = extractParsedBloodDetails(post);
+    const finalPatientName = posterPatientName.trim() || parsed.patientName;
+    const finalWardNumber = posterWardNumber.trim() || parsed.wardNumber;
+    const finalSlipNumber = posterSlipNumber.trim() || parsed.requestSlipNumber;
+    const finalSlipPhotoUrl = posterSlipPhotoUrl || parsed.requestSlipPhotoUrl;
+    const finalDropLocationUrl = posterDropLocationUrl.trim() || parsed.dropLocationUrl;
+    const finalPinLat = posterPinLat !== null ? posterPinLat : parsed.lat;
+    const finalPinLng = posterPinLng !== null ? posterPinLng : parsed.lng;
+
     const nowIso = new Date().toISOString();
     const nowMs = Date.now();
     const cleanReplies = deduplicatePostReplies(post.replies || [], post);
-
     const updatedReplies = cleanReplies.map((r) =>
       isReplySameHelper(r, reply)
-        ? { ...r, isAccepted: true, isConfirmed: true, ...(isBloodPost ? { workflowStep: 3 } : {}) }
+        ? {
+            ...r,
+            isAccepted: true,
+            isConfirmed: true,
+            ...(isBloodPost ? { workflowStep: 3, step3GuidelinesAccepted: false } : {}),
+          }
         : r
     );
 
@@ -359,7 +488,18 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
       serviceStage: 'in_progress' as any,
       lastStepUpdatedAtMs: nowMs,
       lastStepByRole: 'poster',
-      ...(isBloodPost ? { bloodWorkflowStep: 3 } : {}),
+      ...(isBloodPost
+        ? {
+            bloodWorkflowStep: 3,
+            patientName: finalPatientName,
+            wardNumber: finalWardNumber,
+            requestSlipNumber: finalSlipNumber,
+            requestSlipPhotoUrl: finalSlipPhotoUrl,
+            dropLocationUrl: finalDropLocationUrl,
+            hospitalPinLat: finalPinLat || undefined,
+            hospitalPinLng: finalPinLng || undefined,
+          }
+        : {}),
     } as any;
 
     if (onUpdatePost) {
@@ -379,23 +519,123 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         serviceStage: 'in_progress' as any,
         lastStepUpdatedAtMs: nowMs,
         lastStepByRole: 'poster',
-        ...(isBloodPost ? { bloodWorkflowStep: 3 } : {}),
+        ...(isBloodPost
+          ? {
+              bloodWorkflowStep: 3,
+              patientName: finalPatientName,
+              wardNumber: finalWardNumber,
+              requestSlipNumber: finalSlipNumber,
+              requestSlipPhotoUrl: finalSlipPhotoUrl,
+              dropLocationUrl: finalDropLocationUrl,
+              hospitalPinLat: finalPinLat || null,
+              hospitalPinLng: finalPinLng || null,
+            }
+          : {}),
       } as any);
     } catch {}
 
     if (onSelectHelper) {
       onSelectHelper(updatedPost, reply);
     }
-
     if (isQuickService && onOpenConfirm) {
       onOpenConfirm(updatedPost, reply);
       return;
     }
-
     onClose();
   };
 
-  // STEP 3 ACTION (Donor confirms blood donated -> advances to Step 4)
+  const handleDeclineAction = async (post: HelpPost, reply: PostReply) => {
+    handleAcknowledgeBell();
+    const cleanReplies = deduplicatePostReplies(post.replies || [], post);
+    const updatedReplies = cleanReplies.map((r) =>
+      isReplySameHelper(r, reply) ? { ...r, declinedByPoster: true } : r
+    );
+    const updatedPost: HelpPost = {
+      ...post,
+      replies: updatedReplies,
+      repliesCount: updatedReplies.length,
+    } as any;
+    if (onUpdatePost) onUpdatePost(updatedPost);
+    try {
+      await updateHelpPostInFirestore(post.id, {
+        replies: updatedReplies,
+        repliesCount: updatedReplies.length,
+      } as any);
+    } catch {}
+  };
+
+  // STEP 3A: Donor clicks "තේරුම් ගත්තෙමි" on Pre-Donation Guidelines -> reveals Patient Name, Ward No, File No/Photo, Drop Location
+  const handleDonorAcknowledgeGuidelines = async (post: HelpPost, reply: PostReply) => {
+    setAcknowledgedMap((prev) => ({ ...prev, [post.id]: true }));
+    try {
+      localStorage.setItem(`sahaya_blood_step3_ack_${post.id}`, 'true');
+    } catch {}
+
+    const cleanReplies = deduplicatePostReplies(post.replies || [], post);
+    const updatedReplies = cleanReplies.map((r) =>
+      isReplySameHelper(r, reply)
+        ? { ...r, guidelinesAccepted: true, step3GuidelinesAccepted: true }
+        : r
+    );
+    const updatedPost: HelpPost = {
+      ...post,
+      replies: updatedReplies,
+      guidelinesAccepted: true,
+      step3GuidelinesAccepted: true,
+    } as any;
+    if (onUpdatePost) onUpdatePost(updatedPost);
+    try {
+      await updateHelpPostInFirestore(post.id, {
+        replies: updatedReplies,
+        guidelinesAccepted: true,
+        step3GuidelinesAccepted: true,
+      } as any);
+    } catch {}
+  };
+
+  const handleToggleShareLocation = (post: HelpPost, reply: PostReply) => {
+    if (!navigator.geolocation) {
+      alert('ඔබගේ උපාංගයේ GPS පහසුකම ක්‍රියාත්මක නොවේ.');
+      return;
+    }
+    setIsSharingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const parsed = extractParsedBloodDetails(post);
+        const distKm =
+          parsed.lat !== null && parsed.lng !== null
+            ? calculateDistanceKm(pos.coords.latitude, pos.coords.longitude, parsed.lat, parsed.lng)
+            : undefined;
+        const liveLoc = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          updatedAt: new Date().toLocaleTimeString('si-LK', { hour: '2-digit', minute: '2-digit' }),
+          distanceKm: distKm,
+        };
+        const cleanReplies = deduplicatePostReplies(post.replies || [], post);
+        const updatedReplies = cleanReplies.map((r) =>
+          isReplySameHelper(r, reply) ? { ...r, donorLiveLocation: liveLoc } : r
+        );
+        const updatedPost: HelpPost = {
+          ...post,
+          replies: updatedReplies,
+          donorLiveLocation: liveLoc,
+        } as any;
+        if (onUpdatePost) onUpdatePost(updatedPost);
+        try {
+          await updateHelpPostInFirestore(post.id, {
+            replies: updatedReplies,
+            donorLiveLocation: liveLoc,
+          } as any);
+        } catch {}
+      },
+      () => {
+        setIsSharingLocation(false);
+      }
+    );
+  };
+
+  // STEP 3B ACTION (Donor confirms blood donated -> advances to Step 4)
   const handleDonorConfirmBloodDonated = async (post: HelpPost, reply: PostReply) => {
     handleAcknowledgeBell();
     const nowMs = Date.now();
@@ -412,7 +652,6 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
           }
         : r
     );
-
     const updatedPost: HelpPost = {
       ...post,
       replies: updatedReplies,
@@ -428,7 +667,6 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     if (onUpdatePost) {
       onUpdatePost(updatedPost);
     }
-
     try {
       await updateHelpPostInFirestore(post.id, {
         replies: updatedReplies,
@@ -441,11 +679,10 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         lastStepByRole: 'helper',
       } as any);
     } catch {}
-
     onClose();
   };
 
-  // STEP 4 ACTION (Poster confirms blood received & completes transaction)
+  // STEP 4 ACTION (Poster confirms blood received -> Publishes Free General Services Appreciation Post with Donor Name, Place & Long-Life Wish)
   const handlePosterCompleteBloodWorkflow = async (post: HelpPost, reply: PostReply) => {
     handleAcknowledgeBell();
     const nowMs = Date.now();
@@ -461,7 +698,6 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
           }
         : r
     );
-
     const updatedPost: HelpPost = {
       ...post,
       replies: updatedReplies,
@@ -479,7 +715,6 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     if (onUpdatePost) {
       onUpdatePost(updatedPost);
     }
-
     try {
       await updateHelpPostInFirestore(post.id, {
         replies: updatedReplies,
@@ -511,7 +746,37 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
       }
     } catch {}
 
-    onClose();
+    // 04. අවසානයේ සාමාන්‍ය සේවා හරහා නොමිලේ ලේ පරිත්‍යාග කළ තැනැත්තාට ස්තූති කරමින් නම සහ ස්ථානය සඳහන් කර දීර්ඝායුෂ ප්‍රාර්ථනා කිරීම
+    const parsed = extractParsedBloodDetails(post);
+    const donorName = reply.responderName || (post as any).confirmedHelperName || 'උතුම් පරිත්‍යාගශීලියා';
+    const hospitalName = parsed.hospitalName || post.locationName || 'රෝහල';
+
+    if (isBloodPostCheck(post)) {
+      try {
+        const honorPost = createBloodDonationHonorPost(donorName, hospitalName, parsed.district || post.district);
+        addHelpPostToFirestore(honorPost).catch(() => {});
+        const stored = getStoredHelpPosts();
+        const next = [honorPost, ...(stored || []).filter((p) => p && p.id !== honorPost.id)];
+        saveHelpPostsToStorage(next);
+        window.dispatchEvent(new CustomEvent('sahaya_post_created', { detail: { post: honorPost } }));
+      } catch (err) {
+        console.warn('Honor post creation error:', err);
+      }
+    }
+
+    setCompletedCelebration({ donorName, hospitalName });
+    let sec = 6;
+    setCelebrationCountdown(sec);
+    const interval = setInterval(() => {
+      sec -= 1;
+      setCelebrationCountdown(sec);
+      if (sec <= 0) {
+        clearInterval(interval);
+        window.dispatchEvent(new CustomEvent('sahaya_blood_modal_close'));
+        handleCloseModal();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }, 1000);
   };
 
   return (
@@ -519,14 +784,14 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
       <div
         id="support-offers-modal"
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg bg-white dark:bg-[#071710] border-2 border-orange-500/60 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] relative"
+        className="w-full max-w-lg bg-white dark:bg-[#071710] border-2 border-rose-500/70 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] relative"
       >
-        {/* Ringing Indicator Banner (Rings until helper is selected or explicitly muted) */}
+        {/* Ringing Indicator Banner */}
         {bellRinging && !isAnyOfferSelected && (
           <div className="w-full py-2.5 px-4 bg-amber-500 text-slate-950 font-black text-xs flex items-center justify-between gap-2 animate-pulse">
             <div className="flex items-center gap-2 min-w-0">
               <Bell className="w-4 h-4 animate-bounce shrink-0" />
-              <span className="truncate">🔔 සහයකයෙකු තෝරාගන්නා තුරු සීනුව නාද වේ...</span>
+              <span className="truncate">🔔 පරිත්‍යාගශීලියා තහවුරු කරන තුරු සීනුව නාද වේ...</span>
             </div>
             <button
               type="button"
@@ -539,9 +804,10 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         )}
 
         {/* Top Bar */}
-        <div className="px-4 py-3 bg-slate-900 dark:bg-[#04120b] text-white flex items-center justify-between shrink-0">
-          <span className="text-xs sm:text-sm font-black">
-            🩸 පියවර සහ සම්බන්ධීකරණ දැනුම්දීම
+        <div className="px-4 py-3 bg-gradient-to-r from-rose-900 via-red-900 to-slate-900 text-white flex items-center justify-between shrink-0">
+          <span className="text-xs sm:text-sm font-black flex items-center gap-2">
+            <Droplet className="w-4 h-4 fill-current text-rose-400" />
+            <span>රුධිර පරිත්‍යාග සත්කාරක පියවර (නොමිලේ සේවාවකි)</span>
           </span>
           <button
             id="close-support-offers-modal"
@@ -558,7 +824,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
           {(filteredOffers || []).length === 0 ? (
             <div className="py-8 text-center space-y-2">
               <p className="text-sm font-black text-slate-800 dark:text-slate-200">
-                තවමත් කැමැත්ත දැක්වීම් ලැබී නොමැත.
+                තවමත් කිසිවෙකු ඉදිරිපත් වී නොමැත.
               </p>
               <button
                 type="button"
@@ -570,7 +836,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
             </div>
           ) : (
             (filteredOffers || []).map((off, idx) => {
-              const helperName = off.reply.responderName || 'සහායක';
+              const helperName = off.reply.responderName || 'පරිත්‍යාගශීලියා';
               const helperPhone = off.reply.responderPhone || '';
               const posterName = (off.post as any).contactPersonName || off.post.userName || 'දැන්වීම්කරු';
               const posterPhone = (off.post as any).contactNumber || off.post.userPhone || off.post.contactPhone || '';
@@ -605,6 +871,13 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
               const currentStep: 2 | 3 | 4 | 5 = isCompleted ? 5 : isStep3Done ? 4 : isStep2Done ? 3 : 2;
               const parsedDetails = extractParsedBloodDetails(off.post);
 
+              const hasAckStep3Guidelines = Boolean(
+                acknowledgedMap[off.post.id] ||
+                  (off.reply as any).step3GuidelinesAccepted ||
+                  (typeof window !== 'undefined' &&
+                    localStorage.getItem(`sahaya_blood_step3_ack_${off.post.id}`) === 'true')
+              );
+
               return (
                 <div
                   key={`offer_${off.post.id}_${off.reply.id || idx}`}
@@ -612,9 +885,14 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                 >
                   {/* Contact Row */}
                   <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-200 dark:border-slate-800">
-                    <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate">
-                      👤 {otherPartyName}
-                    </span>
+                    <div>
+                      <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 block">
+                        {off.isPostOwner ? '🩸 ලේ පරිත්‍යාගශීලියා:' : '🏥 දැන්වීම් පළකරන්නා:'}
+                      </span>
+                      <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate">
+                        👤 {otherPartyName}
+                      </span>
+                    </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       {otherPartyPhone && (
                         <a
@@ -645,142 +923,141 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
                   {isBloodOffer ? (
                     <div className="space-y-4 py-1">
-                      {/* STEP 2: Poster selects donor (bell rings until selected!) */}
-                      {currentStep === 2 && (
-                        off.isPostOwner ? (
-                          <div className="space-y-3 text-center">
-                            <p className="text-sm sm:text-base font-black text-slate-900 dark:text-white leading-snug">
-                              "{helperName}" ලේ ලබාදීමට ඉදිරිපත් වී ඇත. ඔහුව තෝරාගන්නවාද?
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => handleSelectAction(off.post, off.reply)}
-                              className="w-full py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all"
-                            >
-                              <UserCheck className="w-4 h-4" />
-                              <span>✅ ඔව්, තෝරාගන්න (Bell නාදය නවතී)</span>
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="space-y-3 text-center">
-                            <p className="text-sm font-black text-amber-700 dark:text-amber-300 flex items-center justify-center gap-1.5">
-                              <Clock className="w-4 h-4 shrink-0" />
-                              <span>දැන්වීම්කරු ඔබව තෝරාගන්නා තෙක් රැඳී සිටින්න.</span>
-                            </p>
-                            <button
-                              type="button"
-                              onClick={handleCloseModal}
-                              className="w-full py-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-black text-xs cursor-pointer"
-                            >
-                              හරි (OK)
-                            </button>
-                          </div>
-                        )
-                      )}
-
-                      {/* STEP 3: Selected Donor sees ALL Details + Map Navigation + Step 3 Confirmation */}
-                      {currentStep === 3 && (
-                        !off.isPostOwner || isMineOffer ? (
+                      {/* STEP 2: Poster selects donor & provides Patient Name, Ward No, File No/Photo, Drop Location */}
+                      {currentStep === 2 &&
+                        (off.isPostOwner ? (
                           <div className="space-y-3.5 text-left">
-                            {/* Selection Notice Banner */}
-                            <div className="p-3 rounded-2xl bg-emerald-600 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-sm">
-                              <CheckCircle2 className="w-5 h-5 shrink-0" />
-                              <span>දැන්වීම්කරු ලේ ලබාදීම සඳහා ඔබව තෝරාගෙන ඇත!</span>
+                            {/* Donor Eligibility Report Display */}
+                            <div className="p-3 rounded-2xl bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 space-y-1.5 text-xs">
+                              <div className="flex items-center justify-between font-black text-emerald-900 dark:text-emerald-200">
+                                <span className="flex items-center gap-1.5">
+                                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                                  <span>🩺 පරිත්‍යාගශීලියාගේ රුධිර ගැලපුම් පරීක්ෂාව</span>
+                                </span>
+                                <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full font-bold">
+                                  සුදුසුකම් සමත් (PASSED ✅)
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-700 dark:text-slate-300">
+                                <div>
+                                  🩸 රුධිර වර්ගය:{' '}
+                                  <strong>{(off.reply as any).donorBloodGroup || parsedDetails.bloodGroup}</strong> (ගැළපේ ✅)
+                                </div>
+                                <div>
+                                  🗓️ අවසන් පරිත්‍යාගය:{' '}
+                                  <strong>
+                                    {(off.reply as any).eligibilityReport?.lastDonatedStatus === 'first_time'
+                                      ? 'ප්‍රථම වර'
+                                      : 'මාස 4+ පෙර'}{' '}
+                                    ✅
+                                  </strong>
+                                </div>
+                              </div>
+                              <div className="text-[11px] text-emerald-800 dark:text-emerald-300 font-bold">
+                                ✨ ශරීර බර &gt; 50kg සහ නීරෝගී සෞඛ්‍ය තත්ත්වයේ සිටින බව ප්‍රශ්නාවලියෙන් තහවුරු කර ඇත.
+                              </div>
                             </div>
 
-                            {/* Full Blood Request & Hospital Details Card */}
-                            <div className="p-3.5 rounded-2xl bg-white dark:bg-[#06150d] border-2 border-rose-500/50 space-y-2.5 text-xs">
-                              <div className="flex items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
-                                <span className="font-black text-rose-600 dark:text-rose-400 text-sm flex items-center gap-1.5">
-                                  <Droplet className="w-4 h-4 fill-current" />
-                                  <span>අවශ්‍ය රුධිර වර්ගය: {parsedDetails.bloodGroup}</span>
-                                </span>
-                                <span className="px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-200 font-black">
-                                  ඒකක {parsedDetails.unitsNeeded}
-                                </span>
-                              </div>
-
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                                <div className="p-2 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
-                                  <span className="text-[10px] font-bold text-slate-500 block">🏥 රෝහල / ස්ථානය:</span>
-                                  <span className="font-black text-slate-900 dark:text-white">{parsedDetails.hospitalName}</span>
-                                </div>
-                                <div className="p-2 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
-                                  <span className="text-[10px] font-bold text-slate-500 block">📍 දිස්ත්‍රික්කය / ප්‍රදේශය:</span>
-                                  <span className="font-black text-slate-900 dark:text-white">
-                                    {parsedDetails.district || off.post.locationName || 'ශ්‍රී ලංකාව'}
-                                  </span>
-                                </div>
-                                <div className="p-2 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
-                                  <span className="text-[10px] font-bold text-slate-500 block">👤 රෝගියාගේ නම:</span>
-                                  <span className="font-black text-slate-900 dark:text-white">{parsedDetails.patientName}</span>
-                                </div>
-                                <div className="p-2 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
-                                  <span className="text-[10px] font-bold text-slate-500 block">📅 අවශ්‍ය දිනය:</span>
-                                  <span className="font-black text-rose-600 dark:text-rose-400">{parsedDetails.neededDate}</span>
-                                </div>
-                                <div className="p-2 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800 sm:col-span-2 flex items-center justify-between gap-2">
-                                  <div>
-                                    <span className="text-[10px] font-bold text-slate-500 block">📞 සම්බන්ධීකාරක සහ දුරකථන අංකය:</span>
-                                    <span className="font-black text-slate-900 dark:text-white">
-                                      {posterName} {posterPhone ? `(${posterPhone})` : ''}
-                                    </span>
-                                  </div>
-                                  {posterPhone && (
-                                    <a
-                                      href={`tel:${posterPhone}`}
-                                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-1 shrink-0"
-                                    >
-                                      <Phone className="w-3.5 h-3.5" />
-                                      <span>අමතන්න</span>
-                                    </a>
-                                  )}
-                                </div>
-                              </div>
-
-                              {parsedDetails.additionalNotes && (
-                                <div className="p-2.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-xs">
-                                  <span className="font-black text-amber-800 dark:text-amber-300 block">📝 අමතර විස්තර / සටහන්:</span>
-                                  <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">{parsedDetails.additionalNotes}</p>
-                                </div>
-                              )}
-
-                              {/* Embedded Map + Turn-by-Turn Google Maps Navigation */}
-                              <div className="space-y-2 pt-1">
-                                <div className="w-full h-40 rounded-xl overflow-hidden border border-emerald-500/50 bg-slate-900 relative">
-                                  <iframe
-                                    title="Hospital Map Navigation"
-                                    src={parsedDetails.googleMapsEmbedUrl}
-                                    className="w-full h-full border-0"
-                                    loading="lazy"
-                                    referrerPolicy="no-referrer-when-downgrade"
+                            {/* Poster Form to Provide/Verify Patient Name, Ward No, File/Slip No or Photo, Drop Location */}
+                            <div className="p-3.5 rounded-2xl bg-rose-50/80 dark:bg-rose-950/30 border border-rose-300 dark:border-rose-800 space-y-2.5 text-xs">
+                              <span className="font-black text-rose-800 dark:text-rose-200 block">
+                                📋 පරිත්‍යාගශීලියාට යැවිය යුතු රෝගියාගේ සහ රෝහලේ තොරතුරු තහවුරු කරන්න:
+                              </span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-0.5">
+                                    1. රෝගියාගේ නම *
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={posterPatientName}
+                                    onChange={(e) => setPosterPatientName(e.target.value)}
+                                    placeholder={parsedDetails.patientName}
+                                    className="w-full p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-bold text-xs"
                                   />
                                 </div>
-                                <a
-                                  href={parsedDetails.googleMapsNavUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-95"
-                                >
-                                  <Navigation className="w-4 h-4" />
-                                  <span>🗺️ රෝහල වෙත Map Navigation (මගපෙන්වීම) අරඹන්න</span>
-                                  <ExternalLink className="w-3.5 h-3.5 opacity-80" />
-                                </a>
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-0.5">
+                                    2. වාට්ටු අංකය (Ward No) *
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={posterWardNumber}
+                                    onChange={(e) => setPosterWardNumber(e.target.value)}
+                                    placeholder="උදා: වාට්ටු 12 / ICU"
+                                    className="w-full p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-bold text-xs"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-0.5">
+                                    3. ලේ ලබාදීමේ විස්තර ගොනුවේ අංකය
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={posterSlipNumber}
+                                    onChange={(e) => setPosterSlipNumber(e.target.value)}
+                                    placeholder="උදා: BHT / Blood Bank File No"
+                                    className="w-full p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-mono font-bold text-xs"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-0.5">
+                                    හෝ ගොනුවේ ඡායාරූපයක් එක් කරන්න
+                                  </label>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handlePosterSlipPhotoUpload}
+                                    className="w-full text-[10px] file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:font-black file:bg-rose-600 file:text-white cursor-pointer"
+                                  />
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="flex items-center justify-between mb-0.5">
+                                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                                    4. අදාල ස්ථානයේ Drop ලොකේෂන් එක:
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={handlePosterPinGps}
+                                    className="px-2 py-0.5 rounded bg-blue-600 text-white font-black text-[10px] cursor-pointer"
+                                  >
+                                    {posterPinLat ? '📍 GPS Pin සටහන් විය ✓' : '📍 GPS Drop Location ගන්න'}
+                                  </button>
+                                </div>
+                                <input
+                                  type="text"
+                                  value={posterDropLocationUrl}
+                                  onChange={(e) => setPosterDropLocationUrl(e.target.value)}
+                                  placeholder="Google Maps Drop Location Link එක (හෝ ස්වයංක්‍රීය රෝහල් සිතියම)"
+                                  className="w-full p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs"
+                                />
                               </div>
                             </div>
 
-                            {/* Step 3 Action Question */}
-                            <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2.5 text-center">
-                              <p className="text-sm sm:text-base font-black text-slate-900 dark:text-white leading-snug">
-                                ඔබ රෝහලට ගොස් ලේ පරිත්‍යාගය සිදු කළාද?
-                              </p>
+                            <p className="text-xs sm:text-sm font-black text-slate-900 dark:text-white text-center leading-snug">
+                              "{helperName}" ලේ පරිත්‍යාග කිරීමට ඉදිරිපත් වී ඇත. ඔහුව තෝරාගෙන ඉහත විස්තර යවනවාද?
+                            </p>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                               <button
                                 type="button"
-                                onClick={() => handleDonorConfirmBloodDonated(off.post, off.reply)}
-                                className="w-full py-3 px-4 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all"
+                                onClick={() => handleSelectAction(off.post, off.reply)}
+                                className="py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all"
                               >
-                                <Droplet className="w-4 h-4 fill-white" />
-                                <span>🩸 ඔව්, ලේ පරිත්‍යාගය සිදු කළා</span>
+                                <UserCheck className="w-4 h-4" />
+                                <span>✅ ඔව්, තෝරාගෙන විස්තර යවන්න</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeclineAction(off.post, off.reply)}
+                                className="py-3 px-4 rounded-2xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                              >
+                                <span>❌ අකමැතියි</span>
                               </button>
                             </div>
                           </div>
@@ -788,7 +1065,9 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                           <div className="space-y-3 text-center">
                             <p className="text-sm font-black text-amber-700 dark:text-amber-300 flex items-center justify-center gap-1.5">
                               <Clock className="w-4 h-4 shrink-0" />
-                              <span>"{helperName}" රෝහලට පැමිණ ලේ පරිත්‍යාගය සිදු කරන තෙක් රැඳී සිටින්න.</span>
+                              <span>
+                                දැන්වීම්කරු ඔබගේ රුධිර ගැලපුම් වාර්තාව පරීක්ෂා කර ඔබව තහවුරු කරන තෙක් රැඳී සිටින්න.
+                              </span>
                             </p>
                             <button
                               type="button"
@@ -798,23 +1077,274 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                               හරි (OK)
                             </button>
                           </div>
-                        )
-                      )}
+                        ))}
 
-                      {/* STEP 4: Poster confirms blood received */}
-                      {currentStep === 4 && (
-                        off.isPostOwner ? (
+                      {/* STEP 3: Donor first sees Pre-Donation Guidelines + "තේරුම් ගත්තෙමි" button, THEN sees Patient Name, Ward No, File No/Photo & Drop Location */}
+                      {currentStep === 3 &&
+                        (!off.isPostOwner || isMineOffer ? (
+                          <div className="space-y-3.5 text-left">
+                            {/* Selection Notice Banner */}
+                            <div className="p-3 rounded-2xl bg-emerald-600 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-sm">
+                              <CheckCircle2 className="w-5 h-5 shrink-0" />
+                              <span>
+                                ඔබගේ ලේ ගැලපුම තහවුරු වී දැන්වීම්කරු විසින් ලේ පරිත්‍යාගය සඳහා ඔබව තෝරාගෙන ඇත!
+                              </span>
+                            </div>
+
+                            {!hasAckStep3Guidelines ? (
+                              /* 02A. Pre-Donation Guidelines + Mandatory "තේරුම් ගත්තෙමි" Button */
+                              <div className="space-y-3.5 animate-fadeIn">
+                                <div className="p-4 rounded-2xl bg-sky-50/95 dark:bg-sky-950/40 border-2 border-sky-400 dark:border-sky-800 space-y-3">
+                                  <h4 className="font-black text-xs sm:text-sm text-sky-900 dark:text-sky-200 flex items-center gap-2 border-b border-sky-200 dark:border-sky-800 pb-2">
+                                    <span>📋 ලේ ලබාදීමේ ස්ථානයට හෝ රෝහලට යනතුරු පිළිපැදිය යුතු උපදෙස්</span>
+                                  </h4>
+                                  <div className="space-y-2">
+                                    {PRE_DONATION_GUIDELINES.map((g) => (
+                                      <div
+                                        key={g.step}
+                                        className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-sky-200 dark:border-slate-800 flex items-start gap-2.5 text-xs"
+                                      >
+                                        <span className="text-base leading-none shrink-0 mt-0.5">{g.icon}</span>
+                                        <div>
+                                          <span className="font-black text-slate-900 dark:text-white block">
+                                            {g.step}. {g.title}
+                                          </span>
+                                          <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 mt-0.5 leading-relaxed">
+                                            {g.desc}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-[11px] font-bold text-amber-900 dark:text-amber-200 text-center">
+                                  රෝගියාගේ නම, වාට්ටු අංකය, ලේ ලබාදීමට අදාල විස්තර ගොනුවේ අංකය හෝ ඡායාරූපය සහ අදාල ස්ථානයේ Drop ලොකේෂන් එක ලබාගැනීමට පහත <strong>"තේරුම් ගත්තෙමි"</strong> බොත්තම ක්ලික් කරන්න.
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleDonorAcknowledgeGuidelines(off.post, off.reply)}
+                                  className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-sm shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all"
+                                >
+                                  <CheckCircle2 className="w-5 h-5" />
+                                  <span>✅ තේරුම් ගත්තෙමි (රෝගියාගේ සහ රෝහලේ විස්තර පෙන්වන්න)</span>
+                                </button>
+                              </div>
+                            ) : (
+                              /* 02B. Revealed After Clicking "තේරුම් ගත්තෙමි": Patient Name, Ward No, File No/Photo, Drop Location */
+                              <div className="space-y-3.5 animate-fadeIn">
+                                <div className="p-3.5 rounded-2xl bg-white dark:bg-[#06150d] border-2 border-rose-500/70 space-y-3 text-xs">
+                                  <div className="flex items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+                                    <span className="font-black text-rose-600 dark:text-rose-400 text-sm flex items-center gap-1.5">
+                                      <Droplet className="w-4 h-4 fill-current" />
+                                      <span>අවශ්‍ය රුධිර වර්ගය: {parsedDetails.bloodGroup}</span>
+                                    </span>
+                                    <span className="px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-200 font-black">
+                                      ඒකක {parsedDetails.unitsNeeded}
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                                    {/* 1. Patient Name */}
+                                    <div className="p-2.5 rounded-xl bg-rose-50/70 dark:bg-slate-900 border border-rose-200 dark:border-slate-800">
+                                      <span className="text-[10px] font-bold text-slate-500 block">
+                                        01. 👤 රෝගියාගේ නම:
+                                      </span>
+                                      <span className="font-black text-slate-900 dark:text-white text-sm">
+                                        {parsedDetails.patientName}
+                                      </span>
+                                    </div>
+
+                                    {/* 2. Ward Number */}
+                                    <div className="p-2.5 rounded-xl bg-rose-50/70 dark:bg-slate-900 border border-rose-200 dark:border-slate-800">
+                                      <span className="text-[10px] font-bold text-slate-500 block">
+                                        02. 🚪 වාට්ටු අංකය:
+                                      </span>
+                                      <span className="font-black text-rose-700 dark:text-rose-300 text-sm">
+                                        {parsedDetails.wardNumber}
+                                      </span>
+                                    </div>
+
+                                    {/* 3. File / Slip Number or Photo */}
+                                    <div className="p-2.5 rounded-xl bg-rose-50/70 dark:bg-slate-900 border border-rose-200 dark:border-slate-800 sm:col-span-2 space-y-2">
+                                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                                        <div>
+                                          <span className="text-[10px] font-bold text-slate-500 block">
+                                            03. 📄 ලේ ලබාදීමට අදාල විස්තර ගොනුවේ අංකය / පත්‍රිකාව:
+                                          </span>
+                                          <span className="font-mono font-black text-slate-900 dark:text-white text-sm">
+                                            {parsedDetails.requestSlipNumber}
+                                          </span>
+                                        </div>
+                                        {parsedDetails.requestSlipPhotoUrl && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setViewingSlipPhoto(parsedDetails.requestSlipPhotoUrl)}
+                                            className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center gap-1.5 cursor-pointer"
+                                          >
+                                            <Eye className="w-3.5 h-3.5" />
+                                            <span>ගොනුවේ ඡායාරූපය විශාල කර බලන්න</span>
+                                          </button>
+                                        )}
+                                      </div>
+
+                                      {parsedDetails.requestSlipPhotoUrl && (
+                                        <div
+                                          onClick={() => setViewingSlipPhoto(parsedDetails.requestSlipPhotoUrl)}
+                                          className="w-full max-h-44 rounded-xl overflow-hidden border border-rose-300 dark:border-rose-800 bg-black cursor-pointer"
+                                        >
+                                          <img
+                                            src={parsedDetails.requestSlipPhotoUrl}
+                                            alt="ලේ ලබාදීමේ විස්තර ගොනුව"
+                                            className="w-full max-h-44 object-contain mx-auto"
+                                          />
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* 4. Drop Location & Hospital */}
+                                    <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 sm:col-span-2 flex items-center justify-between gap-2 flex-wrap">
+                                      <div>
+                                        <span className="text-[10px] font-bold text-slate-500 block">
+                                          04. 📍 අදාල ස්ථානයේ Drop ලොකේෂන් එක (රෝහල / ස්ථානය):
+                                        </span>
+                                        <span className="font-black text-slate-900 dark:text-white text-sm">
+                                          🏥 {parsedDetails.hospitalName}{' '}
+                                          {parsedDetails.district ? `(${parsedDetails.district})` : ''}
+                                        </span>
+                                      </div>
+                                      {posterPhone && (
+                                        <a
+                                          href={`tel:${posterPhone}`}
+                                          className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-1 shrink-0"
+                                        >
+                                          <Phone className="w-3.5 h-3.5" />
+                                          <span>අමතන්න ({posterPhone})</span>
+                                        </a>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Embedded Map + Turn-by-Turn Google Maps Drop Location Navigation */}
+                                  <div className="space-y-2 pt-1">
+                                    <div className="w-full h-40 rounded-xl overflow-hidden border border-emerald-500/50 bg-slate-900 relative">
+                                      <iframe
+                                        title="Hospital Drop Location Navigation"
+                                        src={parsedDetails.googleMapsEmbedUrl}
+                                        className="w-full h-full border-0"
+                                        loading="lazy"
+                                        referrerPolicy="no-referrer-when-downgrade"
+                                      />
+                                    </div>
+                                    <a
+                                      href={parsedDetails.googleMapsNavUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-95"
+                                    >
+                                      <Navigation className="w-4 h-4" />
+                                      <span>🗺️ අදාල ස්ථානයේ Drop ලොකේෂන් එක වෙත යන්න (Google Maps)</span>
+                                      <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+                                    </a>
+                                  </div>
+                                </div>
+
+                                {/* Live Location Sharing */}
+                                <div className="p-3 rounded-2xl bg-slate-100 dark:bg-slate-900/60 border border-slate-300 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+                                  <div>
+                                    <span className="font-black text-xs text-slate-900 dark:text-white block">
+                                      {isSharingLocation
+                                        ? '📡 Live Location බෙදාගැනීම ක්‍රියාත්මකයි'
+                                        : '📍 ඔබ රෝහලට පැමිණෙන බව පෙන්වන්න'}
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                                      රෝගියාගේ පාර්ශ්වයට ඔබගේ ගමන් ප්‍රගතිය දිස්වේ.
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleShareLocation(off.post, off.reply)}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                                      isSharingLocation
+                                        ? 'bg-emerald-600 text-white shadow-md animate-pulse'
+                                        : 'bg-slate-800 text-white'
+                                    }`}
+                                  >
+                                    <MapPin className="w-3.5 h-3.5" />
+                                    <span>{isSharingLocation ? 'Sharing Active' : 'Share Live Location'}</span>
+                                  </button>
+                                </div>
+
+                                {/* Final Step 3 Donation Confirmation */}
+                                <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border-2 border-rose-400 dark:border-rose-800 space-y-2.5 text-center">
+                                  <p className="text-xs sm:text-sm font-black text-slate-900 dark:text-white leading-snug">
+                                    ඔබ රෝහලට හෝ ලේ ලබාදීමේ ස්ථානයට ගොස් ලේ පරිත්‍යාගය සිදු කළාද?
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDonorConfirmBloodDonated(off.post, off.reply)}
+                                    className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all"
+                                  >
+                                    <Droplet className="w-4 h-4 fill-current" />
+                                    <span>🩸 ඔව්, මම ලේ පරිත්‍යාගය සිදු කළෙමි</span>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-3 text-center">
+                            {((off.post as any).donorLiveLocation || (off.reply as any).donorLiveLocation) && (
+                              <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-400 text-left space-y-1">
+                                <span className="text-xs font-black text-emerald-800 dark:text-emerald-200 flex items-center gap-1.5 animate-pulse">
+                                  <MapPin className="w-4 h-4 text-emerald-600" />
+                                  <span>🚗 පරිත්‍යාගශීලියා රෝහල වෙත පැමිණෙමින් සිටී (Live)</span>
+                                </span>
+                                {((off.post as any).donorLiveLocation?.distanceKm ||
+                                  (off.reply as any).donorLiveLocation?.distanceKm) && (
+                                  <p className="text-[11px] text-slate-700 dark:text-slate-300 font-bold">
+                                    රෝහලට ඇති දුර:{' '}
+                                    {(off.post as any).donorLiveLocation?.distanceKm ||
+                                      (off.reply as any).donorLiveLocation?.distanceKm}{' '}
+                                    km
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            <p className="text-sm font-black text-amber-700 dark:text-amber-300 flex items-center justify-center gap-1.5">
+                              <Clock className="w-4 h-4 shrink-0" />
+                              <span>
+                                "{helperName}" රෝහලට පැමිණ ලේ පරිත්‍යාගය සිදු කරන තෙක් රැඳී සිටින්න.
+                              </span>
+                            </p>
+                            <button
+                              type="button"
+                              onClick={handleCloseModal}
+                              className="w-full py-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-black text-xs cursor-pointer"
+                            >
+                              හරි (OK)
+                            </button>
+                          </div>
+                        ))}
+
+                      {/* STEP 4: Poster confirms blood received & publishes Free General Services Appreciation Post */}
+                      {currentStep === 4 &&
+                        (off.isPostOwner ? (
                           <div className="space-y-3 text-center">
                             <p className="text-sm sm:text-base font-black text-slate-900 dark:text-white leading-snug">
-                              "{helperName}" ලේ පරිත්‍යාග කළ බව දන්වා ඇත. රුධිරය ලැබුණාද?
+                              "{helperName}" විසින් ({parsedDetails.hospitalName}) වෙත ගොස් ලේ පරිත්‍යාග කළ බව දන්වා ඇත. රුධිරය ලැබුණාද?
+                            </p>
+                            <p className="text-xs text-slate-600 dark:text-slate-300 font-bold">
+                              තහවුරු කළ විට සාමාන්‍ය සේවා හරහා නොමිලේ "{helperName}" මහත්මා/මහත්මියට ස්තූති කරමින් සහ දීර්ඝායුෂ ප්‍රාර්ථනා කරමින් උපහාර දැන්වීමක් පළ වේ.
                             </p>
                             <button
                               type="button"
                               onClick={() => handlePosterCompleteBloodWorkflow(off.post, off.reply)}
-                              className="w-full py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all"
+                              className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all"
                             >
-                              <CheckCircle2 className="w-4 h-4" />
-                              <span>🎉 ඔව්, ලේ ලැබුණා (අවසන් කරන්න)</span>
+                              <CheckCircle2 className="w-5 h-5" />
+                              <span>🎉 ඔව්, ලේ ලැබුණා (ස්තූති කර දීර්ඝායුෂ ප්‍රාර්ථනා කරන්න)</span>
                             </button>
                           </div>
                         ) : (
@@ -831,14 +1361,23 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                               හරි (OK)
                             </button>
                           </div>
-                        )
-                      )}
+                        ))}
 
-                      {/* STEP 5: Completed */}
+                      {/* STEP 5: Completed Appreciation & Long-Life Wish */}
                       {currentStep === 5 && (
-                        <div className="space-y-3 text-center">
-                          <p className="text-sm sm:text-base font-black text-emerald-700 dark:text-emerald-300">
-                            🎉 ලේ පරිත්‍යාග කටයුත්ත සාර්ථකව අවසන් විය! බොහෝම ස්තූතියි.
+                        <div className="p-4 rounded-2xl bg-gradient-to-b from-emerald-50 to-teal-50 dark:from-emerald-950/60 dark:to-teal-950/40 border-2 border-emerald-500 space-y-3 text-center">
+                          <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950/80 text-rose-600 flex items-center justify-center mx-auto">
+                            <Heart className="w-6 h-6 fill-current" />
+                          </div>
+                          <h4 className="text-sm sm:text-base font-black text-emerald-900 dark:text-emerald-200">
+                            🙏 නොමිලේ ලේ පරිත්‍යාග කළ "{helperName}" වෙත හදපිරි ස්තූතිය සහ දීර්ඝායුෂ ප්‍රාර්ථනාව!
+                          </h4>
+                          <p className="text-xs font-bold text-slate-700 dark:text-slate-200 leading-relaxed">
+                            👤 ලේ පරිත්‍යාග කළ පුද්ගලයාගේ නම: <strong>{helperName}</strong>
+                            <br />
+                            🏥 ලේ පරිත්‍යාග කළ ස්ථානය: <strong>{parsedDetails.hospitalName}</strong>
+                            <br />
+                            🌟 උතුම් ජීවිතයක් බේරාගැනීමට දායක වූ ඔබට නිදුක් නීරෝගී සුවය සහ <strong>දීර්ඝායුෂ</strong> ලැබේවායි හදවතින්ම ප්‍රාර්ථනා කරමු! (සාමාන්‍ය සේවා හරහා නොමිලේ ප්‍රණාම දැන්වීම පළ කරන ලදී)
                           </p>
                           <button
                             type="button"
@@ -914,6 +1453,63 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Slip Photo Zoom Preview Modal */}
+      {viewingSlipPhoto && (
+        <div
+          className="fixed inset-0 z-[120] bg-black/85 flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setViewingSlipPhoto(null)}
+        >
+          <div className="max-w-md w-full bg-slate-900 p-3 rounded-2xl relative" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setViewingSlipPhoto(null)}
+              className="absolute top-3 right-3 bg-red-600 text-white rounded-full w-7 h-7 font-bold flex items-center justify-center cursor-pointer"
+            >
+              ✕
+            </button>
+            <img src={viewingSlipPhoto} alt="Slip" className="w-full max-h-[75vh] object-contain rounded-xl" />
+            <p className="text-center text-xs text-white font-bold mt-2">
+              📄 ලේ ලබාදීමට අදාල විස්තර ගොනුවේ ඡායාරූපය
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Auto-Close Celebration Modal upon Completion */}
+      {completedCelebration && (
+        <div className="fixed inset-0 z-[130] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
+          <div className="max-w-md w-full bg-white dark:bg-[#071710] border-2 border-emerald-500 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
+            <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center mx-auto text-emerald-600">
+              <Sparkles className="w-8 h-8" />
+            </div>
+            <h3 className="text-lg font-black text-slate-900 dark:text-white">
+              🙏 නොමිලේ ලේ පරිත්‍යාග කළ "{completedCelebration.donorName}" වෙත හදපිරි ස්තූතිය සහ දීර්ඝායුෂ ප්‍රාර්ථනාව!
+            </h3>
+            <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 text-xs sm:text-sm text-slate-800 dark:text-slate-200 space-y-1.5 font-bold">
+              <p>👤 ලේ පරිත්‍යාග කළ පුද්ගලයාගේ නම: <span className="text-emerald-700 dark:text-emerald-300 font-black">{completedCelebration.donorName}</span></p>
+              <p>🏥 ලේ පරිත්‍යාග කළ ස්ථානය: <span className="text-emerald-700 dark:text-emerald-300 font-black">{completedCelebration.hospitalName}</span></p>
+              <p className="pt-1 text-rose-700 dark:text-rose-300 font-black">
+                💖 උතුම් ජීවිතයක් බේරාගැනීමට නොමිලේ ලේ පරිත්‍යාග කළ එතුමාට / එතුමියට නිදුක් නීරෝගී සුවය සහ දීර්ඝායුෂ ලැබේවායි හදවතින්ම ප්‍රාර්ථනා කරමු! 🙏
+              </p>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">
+              සාමාන්‍ය සේවා හරහා නොමිලේ මෙම ස්තූති සහ දීර්ඝායුෂ ප්‍රාර්ථනා දැන්වීම ප්‍රධාන පුවරුවේ පළ කරන ලදී. (තත්පර {celebrationCountdown}කින් ප්‍රධාන පිටුවට...)
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('sahaya_blood_modal_close'));
+                handleCloseModal();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs sm:text-sm shadow-md cursor-pointer"
+            >
+              සහය සේවා ප්‍රධාන පිටුවට යන්න (Home)
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -695,7 +695,7 @@ const renderInteractiveActionBar = () => {
       : myReply
         ? isBloodCardType
           ? cardBloodStep === 5
-            ? getLangText('🎉 ගනුදෙනුව අවසන් (4/4 ✓)', '🎉 Completed (4/4 ✓)', '🎉 முடிந்தது (4/4 ✓)')
+            ? getLangText(isBloodCardType ? '🎉 උතුම් පරිත්‍යාගය අවසන් (4/4 ✓)' : '🎉 ගනුදෙනුව අවසන් (4/4 ✓)', '🎉 Completed (4/4 ✓)', '🎉 முடிந்தது (4/4 ✓)')
             : cardBloodStep === 4
             ? getLangText('⏳ පියවර 4/4 • අවසන් තහවුරු කිරීම', '⏳ Step 4/4 • Finalizing', '⏳ படி 4/4')
             : cardBloodStep === 3
