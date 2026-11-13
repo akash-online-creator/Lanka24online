@@ -1,3 +1,4 @@
+import { BloodLocationMapModal, BloodRouteMap } from './BloodLocationMapModal';
 import { stopContinuousSupportBell, isSupportBellRinging } from '../utils/supportBellRingtone';
 import React, { useState, useEffect } from 'react';
 import {
@@ -198,7 +199,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   const [selectedPostIdFilter, setSelectedPostIdFilter] = useState<string>('all');
   const [bellRinging, setBellRinging] = useState<boolean>(() => isSupportBellRinging());
   const [viewingSlipPhoto, setViewingSlipPhoto] = useState<string | null>(null);
-  const [showUberPickerForConfirm, setShowUberPickerForConfirm] = useState<boolean>(false);
+  const [showBloodMapForConfirm, setShowBloodMapForConfirm] = useState<boolean>(false);
   const [isSharingLocation, setIsSharingLocation] = useState(false);
   const [completedCelebration, setCompletedCelebration] = useState<{
     donorName: string;
@@ -1024,10 +1025,10 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                                   </label>
                                   <button
                                     type="button"
-                                    onClick={() => setShowUberPickerForConfirm(true)}
+                                    onClick={() => setShowBloodMapForConfirm(true)}
                                     className="px-2 py-0.5 rounded bg-blue-600 text-white font-black text-[10px] cursor-pointer"
                                   >
-                                    {posterPinLat ? '🚕 සිතියමේ ස්ථානය වෙනස් කරන්න ✓' : '🚕 Uber Map එක හරහා ස්ථානය තෝරන්න'}
+                                    {posterPinLat ? '📍 සිතියමේ ස්ථානය වෙනස් කරන්න ✓' : '📍 Map එක හරහා ස්ථානය තෝරන්න'}
                                   </button>
                                 </div>
                                 <input
@@ -1227,9 +1228,9 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                                     </div>
                                   </div>
 
-                                  {/* Uber Taxi-Style Live Route Map (Pickup -> Hospital Drop-Off) */}
+                                  {/* Interactive Live Route Map (Pickup -> Hospital Drop-Off) */}
                                   <div className="pt-1">
-                                    <UberBloodRouteMap
+                                    <BloodRouteMap
                                       hospitalName={parsedDetails.hospitalName}
                                       district={parsedDetails.district}
                                       destLat={(off.post as any).hospitalPinLat || off.post.latitude || null}
@@ -1444,9 +1445,9 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
       </div>
 
       {/* Slip Photo Zoom Preview Modal */}
-      <UberBloodLocationModal
-        isOpen={showUberPickerForConfirm}
-        onClose={() => setShowUberPickerForConfirm(false)}
+      <BloodLocationMapModal
+        isOpen={showBloodMapForConfirm}
+        onClose={() => setShowBloodMapForConfirm(false)}
         onConfirmLocation={(loc) => {
           setPosterPinLat(loc.lat);
           setPosterPinLng(loc.lng);

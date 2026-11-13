@@ -1,3 +1,4 @@
+import { BloodLocationMapModal } from './BloodLocationMapModal';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Heart, 
@@ -159,7 +160,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
   const [newDropLocationUrl, setNewDropLocationUrl] = useState("");
   const [hospitalPinLat, setHospitalPinLat] = useState<number | null>(null);
   const [hospitalPinLng, setHospitalPinLng] = useState<number | null>(null);
-  const [showUberMapPicker, setShowUberMapPicker] = useState<boolean>(false);
+  const [showBloodMapPicker, setShowBloodMapPicker] = useState<boolean>(false);
   const [viewingSlipPhoto, setViewingSlipPhoto] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1516,12 +1517,12 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                   )}
                 </div>
 
-                {/* Drop Location Pin / Link via Uber-style Map Picker */}
+                {/* Drop Location Pin / Link via Interactive Map Picker */}
                 <div className="p-3 rounded-xl bg-slate-900 text-white border-2 border-slate-700 space-y-2.5">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div>
                       <label className="font-black text-xs text-white block">
-                        🚕 අදාල ස්ථානයේ Drop ලොකේෂන් එක (Uber Map ක්‍රමයට):
+                        📍 අදාල ස්ථානයේ Drop ලොකේෂන් එක (සිතියම හරහා):
                       </label>
                       <span className="text-[10px] text-slate-400">
                         සිතියම හරහා නිවැරදි රෝහල හෝ ලේ ලබාදෙන ස්ථානය ලකුණු කරන්න
@@ -1529,11 +1530,11 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                     </div>
                     <button
                       type="button"
-                      onClick={() => setShowUberMapPicker(true)}
+                      onClick={() => setShowBloodMapPicker(true)}
                       className="px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md cursor-pointer"
                     >
                       <MapPin className="w-3.5 h-3.5" />
-                      <span>{hospitalPinLat ? '🚕 සිතියමේ ස්ථානය වෙනස් කරන්න ✓' : '🚕 Map එක හරහා ස්ථානය තෝරන්න'}</span>
+                      <span>{hospitalPinLat ? '📍 සිතියමේ ස්ථානය වෙනස් කරන්න ✓' : '📍 Map එක හරහා ස්ථානය තෝරන්න'}</span>
                     </button>
                   </div>
                   {hospitalPinLat && hospitalPinLng && (
@@ -1677,9 +1678,9 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
         )}
 
       </div>
-      <UberBloodLocationModal
-        isOpen={showUberMapPicker}
-        onClose={() => setShowUberMapPicker(false)}
+      <BloodLocationMapModal
+        isOpen={showBloodMapPicker}
+        onClose={() => setShowBloodMapPicker(false)}
         initialLat={hospitalPinLat}
         initialLng={hospitalPinLng}
         initialHospitalName={newHospitalName}

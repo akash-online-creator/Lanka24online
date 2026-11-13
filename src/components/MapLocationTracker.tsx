@@ -826,7 +826,7 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
                 className="w-full h-full z-0" 
               />
 
-              {/* OVERLAID STATIONARY CENTER PIN & CROSSHAIR RETICLE (UBER / GOOGLE MAPS STYLE) */}
+              {/* OVERLAID STATIONARY CENTER PIN & CROSSHAIR RETICLE (GOOGLE MAPS STYLE) */}
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-20">
                 <div className="relative flex flex-col items-center justify-center">
                   

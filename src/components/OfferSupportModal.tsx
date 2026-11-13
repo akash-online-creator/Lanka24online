@@ -12,7 +12,7 @@ import {
 } from '../types';
 import { inspectAndSanitizeMessage, getUserStrikes, recordPolicyViolation, isUserPolicyBlocked } from '../utils/policyGuard';
 import { PolicyViolationModal } from './PolicyViolationModal';
-import { UberBloodRouteMap } from './UberBloodLocationModal';
+import { BloodRouteMap } from './BloodLocationMapModal';
 import { updateHelpPostInFirestore } from '../lib/firebase';
 
 export interface OfferSupportModalProps {

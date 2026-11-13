@@ -11,7 +11,6 @@ import {
   Loader2,
   CheckCircle2,
   LocateFixed,
-  Car,
   Clock,
   Route,
   ExternalLink,
@@ -25,7 +24,7 @@ import {
 import { getHighAccuracyLocation } from '../utils/highAccuracyGps';
 import { calculateDistanceKm } from '../utils/bloodEligibilityUtils';
 
-export interface UberPickedLocation {
+export interface PickedBloodLocation {
   lat: number;
   lng: number;
   placeName: string;
@@ -33,16 +32,16 @@ export interface UberPickedLocation {
   dropLocationUrl: string;
 }
 
-interface UberBloodLocationModalProps {
+interface BloodLocationMapModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirmLocation: (loc: UberPickedLocation) => void;
+  onConfirmLocation: (loc: PickedBloodLocation) => void;
   initialLat?: number | null;
   initialLng?: number | null;
   initialHospitalName?: string;
 }
 
-export const UberBloodLocationModal: React.FC<UberBloodLocationModalProps> = ({
+export const BloodLocationMapModal: React.FC<BloodLocationMapModalProps> = ({
   isOpen,
   onClose,
   onConfirmLocation,
@@ -50,7 +49,7 @@ export const UberBloodLocationModal: React.FC<UberBloodLocationModalProps> = ({
   initialLng,
   initialHospitalName = '',
 }) => {
-  const [lat, setLat] = useState<number>(initialLat || 6.9186); // Default Colombo National Hospital area
+  const [lat, setLat] = useState<number>(initialLat || 6.9186);
   const [lng, setLng] = useState<number>(initialLng || 79.8688);
   const [placeName, setPlaceName] = useState<string>(
     initialHospitalName || 'කොළඹ ජාතික රෝහල අසල'
@@ -107,7 +106,7 @@ export const UberBloodLocationModal: React.FC<UberBloodLocationModalProps> = ({
     }
   }, [reverseGeocode]);
 
-  // Initialize Uber-style Center-Pin Map
+  // Initialize Center-Pin Map
   useEffect(() => {
     if (!isOpen || !mapContainerRef.current) return;
 
@@ -183,7 +182,6 @@ export const UberBloodLocationModal: React.FC<UberBloodLocationModalProps> = ({
       if (localRes && localRes.length > 0) {
         setSearchResults(localRes.slice(0, 8));
       } else {
-        // Fallback Nominatim search for hospitals/places in Sri Lanka
         const resp = await fetch(
           `https://nominatim.openstreetmap.org/search?format=json&countrycodes=lk&q=${encodeURIComponent(
             q
@@ -241,16 +239,16 @@ export const UberBloodLocationModal: React.FC<UberBloodLocationModalProps> = ({
   return (
     <div className="fixed inset-0 z-[120] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 animate-fadeIn">
       <div className="w-full max-w-2xl bg-slate-950 text-white rounded-3xl overflow-hidden border-2 border-slate-800 shadow-2xl flex flex-col h-[86vh] max-h-[720px]">
-        {/* Uber Top Header & Search Bar */}
+        {/* Top Header & Search Bar */}
         <div className="p-3.5 bg-slate-950 border-b border-slate-800 space-y-2.5 relative z-30">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-xl bg-rose-600 flex items-center justify-center font-black text-white shadow-md">
-                <Car className="w-4 h-4" />
+                <MapPin className="w-4 h-4" />
               </div>
               <div>
                 <h3 className="text-xs sm:text-sm font-black text-white">
-                  🚕 Uber ක්‍රමයට ලේ දන්දෙන ස්ථානය (Drop-Off) තෝරන්න
+                  📍 සිතියම හරහා ලේ දන්දෙන ස්ථානය (Drop Location) තෝරන්න
                 </h3>
                 <p className="text-[10px] text-slate-400">
                   සිතියම එහා මෙහා ගෙන ගොස් මැද ඇති Pin එක රෝහල මතට තබන්න හෝ ඉහළින් සොයන්න
@@ -266,7 +264,7 @@ export const UberBloodLocationModal: React.FC<UberBloodLocationModalProps> = ({
             </button>
           </div>
 
-          {/* Uber Search Input */}
+          {/* Search Input */}
           <div className="relative">
             <div className="flex items-center bg-slate-900 border-2 border-slate-700 focus-within:border-emerald-500 rounded-2xl px-3 py-2 gap-2">
               <div className="w-2.5 h-2.5 rounded-xs bg-rose-500 shrink-0" />
@@ -310,11 +308,11 @@ export const UberBloodLocationModal: React.FC<UberBloodLocationModalProps> = ({
           </div>
         </div>
 
-        {/* Interactive Map Container with Fixed Center Uber Pin */}
+        {/* Interactive Map Container with Fixed Center Pin */}
         <div className="relative flex-1 bg-slate-900 overflow-hidden">
           <div ref={mapContainerRef} className="w-full h-full z-10" />
 
-          {/* Fixed Center Uber Drop-Off Pin */}
+          {/* Fixed Center Drop Location Pin */}
           <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
             <div
               className={`flex flex-col items-center transition-transform duration-200 -mt-9 ${
@@ -323,14 +321,14 @@ export const UberBloodLocationModal: React.FC<UberBloodLocationModalProps> = ({
             >
               <div className="px-2.5 py-1 rounded-full bg-slate-950 text-white text-[10px] font-black shadow-lg border border-rose-500 whitespace-nowrap mb-1 flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                <span>🏥 DROP-OFF ස්ථානය</span>
+                <span>🏥 ලේ ලබාදෙන ස්ථානය (Drop Location)</span>
               </div>
               <div className="w-8 h-8 rounded-full bg-rose-600 border-3 border-white shadow-xl flex items-center justify-center">
                 <div className="w-2.5 h-2.5 rounded-full bg-white" />
               </div>
               <div className="w-1 h-3 bg-slate-950" />
               <div
-                className={` rounded-full bg-black/50 transition-all ${
+                className={`rounded-full bg-black/50 transition-all ${
                   isDraggingMap ? 'w-4 h-1.5 blur-[1px]' : 'w-2.5 h-1'
                 }`}
               />
@@ -378,7 +376,7 @@ export const UberBloodLocationModal: React.FC<UberBloodLocationModalProps> = ({
           </div>
         </div>
 
-        {/* Uber Bottom Sheet Confirmation */}
+        {/* Bottom Sheet Confirmation */}
         <div className="p-4 bg-slate-950 border-t border-slate-800 space-y-3 z-30">
           <div className="flex items-start gap-3 bg-slate-900 p-3 rounded-2xl border border-slate-800">
             <div className="w-9 h-9 rounded-xl bg-rose-600/20 border border-rose-500/40 flex items-center justify-center shrink-0 mt-0.5">
@@ -386,7 +384,7 @@ export const UberBloodLocationModal: React.FC<UberBloodLocationModalProps> = ({
             </div>
             <div className="flex-1 min-w-0">
               <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block">
-                තෝරාගත් රෝහල / Drop-Off ස්ථානය
+                තෝරාගත් රෝහල / Drop Location ස්ථානය
               </span>
               <div className="text-xs sm:text-sm font-black text-white truncate">
                 {isGeocoding ? 'ස්ථානය සොයමින් පවතී...' : placeName}
@@ -404,7 +402,7 @@ export const UberBloodLocationModal: React.FC<UberBloodLocationModalProps> = ({
             className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 cursor-pointer active:scale-98 transition-all"
           >
             <CheckCircle2 className="w-5 h-5" />
-            <span>🚕 මෙම Drop-Off ස්ථානය තහවුරු කරන්න (Confirm Drop Location)</span>
+            <span>📍 මෙම ස්ථානය තහවුරු කරන්න (Confirm Drop Location)</span>
           </button>
         </div>
       </div>
@@ -413,9 +411,9 @@ export const UberBloodLocationModal: React.FC<UberBloodLocationModalProps> = ({
 };
 
 // ============================================================================
-// Uber Taxi-Style Live Route Map (Pickup -> Hospital Drop-Off)
+// Live Route Map (Donor Location -> Hospital Drop Location)
 // ============================================================================
-interface UberBloodRouteMapProps {
+interface BloodRouteMapProps {
   hospitalName: string;
   district?: string;
   destLat?: number | null;
@@ -425,7 +423,7 @@ interface UberBloodRouteMapProps {
   googleMapsNavUrl: string;
 }
 
-export const UberBloodRouteMap: React.FC<UberBloodRouteMapProps> = ({
+export const BloodRouteMap: React.FC<BloodRouteMapProps> = ({
   hospitalName,
   district,
   destLat,
@@ -443,7 +441,6 @@ export const UberBloodRouteMap: React.FC<UberBloodRouteMapProps> = ({
   const mapRef = useRef<HTMLDivElement | null>(null);
   const leafletMapRef = useRef<L.Map | null>(null);
 
-  // Resolve hospital coordinates if not explicitly pinned
   useEffect(() => {
     if (destLat && destLng) {
       setTargetLat(destLat);
@@ -508,11 +505,11 @@ export const UberBloodRouteMap: React.FC<UberBloodRouteMapProps> = ({
       attribution: '&copy; OpenStreetMap',
     }).addTo(map);
 
-    // Hospital Drop-off Marker (Red Uber Square Pin)
+    // Hospital Drop-off Marker
     const dropIcon = L.divIcon({
-      className: 'uber-drop-pin',
+      className: 'blood-drop-pin',
       html: `<div style="display:flex;flex-direction:column;align-items:center;">
-        <div style="background:#e11d48;color:white;font-weight:900;font-size:10px;padding:2px 8px;border-radius:999px;border:2px solid white;box-shadow:0 4px 10px rgba(0,0,0,0.35);white-space:nowrap;">🏥 රෝහල (Drop-Off)</div>
+        <div style="background:#e11d48;color:white;font-weight:900;font-size:10px;padding:2px 8px;border-radius:999px;border:2px solid white;box-shadow:0 4px 10px rgba(0,0,0,0.35);white-space:nowrap;">🏥 රෝහල (Drop Location)</div>
         <div style="width:16px;height:16px;background:#e11d48;border:3px solid white;border-radius:4px;box-shadow:0 4px 10px rgba(0,0,0,0.4);margin-top:2px;"></div>
       </div>`,
       iconSize: [120, 44],
@@ -521,9 +518,9 @@ export const UberBloodRouteMap: React.FC<UberBloodRouteMapProps> = ({
     L.marker([targetLat, targetLng], { icon: dropIcon }).addTo(map);
 
     if (myLat && myLng) {
-      // Donor Pickup Marker (Green Uber Circle Pin)
+      // Donor Pickup Marker
       const pickupIcon = L.divIcon({
-        className: 'uber-pickup-pin',
+        className: 'blood-pickup-pin',
         html: `<div style="display:flex;flex-direction:column;align-items:center;">
           <div style="background:#059669;color:white;font-weight:900;font-size:10px;padding:2px 8px;border-radius:999px;border:2px solid white;box-shadow:0 4px 10px rgba(0,0,0,0.35);white-space:nowrap;">🟢 ඔබ සිටින ස්ථානය</div>
           <div style="width:16px;height:16px;background:#10b981;border:3px solid white;border-radius:999px;box-shadow:0 4px 10px rgba(0,0,0,0.4);margin-top:2px;"></div>
@@ -533,7 +530,7 @@ export const UberBloodRouteMap: React.FC<UberBloodRouteMapProps> = ({
       });
       L.marker([myLat, myLng], { icon: pickupIcon }).addTo(map);
 
-      // Uber Route Polyline
+      // Route Polyline
       const routeLine = L.polyline(
         [
           [myLat, myLng],
@@ -573,7 +570,7 @@ export const UberBloodRouteMap: React.FC<UberBloodRouteMapProps> = ({
 
   return (
     <div className="rounded-2xl overflow-hidden border-2 border-slate-800 bg-slate-950 text-white shadow-lg space-y-0">
-      {/* Uber Trip Top Bar */}
+      {/* Route Top Bar */}
       <div className="p-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl bg-emerald-600/20 border border-emerald-500/40 flex items-center justify-center">
@@ -581,7 +578,7 @@ export const UberBloodRouteMap: React.FC<UberBloodRouteMapProps> = ({
           </div>
           <div>
             <div className="text-xs font-black text-white flex items-center gap-1.5">
-              <span>🚕 Uber Route මඟ පෙන්වීම</span>
+              <span>🧭 සජීවී ගමන් මාර්ග මඟ පෙන්වීම</span>
               {distanceKm !== null && (
                 <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono">
                   {distanceKm} km
@@ -627,7 +624,7 @@ export const UberBloodRouteMap: React.FC<UberBloodRouteMapProps> = ({
           className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95"
         >
           <Navigation className="w-4 h-4" />
-          <span>🚕 Drop Location එක වෙත ගමන ආරම්භ කරන්න (Start Navigation)</span>
+          <span>🗺️ Drop Location එක වෙත ගමන ආරම්භ කරන්න (Start Navigation)</span>
           <ExternalLink className="w-3.5 h-3.5 opacity-80" />
         </a>
       </div>
