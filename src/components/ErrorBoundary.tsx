@@ -28,15 +28,32 @@ export class ErrorBoundary extends React.Component<Props, State> {
     console.error('Uncaught React Error:', error, errorInfo);
   }
 
+  private clearAllCachesAndReload = () => {
+    const cleanOps: Promise<any>[] = [];
+    if (typeof window !== 'undefined' && window.caches && typeof window.caches.keys === 'function') {
+      cleanOps.push(
+        window.caches.keys().then((keys) => Promise.all(keys.map((k) => window.caches.delete(k))))
+      );
+    }
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && typeof navigator.serviceWorker.getRegistrations === 'function') {
+      cleanOps.push(
+        navigator.serviceWorker.getRegistrations().then((regs) => Promise.all(regs.map((r) => r.unregister())))
+      );
+    }
+    Promise.allSettled(cleanOps).finally(() => {
+      window.location.reload();
+    });
+  };
+
   private handleReload = () => {
-    window.location.reload();
+    this.clearAllCachesAndReload();
   };
 
   private handleReset = () => {
     try {
       localStorage.removeItem('sahaya_help_posts');
     } catch {}
-    window.location.reload();
+    this.clearAllCachesAndReload();
   };
 
   public render() {

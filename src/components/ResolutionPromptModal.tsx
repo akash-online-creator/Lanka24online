@@ -43,6 +43,13 @@ export const ResolutionPromptModal: React.FC<ResolutionPromptModalProps> = ({
   const helperName = post.completedHelperName || post.completedBy || post.confirmedHelperName || 'සහායකයා';
   const helperPhone = post.completedHelperPhone || post.confirmedHelperPhone || '';
   const bill = post.serviceBill;
+  const isBloodPost = Boolean(
+    post.postType === 'blood_request' ||
+      post.serviceType === 'blood_donation' ||
+      String(post.postCode || '').toUpperCase().startsWith('#BLD-') ||
+      post.bloodGroup ||
+      (post.tagName && String(post.tagName).includes('ලේ'))
+  );
 
   const handleSlideResolved = async () => {
     setIsSubmitting(true);

@@ -79,7 +79,7 @@ export const BloodLocationMapModal: React.FC<BloodLocationMapModalProps> = ({
       const roadOrVillage =
         resolved.roadSi || resolved.villageSi || resolved.townSi || 'තෝරාගත් රෝහල් ස්ථානය';
       const formattedAddr =
-        resolved.fullFormattedSi || `${resolved.townSi || ''}, ${resolved.districtSi || ''}`;
+        (resolved as any).fullFormattedSi || (resolved as any).formattedSi || `${resolved.townSi || ''}, ${resolved.districtSi || ''}`;
       setPlaceName(roadOrVillage);
       setPlaceAddress(formattedAddr);
     } catch {

@@ -34,6 +34,8 @@ export interface PostReply {
   declinedByPoster?: boolean;
   guidelinesAccepted?: boolean;
   step3GuidelinesAccepted?: boolean;
+  userId?: string;
+  workflowStep?: number;
 }
 
 export interface MultilingualText {
@@ -186,6 +188,18 @@ export interface HelpPost {
   donorLiveLocation?: any;
   guidelinesAccepted?: boolean;
   step3GuidelinesAccepted?: boolean;
+  bloodGroup?: string;
+  district?: string;
+  contactPersonName?: string;
+  contactNumber?: string;
+  patientName?: string;
+  hospitalName?: string;
+  unitsNeeded?: number;
+  neededDate?: string;
+  additionalNotes?: string;
+  bloodWorkflowStep?: number;
+  lastStepUpdatedAtMs?: number;
+  lastStepByRole?: string;
   isCompleted?: boolean;
   completedAt?: string;
   completedBy?: string;

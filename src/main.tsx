@@ -21,6 +21,11 @@ L.Icon.Default.mergeOptions({
 initSirenSettings();
 
 if (typeof window !== 'undefined') {
+  (window as any).qBloodMatchConfirmed = 'yes';
+  (window as any).setQBloodMatchConfirmed = (v: any) => {
+    (window as any).qBloodMatchConfirmed = v;
+  };
+
   const purgeStaleCachesAndReload = () => {
     const reloadKey = 'sahaya_sw_chunk_reload_ts';
     const lastReload = Number(sessionStorage.getItem(reloadKey) || '0');
@@ -49,6 +54,18 @@ if (typeof window !== 'undefined') {
   });
 
   if ('serviceWorker' in navigator) {
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    let swRefreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || swRefreshing) return;
+      const reloadKey = 'sahaya_sw_ctrl_reload_ts';
+      const lastReload = Number(sessionStorage.getItem(reloadKey) || '0');
+      if (Date.now() - lastReload < 15000) return;
+      swRefreshing = true;
+      sessionStorage.setItem(reloadKey, String(Date.now()));
+      window.location.reload();
+    });
+
     window.addEventListener('load', () => {
       navigator.serviceWorker
         .register('/sw.js', { scope: '/', updateViaCache: 'none' })

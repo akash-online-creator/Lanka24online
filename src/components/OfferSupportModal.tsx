@@ -514,52 +514,27 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
                             );
                           })}
                         </div>
-                        {isCompatible ? (
-                          <p className="text-[11px] font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 p-2 rounded-xl border border-emerald-300 dark:border-emerald-800">
-                            ✅ ඔබගේ ({donorGroup}) රුධිර වර්ගය රෝගියාගේ ({patientBloodGroup}) රුධිර අවශ්‍යතාවයට ගැළපේ!
-                          </p>
+                        {hasSelectedBloodGroup ? (
+                          isCompatible ? (
+                            <p className="text-[11px] font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 p-2 rounded-xl border border-emerald-300 dark:border-emerald-800">
+                              ✅ ඔබගේ ({donorGroup}) රුධිර වර්ගය රෝගියාගේ ({patientBloodGroup}) රුධිර අවශ්‍යතාවයට ගැළපේ!
+                            </p>
+                          ) : (
+                            <p className="text-[11px] font-black text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/50 p-2 rounded-xl border border-red-300 dark:border-red-800">
+                              ❌ ඔබගේ ({donorGroup}) රුධිර වර්ගය රෝගියාගේ ({patientBloodGroup}) රුධිර වර්ගයට නොගැළපේ. ({patientBloodGroup} සඳහා ලබාදිය හැක්කේ {compatibleGroupsList.join(', ')} පමණි)
+                            </p>
+                          )
                         ) : (
-                          <p className="text-[11px] font-black text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/50 p-2 rounded-xl border border-red-300 dark:border-red-800">
-                            ❌ ඔබගේ ({donorGroup}) රුධිර වර්ගය රෝගියාගේ ({patientBloodGroup}) රුධිර වර්ගයට නොගැළපේ. ({patientBloodGroup} සඳහා ලබාදිය හැක්කේ {compatibleGroupsList.join(', ')} පමණි)
+                          <p className="text-[11px] font-bold text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/60 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                            👆 කරුණාකර ඉහත ලැයිස්තුවෙන් ඔබගේ නිවැරදි රුධිර වර්ගය තෝරන්න ({patientBloodGroup} රෝගියා සඳහා ගැළපෙන වර්ග: {compatibleGroupsList.join(', ')})
                           </p>
                         )}
                       </div>
 
-                      {/* Question 2: Confirm Blood Match */}
+                      {/* Question 2: Age 18-60 & Weight > 50kg */}
                       <div className="space-y-1.5 pt-1">
                         <label className="block font-black text-slate-800 dark:text-slate-200">
-                          ප්‍රශ්නය 02: රෝගියාට අවශ්‍ය ({patientBloodGroup}) රුධිර වර්ගය සඳහා ඔබගේ රුධිරය ගැළපෙන බව ඔබ තහවුරු කරනවාද? *
-                        </label>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setQBloodMatchConfirmed('yes')}
-                            className={`py-2 px-3 rounded-xl font-black text-xs border cursor-pointer ${
-                              qBloodMatchConfirmed === 'yes'
-                                ? 'bg-emerald-600 text-white border-emerald-500'
-                                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
-                            }`}
-                          >
-                            ✅ ඔව්, මගේ ලේ ගැළපේ
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setQBloodMatchConfirmed('no')}
-                            className={`py-2 px-3 rounded-xl font-black text-xs border cursor-pointer ${
-                              qBloodMatchConfirmed === 'no'
-                                ? 'bg-red-600 text-white border-red-500'
-                                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
-                            }`}
-                          >
-                            ❌ නැත, නොගැළපේ
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Question 3: Age 18-60 & Weight > 50kg */}
-                      <div className="space-y-1.5 pt-1">
-                        <label className="block font-black text-slate-800 dark:text-slate-200">
-                          ප්‍රශ්නය 03: ඔබගේ වයස අවුරුදු 18 - 60 අතර සහ ශරීර බර කිලෝග්‍රෑම් 50 (50kg) ට වැඩිද? *
+                          ප්‍රශ්නය 02: ඔබගේ වයස අවුරුදු 18 - 60 අතර සහ ශරීර බර කිලෝග්‍රෑම් 50 (50kg) ට වැඩිද? *
                         </label>
                         <div className="grid grid-cols-2 gap-2">
                           <button
@@ -587,16 +562,17 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
                         </div>
                       </div>
 
-                      {/* Question 4: Last Donation Interval */}
+                      {/* Question 3: Last Donation Interval */}
                       <div className="space-y-1.5 pt-1">
                         <label className="block font-black text-slate-800 dark:text-slate-200">
-                          ප්‍රශ්නය 04: ඔබ අවසන් වරට ලේ පරිත්‍යාග කර මාස 4කට වඩා වැඩි කාලයක් ගතවී ඇත්ද? *
+                          ප්‍රශ්නය 03: ඔබ අවසන් වරට ලේ පරිත්‍යාග කර මාස 4කට වඩා වැඩි කාලයක් ගතවී ඇත්ද? *
                         </label>
                         <select
                           value={qIntervalOk}
                           onChange={(e) => setQIntervalOk(e.target.value as any)}
                           className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-bold text-xs text-slate-900 dark:text-white"
                         >
+                          <option value="">-- කරුණාකර තෝරන්න --</option>
                           <option value="more_than_4_months">✅ ඔව්, මාස 4කට පෙර හෝ ඊට වැඩි කාලයක් ගතවී ඇත</option>
                           <option value="first_time">✅ මම ප්‍රථම වතාවට ලේ පරිත්‍යාග කරමි</option>
                           <option value="recent">❌ නැත, පසුගිය මාස 4 ඇතුළත ලේ දී ඇත (නුසුදුසුයි)</option>
@@ -608,10 +584,10 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
                         )}
                       </div>
 
-                      {/* Question 5: Current Health Status */}
+                      {/* Question 4: Current Health Status */}
                       <div className="space-y-1.5 pt-1">
                         <label className="block font-black text-slate-800 dark:text-slate-200">
-                          ප්‍රශ්නය 05: පසුගිය දින 7 තුළ උණ, සෙම්ප්‍රතිශ්‍යාව හෝ ප්‍රතිජීවක ඖෂධ ගැනීමක් නොමැතිව නීරෝගීව සිටිනවාද? *
+                          ප්‍රශ්නය 04: පසුගිය දින 7 තුළ උණ, සෙම්ප්‍රතිශ්‍යාව හෝ ප්‍රතිජීවක ඖෂධ ගැනීමක් නොමැතිව නීරෝගීව සිටිනවාද? *
                         </label>
                         <div className="grid grid-cols-2 gap-2">
                           <button
@@ -673,12 +649,23 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
                     {/* Eligibility Summary Banner */}
                     {isTestPassed ? (
                       <div className="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-400 text-emerald-900 dark:text-emerald-200 font-black text-center text-xs">
-                        ✅ ඔබගේ ලේ ගැළපෙන අතර ලේ ලබාදීමට සුදුසු අයෙකු බව තහවුරු විය!
+                        ✅ ඔබගේ ({donorGroup}) ලේ ගැළපෙන අතර ලේ ලබාදීමට සුදුසු අයෙකු බව තහවුරු විය!
+                      </div>
+                    ) : ineligibilityReasons.length > 0 ? (
+                      <div className="p-3 rounded-xl bg-red-100 dark:bg-red-950/60 border border-red-400 text-red-800 dark:text-red-200 font-bold text-xs space-y-1">
+                        <div className="flex items-center gap-1.5 font-black">
+                          <AlertTriangle className="w-4 h-4 shrink-0" />
+                          <span>ලේ පරිත්‍යාග කිරීමට සුදුසුකම් සපුරා නොමැත:</span>
+                        </div>
+                        <ul className="list-disc list-inside text-[11px] space-y-0.5 pl-1">
+                          {ineligibilityReasons.map((reason, idx) => (
+                            <li key={idx}>{reason}</li>
+                          ))}
+                        </ul>
                       </div>
                     ) : (
-                      <div className="p-2.5 rounded-xl bg-red-100 dark:bg-red-950/60 border border-red-400 text-red-800 dark:text-red-200 font-bold text-center text-xs flex items-center justify-center gap-1.5">
-                        <AlertTriangle className="w-4 h-4 shrink-0" />
-                        <span>ලේ ගැලපුම හෝ සෞඛ්‍ය සුදුසුකම් සපුරා නොමැති බැවින් ඉදිරියට යා නොහැක.</span>
+                      <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 font-bold text-center text-xs">
+                        👆 ඉදිරියට යාමට කරුණාකර ඉහත ප්‍රශ්න 4ටම පිළිතුරු ලබා දෙන්න.
                       </div>
                     )}
 
@@ -696,7 +683,7 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
                         className="flex items-center gap-1.5 px-5 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-black text-xs sm:text-sm rounded-xl shadow-md cursor-pointer"
                       >
                         <CheckCircle2 className="w-4 h-4" />
-                        <span>ලේ ගැළපීම තහවුරු කර උපදෙස් බලන්න →</span>
+                        <span>ලේ ලබාදීමට ඉදිරිපත් වන්න →</span>
                       </button>
                     </div>
                   </form>

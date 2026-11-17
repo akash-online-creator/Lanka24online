@@ -113,13 +113,10 @@ export function createBloodDonationHonorPost(
   districtArg?: string
 ): HelpPost {
   const isObj = typeof donorNameOrParams === 'object' && donorNameOrParams !== null;
-  const cleanDonor = (
-    (isObj ? donorNameOrParams.donorName : donorNameOrParams) || 'උතුම් පරිත්‍යාගශීලියා'
-  ).trim();
-  const cleanHosp = (
-    (isObj ? donorNameOrParams.hospitalName || donorNameOrParams.location : hospitalNameArg) ||
-    'රෝහල'
-  ).trim();
+  const rawDonor = isObj ? donorNameOrParams.donorName : donorNameOrParams;
+  const cleanDonor = String(rawDonor || 'උතුම් පරිත්‍යාගශීලියා').trim();
+  const rawHosp = isObj ? donorNameOrParams.hospitalName || donorNameOrParams.location : hospitalNameArg;
+  const cleanHosp = String(rawHosp || 'රෝහල').trim();
   const district = isObj ? donorNameOrParams.location : districtArg;
   const cleanDist =
     district && !cleanHosp.includes(district) ? ` (${district})` : '';
@@ -153,7 +150,7 @@ export function createBloodDonationHonorPost(
     locationName: `${cleanHosp}${cleanDist}`,
     district: district || 'ශ්‍රී ලංකා',
     date: 'මේ දැන්',
-    createdAt: nowMs,
+    createdAt: nowIso,
     createdAtIso: nowIso,
     createdAtMs: nowMs,
     posterId: (isObj && donorNameOrParams.posterId) || 'system_honor',
