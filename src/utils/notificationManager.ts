@@ -277,8 +277,30 @@ try {
 } catch {}
 
 const DELETED_POST_IDS_KEY = 'sahaya_deleted_post_ids';
+const DELETED_NOTIF_IDS_KEY = 'sahaya_deleted_notification_ids';
+const DELETED_RED_ALERT_IDS_KEY = 'sahaya_deleted_red_alert_ids';
+const DELETED_BLOOD_IDS_KEY = 'sahaya_deleted_blood_ids';
+const DELETED_DISASTER_IDS_KEY = 'sahaya_deleted_disaster_ids';
 
-// Read real notifications from storage (Only genuine live user/system alerts, automatically filters out deleted posts)
+const readDeletedIdSet = (keys: string[]): Set<string> => {
+  const result = new Set<string>();
+  keys.forEach((k) => {
+    try {
+      const raw = localStorage.getItem(k);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((id) => {
+            if (id) result.add(String(id));
+          });
+        }
+      }
+    } catch {}
+  });
+  return result;
+};
+
+// Read real notifications from storage (Only genuine live user/system alerts, automatically filters out deleted posts & deleted notifications)
 export const getStoredNotifications = (): AppNotification[] => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -288,21 +310,19 @@ export const getStoredNotifications = (): AppNotification[] => {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
 
-    let deletedPostIds: Set<string> = new Set();
-    try {
-      const delRaw = localStorage.getItem(DELETED_POST_IDS_KEY);
-      if (delRaw) {
-        const parsedDel = JSON.parse(delRaw);
-        if (Array.isArray(parsedDel)) {
-          deletedPostIds = new Set(parsedDel.map(String));
-        }
-      }
-    } catch {}
+    const deletedPostIds = readDeletedIdSet([
+      DELETED_POST_IDS_KEY,
+      DELETED_RED_ALERT_IDS_KEY,
+      DELETED_BLOOD_IDS_KEY,
+      DELETED_DISASTER_IDS_KEY,
+    ]);
+    const deletedNotifIds = readDeletedIdSet([DELETED_NOTIF_IDS_KEY]);
     
-    // Purge any lingering dummy or seed notifications permanently AND notifications of deleted posts
+    // Purge any lingering dummy/seed notifications AND deleted notifications AND notifications of deleted posts
     const realNotifs = parsed.filter(
       (n: any) => {
         if (!n || !n.id) return false;
+        if (deletedNotifIds.has(String(n.id))) return false;
         if (n.id.startsWith('notif-seed') || n.id.includes('sample') || n.id.includes('dummy')) return false;
         if (n.targetPostId && deletedPostIds.has(String(n.targetPostId))) return false;
         if (n.relatedPostId && deletedPostIds.has(String(n.relatedPostId))) return false;
@@ -322,9 +342,12 @@ export const getStoredNotifications = (): AppNotification[] => {
 
 // Save a new notification and broadcast to app
 export const broadcastAppNotification = (notifData: Omit<AppNotification, 'id' | 'timestamp' | 'isRead'> & { id?: string; timestamp?: string; isRead?: boolean }) => {
-  const current = getStoredNotifications();
+  const newId = notifData.id || `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const deletedNotifIds = readDeletedIdSet([DELETED_NOTIF_IDS_KEY]);
+  const deletedPostIds = readDeletedIdSet([DELETED_POST_IDS_KEY, DELETED_RED_ALERT_IDS_KEY, DELETED_BLOOD_IDS_KEY, DELETED_DISASTER_IDS_KEY]);
+
   const newNotif: AppNotification = {
-    id: notifData.id || `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    id: newId,
     type: notifData.type,
     title: notifData.title,
     message: notifData.message,
@@ -337,6 +360,15 @@ export const broadcastAppNotification = (notifData: Omit<AppNotification, 'id' |
     isRead: notifData.isRead ?? false,
   };
 
+  if (
+    deletedNotifIds.has(String(newId)) ||
+    (newNotif.targetPostId && deletedPostIds.has(String(newNotif.targetPostId))) ||
+    (newNotif.relatedPostId && deletedPostIds.has(String(newNotif.relatedPostId)))
+  ) {
+    return newNotif;
+  }
+
+  const current = getStoredNotifications();
   const updated = [newNotif, ...current.filter(n => n.id !== newNotif.id)].slice(0, 50);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
 
@@ -472,10 +504,90 @@ export const markAllNotificationsAsRead = () => {
   window.dispatchEvent(new CustomEvent('sahaya_notifications_updated'));
 };
 
-// Clear all notifications
-export const clearAllNotifications = () => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
-  window.dispatchEvent(new CustomEvent('sahaya_notifications_updated'));
+// Delete a single notification (Locally + Cloud global sync when deleted by Admin)
+export const deleteNotificationById = (
+  notifId: string,
+  options?: { isAdmin?: boolean; postId?: string; title?: string; message?: string }
+) => {
+  if (!notifId) return;
+  try {
+    const current = getStoredNotifications();
+    const target = current.find((n) => n && n.id === notifId);
+    const updated = current.filter((n) => n && n.id !== notifId);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+
+    // Persist in local deleted notifications blacklist immediately
+    try {
+      const existingDel = Array.from(readDeletedIdSet([DELETED_NOTIF_IDS_KEY]));
+      if (!existingDel.includes(notifId)) {
+        localStorage.setItem(DELETED_NOTIF_IDS_KEY, JSON.stringify([...existingDel, notifId]));
+      }
+    } catch {}
+
+    // If deleted by Admin, sync deletion globally to Firestore so all devices purge it
+    if (options?.isAdmin) {
+      import('./deletedPostsManager')
+        .then((m) => m.addDeletedNotificationId(notifId))
+        .catch(() => {});
+      import('../lib/firebase')
+        .then((fb) =>
+          fb.deleteNotificationFromFirestore(notifId, {
+            postId: options.postId || target?.targetPostId || target?.relatedPostId,
+            title: options.title || target?.title,
+            message: options.message || target?.message,
+          })
+        )
+        .catch(() => {});
+    }
+
+    if (typeof window !== 'undefined') {
+      if (target?.targetPostId || options?.postId) {
+        window.dispatchEvent(
+          new CustomEvent('sahaya_stop_alert_for_post', {
+            detail: { postId: options?.postId || target?.targetPostId },
+          })
+        );
+      }
+      window.dispatchEvent(new CustomEvent('sahaya_notification_deleted', { detail: { notifId } }));
+      window.dispatchEvent(new CustomEvent('sahaya_notifications_updated'));
+    }
+  } catch (err) {
+    console.debug('deleteNotificationById notice:', err);
+  }
+};
+
+// Clear all notifications (Locally + Cloud global sync when cleared by Admin)
+export const clearAllNotifications = (isAdmin: boolean = false) => {
+  try {
+    const current = getStoredNotifications();
+    const allIds = current.map((n) => n?.id).filter(Boolean) as string[];
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+
+    if (allIds.length > 0) {
+      try {
+        const existingDel = Array.from(readDeletedIdSet([DELETED_NOTIF_IDS_KEY]));
+        const merged = Array.from(new Set([...existingDel, ...allIds]));
+        localStorage.setItem(DELETED_NOTIF_IDS_KEY, JSON.stringify(merged));
+      } catch {}
+
+      if (isAdmin) {
+        import('./deletedPostsManager')
+          .then((m) => m.addDeletedNotificationIds(allIds))
+          .catch(() => {});
+        import('../lib/firebase')
+          .then((fb) => fb.clearAllNotificationsInFirestore(allIds))
+          .catch(() => {});
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sahaya_notification_deleted', { detail: { clearAll: true } }));
+      window.dispatchEvent(new CustomEvent('sahaya_notifications_updated'));
+    }
+  } catch (err) {
+    console.debug('clearAllNotifications notice:', err);
+  }
 };
 
 // Sound setting

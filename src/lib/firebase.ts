@@ -2453,6 +2453,7 @@ export interface DeletedRecordsMap {
   deletedJobIds?: string[];
   deletedAccommodationIds?: string[];
   deletedBarterItemIds?: string[];
+  deletedNotificationIds?: string[];
 }
 
 export async function saveDeletedRecordsToFirestore(records: DeletedRecordsMap): Promise<void> {
@@ -2491,6 +2492,85 @@ export function subscribeToDeletedRecordsFromFirestore(callback: (records: Delet
   } catch (err) {
     console.warn('subscribeToDeletedRecordsFromFirestore setup warning:', err);
     return () => {};
+  }
+}
+
+/**
+ * 🗑️ Admin Notification Deletion (Global Cloud Sync + Firestore Queue Cleanup)
+ */
+export async function deleteNotificationFromFirestore(
+  notifId: string,
+  options?: { postId?: string; title?: string; message?: string }
+): Promise<void> {
+  if (!notifId) return;
+  try {
+    const blacklistPayload = {
+      deletedNotificationIds: arrayUnion(notifId),
+      updatedAt: new Date().toISOString(),
+      updatedAtServer: serverTimestamp(),
+    };
+
+    const tasks: Promise<any>[] = [
+      setDoc(doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC), blacklistPayload, { merge: true }),
+      deleteDoc(doc(db, 'notifications', notifId)),
+      deleteDoc(doc(db, 'push_broadcast_queue', notifId)),
+    ];
+
+    if (fallbackDb !== db) {
+      tasks.push(
+        setDoc(doc(fallbackDb, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC), blacklistPayload, { merge: true }),
+        deleteDoc(doc(fallbackDb, 'notifications', notifId)),
+        deleteDoc(doc(fallbackDb, 'push_broadcast_queue', notifId))
+      );
+    }
+
+    await Promise.allSettled(tasks);
+
+    // Clean any matching push_broadcast_queue docs by postId or title if present
+    try {
+      if (options?.postId) {
+        const q = query(collection(db, 'push_broadcast_queue'), where('postId', '==', options.postId));
+        const snap = await getDocs(q);
+        if (snap && snap.docs && snap.docs.length > 0) {
+          const batch = writeBatch(db);
+          snap.docs.forEach((d) => batch.delete(d.ref));
+          await batch.commit();
+        }
+      }
+    } catch {}
+  } catch (err) {
+    console.warn('deleteNotificationFromFirestore notice:', err);
+  }
+}
+
+export async function clearAllNotificationsInFirestore(notifIds: string[] = []): Promise<void> {
+  try {
+    if (Array.isArray(notifIds) && notifIds.length > 0) {
+      const blacklistPayload = {
+        deletedNotificationIds: arrayUnion(...notifIds),
+        updatedAt: new Date().toISOString(),
+        updatedAtServer: serverTimestamp(),
+      };
+      await Promise.allSettled([
+        setDoc(doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC), blacklistPayload, { merge: true }),
+        fallbackDb !== db
+          ? setDoc(doc(fallbackDb, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC), blacklistPayload, { merge: true })
+          : Promise.resolve(),
+      ]);
+
+      await Promise.allSettled(
+        notifIds.flatMap((id) =>
+          id
+            ? [
+                deleteDoc(doc(db, 'notifications', id)),
+                deleteDoc(doc(db, 'push_broadcast_queue', id)),
+              ]
+            : []
+        )
+      );
+    }
+  } catch (err) {
+    console.warn('clearAllNotificationsInFirestore notice:', err);
   }
 }
 

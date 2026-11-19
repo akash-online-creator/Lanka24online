@@ -39,6 +39,7 @@ import { getDisasterConfig } from '../data/redAlertData';
 import { calculateDistanceKm } from '../utils/geoUtils';
 import {
   isPostPermanentlyDeleted,
+  isRedAlertPermanentlyDeleted,
   isBloodPermanentlyDeleted,
   isDisasterPermanentlyDeleted,
   filterNonDeletedJobs,
@@ -192,9 +193,13 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     const handleSync = () => setBloodDisasterSyncTick((t) => t + 1);
     window.addEventListener('sahaya_blood_disaster_updated', handleSync);
     window.addEventListener('sahaya_sync_all_services', handleSync);
+    window.addEventListener('sahaya_post_deleted', handleSync);
+    window.addEventListener('sahaya_red_alert_deleted', handleSync);
     return () => {
       window.removeEventListener('sahaya_blood_disaster_updated', handleSync);
       window.removeEventListener('sahaya_sync_all_services', handleSync);
+      window.removeEventListener('sahaya_post_deleted', handleSync);
+      window.removeEventListener('sahaya_red_alert_deleted', handleSync);
     };
   }, []);
 
@@ -626,7 +631,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
             if (!a || !a.id) return false;
             const alertCodeStr = String(a.alertCode || a.id);
             if (existingCodes.has(alertCodeStr) || existingCodes.has(String(a.id))) return false;
-            const isRemoved = Boolean(a.status === 'cancelled' || a.isDeleted || isPostPermanentlyDeleted(a.id));
+            const isRemoved = Boolean(a.status === 'cancelled' || a.isDeleted || isPostPermanentlyDeleted(a.id) || isRedAlertPermanentlyDeleted(a.id));
             if (isRemoved) return false;
             if (boardCategoryFilter === 'resolved') {
               return a.status === 'resolved';
@@ -1022,12 +1027,12 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     });
     const validRedAlertsCount = (Array.isArray(redAlerts) ? redAlerts : []).filter((a: any) => {
       if (!a || !a.id) return false;
-      if (a.status === 'cancelled' || a.status === 'resolved' || a.isDeleted || isPostPermanentlyDeleted(a.id)) return false;
+      if (a.status === 'cancelled' || a.status === 'resolved' || a.isDeleted || isPostPermanentlyDeleted(a.id) || isRedAlertPermanentlyDeleted(a.id)) return false;
       if (existingIds.has(String(a.alertCode || a.id)) || existingIds.has(String(a.id))) return false;
       return true;
     }).length;
-    const extraBloodCount = (getStoredBloodRequests() || []).filter((b: any) => b && b.id && !existingIds.has(String(b.postCode || b.id))).length;
-    const extraDisasterCount = (getStoredDisasterReliefItems() || []).filter((d: any) => d && d.id && !existingIds.has(String(d.id))).length;
+    const extraBloodCount = (getStoredBloodRequests() || []).filter((b: any) => b && b.id && !isBloodPermanentlyDeleted(b.id) && !isPostPermanentlyDeleted(b.id) && !existingIds.has(String(b.postCode || b.id))).length;
+    const extraDisasterCount = (getStoredDisasterReliefItems() || []).filter((d: any) => d && d.id && !isDisasterPermanentlyDeleted(d.id) && !isPostPermanentlyDeleted(d.id) && !existingIds.has(String(d.id))).length;
     const extraJobsCount = (Array.isArray(liveJobs) ? liveJobs : []).filter((j: any) => j && j.id && !existingIds.has(String(j.id))).length;
     const extraAccCount = (Array.isArray(liveAccommodations) ? liveAccommodations : []).filter((acc: any) => acc && acc.id && !existingIds.has(String(acc.id))).length;
     const extraProServicesCount = (Array.isArray(professionalServices) ? professionalServices : []).filter((s: any) => s && s.id && !existingIds.has(String(s.id))).length;
@@ -1100,11 +1105,11 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       const anyA = a as any;
       const fakeCount = (Array.isArray(a.fakeReports) ? a.fakeReports.length : 0) || a.fakeReportsCount || 0;
       const isFake = Boolean(anyA.isFlaggedFake || a.status === 'fake' || Math.max(fakeCount, 4) === fakeCount);
-      const isRemoved = Boolean(a.status === 'cancelled' || anyA.isDeleted || a.cancelledAt || anyA.deletedAt);
+      const isRemoved = Boolean(a.status === 'cancelled' || anyA.isDeleted || a.cancelledAt || anyA.deletedAt || isPostPermanentlyDeleted(a.id) || isRedAlertPermanentlyDeleted(a.id));
       const isResolved = Boolean(a.status === 'resolved' || a.resolvedAt);
       return a.status === 'active' && !isRemoved && !isResolved && !isFake;
     });
-  }, [redAlerts]);
+  }, [redAlerts, bloodDisasterSyncTick]);
 
   const currentRedAlert = liveTopBannerAlerts.length !== 0
     ? liveTopBannerAlerts[activeAlertIndex % liveTopBannerAlerts.length]
@@ -1625,6 +1630,8 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
         <ProximityAlertBanner
           posts={helpPosts}
           userLocation={currentLocation}
+          currentUser={user}
+          onDeletePost={(post) => onDeletePost(post)}
           onViewPost={(post) => {
             if (user?.isDemo) {
               if (onRequireRegistration) onRequireRegistration();

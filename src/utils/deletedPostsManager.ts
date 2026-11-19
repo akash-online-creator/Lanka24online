@@ -36,6 +36,7 @@ const DELETED_GROUP_IDS_KEY = 'sahaya_deleted_group_ids';
 const DELETED_JOB_IDS_KEY = 'sahaya_deleted_job_ids';
 const DELETED_ACCOMMODATION_IDS_KEY = 'sahaya_deleted_accommodation_ids';
 const DELETED_BARTER_ITEM_IDS_KEY = 'sahaya_deleted_barter_item_ids';
+const DELETED_NOTIFICATION_IDS_KEY = 'sahaya_deleted_notification_ids';
 
 const DUMMY_POST_IDS = new Set([
   'post_6843', 'post_4912', 'post_find_1', 'post_find_2',
@@ -107,6 +108,7 @@ export function syncAllDeletionsToCloud(): void {
         deletedJobIds: getStoredDeletedJobIds(),
         deletedAccommodationIds: getStoredDeletedAccommodationIds(),
         deletedBarterItemIds: getStoredDeletedBarterItemIds(),
+        deletedNotificationIds: getStoredDeletedNotificationIds(),
       };
       saveDeletedRecordsToFirestore(payload).catch(() => {});
     } catch {}
@@ -153,6 +155,24 @@ if (typeof window !== 'undefined') {
       mergeKey(DELETED_JOB_IDS_KEY, getStoredDeletedJobIds, cloudRecords.deletedJobIds);
       mergeKey(DELETED_ACCOMMODATION_IDS_KEY, getStoredDeletedAccommodationIds, cloudRecords.deletedAccommodationIds);
       mergeKey(DELETED_BARTER_ITEM_IDS_KEY, getStoredDeletedBarterItemIds, cloudRecords.deletedBarterItemIds);
+      mergeKey(DELETED_NOTIFICATION_IDS_KEY, getStoredDeletedNotificationIds, cloudRecords.deletedNotificationIds);
+
+      if (Array.isArray(cloudRecords.deletedNotificationIds) && cloudRecords.deletedNotificationIds.length > 0) {
+        try {
+          const rawNotifs = localStorage.getItem('sahaya_live_notifications');
+          if (rawNotifs) {
+            const parsedNotifs = JSON.parse(rawNotifs);
+            if (Array.isArray(parsedNotifs)) {
+              const delNotifSet = new Set(cloudRecords.deletedNotificationIds.map(String));
+              const filteredNotifs = parsedNotifs.filter((n: any) => n && n.id && !delNotifSet.has(String(n.id)));
+              if (filteredNotifs.length !== parsedNotifs.length) {
+                localStorage.setItem('sahaya_live_notifications', JSON.stringify(filteredNotifs));
+                changed = true;
+              }
+            }
+          }
+        } catch {}
+      }
 
       if (changed) {
         try {
@@ -163,6 +183,7 @@ if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('sahaya_accommodations_updated'));
           window.dispatchEvent(new CustomEvent('sahaya_barter_updated'));
           window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+          window.dispatchEvent(new CustomEvent('sahaya_notifications_updated'));
         } catch {}
       }
     });
@@ -816,6 +837,35 @@ export function filterNonDeletedBarterItems<T extends { id?: string }>(items: T[
   return items.filter((i) => i && i.id && !deletedIds.has(i.id) && !DUMMY_BARTER_IDS.has(i.id));
 }
 
+// ==========================================
+// 11. Notifications (Admin Global Delete Sync)
+// ==========================================
+export function getStoredDeletedNotificationIds(): string[] {
+  return getStoredIds(DELETED_NOTIFICATION_IDS_KEY);
+}
+
+export function addDeletedNotificationId(notifId: string): void {
+  if (!notifId) return;
+  const current = getStoredDeletedNotificationIds();
+  if (!current.includes(notifId)) {
+    saveIds(DELETED_NOTIFICATION_IDS_KEY, [...current, notifId]);
+  }
+}
+
+export function addDeletedNotificationIds(notifIds: string[]): void {
+  if (!Array.isArray(notifIds) || notifIds.length === 0) return;
+  const current = getStoredDeletedNotificationIds();
+  const merged = Array.from(new Set([...current, ...notifIds.filter(Boolean)]));
+  if (merged.length !== current.length) {
+    saveIds(DELETED_NOTIFICATION_IDS_KEY, merged);
+  }
+}
+
+export function isNotificationPermanentlyDeleted(notifId: string): boolean {
+  if (!notifId) return false;
+  return getStoredDeletedNotificationIds().includes(notifId);
+}
+
 // Export Key Constants (Restore/Admin Actions සඳහා භාවිත කිරීමට)
 export const STORAGE_KEYS = {
   POSTS: DELETED_POST_IDS_KEY,
@@ -831,4 +881,5 @@ export const STORAGE_KEYS = {
   JOBS: DELETED_JOB_IDS_KEY,
   ACCOMMODATIONS: DELETED_ACCOMMODATION_IDS_KEY,
   BARTER_ITEMS: DELETED_BARTER_ITEM_IDS_KEY,
+  NOTIFICATIONS: DELETED_NOTIFICATION_IDS_KEY,
 };

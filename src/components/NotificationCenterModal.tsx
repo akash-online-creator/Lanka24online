@@ -28,6 +28,7 @@ import {
   markNotificationAsRead, 
   markAllNotificationsAsRead, 
   clearAllNotifications, 
+  deleteNotificationById,
   requestNotificationPermission, 
   playNotificationSound,
   isNotificationSoundEnabled,
@@ -36,6 +37,7 @@ import {
 } from '../utils/notificationManager';
 import { triggerPickMeAlert } from '../utils/backgroundAlertEngine';
 import { formatRelativeTime } from '../utils/dateUtils';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
 import { Language } from '../types';
 
 interface NotificationCenterModalProps {
@@ -52,14 +54,20 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
   isOpen,
   onClose,
   language,
+  currentUser,
   onSelectNotification,
+  onNotificationClick,
+  onClearAll,
 }) => {
+  const isAdmin = checkIsAdmin(currentUser);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [activeFilter, setActiveFilter] = useState<
     'all' | 'red_alert_resolved' | 'admin_broadcast' | 'emergency_blood' | 'quick_service' | 'marketplace_price' | 'find_for_me'
   >('all');
   const [pushStatus, setPushStatus] = useState<NotificationPermission | 'unsupported'>('default');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [confirmClearAll, setConfirmClearAll] = useState<boolean>(false);
+  const [deleteFeedback, setDeleteFeedback] = useState<string | null>(null);
 
   // Load notifications and listeners
   const loadNotifs = () => {
@@ -84,11 +92,13 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
 
     window.addEventListener('sahaya_notifications_updated', handleUpdate);
     window.addEventListener('sahaya_new_notification', handleUpdate);
+    window.addEventListener('sahaya_notification_deleted', handleUpdate);
     window.addEventListener('sahaya_post_deleted', handleUpdate);
     window.addEventListener('sahaya_post_notifications_cleared', handleUpdate);
     return () => {
       window.removeEventListener('sahaya_notifications_updated', handleUpdate);
       window.removeEventListener('sahaya_new_notification', handleUpdate);
+      window.removeEventListener('sahaya_notification_deleted', handleUpdate);
       window.removeEventListener('sahaya_post_deleted', handleUpdate);
       window.removeEventListener('sahaya_post_notifications_cleared', handleUpdate);
     };
@@ -268,21 +278,70 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                   <span className="text-[10px] hidden sm:inline">{getLang('සියල්ල කියවන්න', 'Mark All Read', 'அனைத்தும் படி')}</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    clearAllNotifications();
-                    loadNotifs();
-                  }}
-                  className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-1 border border-rose-200 dark:border-rose-900/30 cursor-pointer"
-                  title="සියල්ල ඉවත් කරන්න"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                {confirmClearAll ? (
+                  <div className="flex items-center gap-1 bg-rose-100 dark:bg-rose-950/80 border border-rose-400 dark:border-rose-700 rounded-xl px-2 py-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearAllNotifications(isAdmin);
+                        if (onClearAll) onClearAll();
+                        setConfirmClearAll(false);
+                        loadNotifs();
+                        setDeleteFeedback(
+                          isAdmin
+                            ? getLang('🗑️ සියලුම දැනුම්දීම් ස්ථිරවම මකා දමන ලදී! (Admin)', '🗑️ All notifications deleted permanently!', '🗑️ அனைத்து அறிவிப்புகளும் நீக்கப்பட்டன!')
+                            : getLang('🗑️ සියලුම දැනුම්දීම් ඉවත් කරන ලදී.', '🗑️ All notifications cleared.', '🗑️ அனைத்தும் அழிக்கப்பட்டன.')
+                        );
+                        setTimeout(() => setDeleteFeedback(null), 3000);
+                      }}
+                      className="px-2 py-0.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black cursor-pointer active:scale-95"
+                    >
+                      {getLang('✓ සියල්ල මකන්න', '✓ Confirm All', '✓ அனைத்தையும் நீக்கு')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmClearAll(false)}
+                      className="px-1.5 py-0.5 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-[10px] font-bold cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClearAll(true)}
+                    className={`px-2 py-1.5 rounded-xl text-xs font-black flex items-center gap-1 border cursor-pointer active:scale-95 transition-all ${
+                      isAdmin
+                        ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-500 shadow-xs'
+                        : 'bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/30'
+                    }`}
+                    title={isAdmin ? 'Admin: සියලුම දැනුම්දීම් ස්ථිරවම මකන්න' : 'සියල්ල ඉවත් කරන්න'}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span className="text-[10px]">{getLang('සියල්ල මකන්න', 'Clear All', 'அனைத்தும் நீக்கு')}</span>
+                  </button>
+                )}
               </>
             )}
           </div>
         </div>
+
+        {/* Admin Notification Management Banner & Delete Feedback */}
+        {(isAdmin || deleteFeedback) && (
+          <div className="px-4 py-2 bg-rose-50/90 dark:bg-rose-950/30 border-b border-rose-200/80 dark:border-rose-900/50 flex items-center justify-between gap-2 flex-wrap text-[11px]">
+            {isAdmin && (
+              <span className="font-black text-rose-700 dark:text-rose-300 flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0" />
+                <span>{getLang('Admin පාලනය: ඕනෑම දැනුම්දීමක් තනි තනිව හෝ සියල්ල ස්ථිරවම මකා දැමිය හැක.', 'Admin Control: Permanently delete any individual notification or clear all.', 'நிர்வாகி கட்டுப்பாடு: எந்த அறிவிப்பையும் நீக்கலாம்.')}</span>
+              </span>
+            )}
+            {deleteFeedback && (
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-black text-[10px] shadow-xs animate-fadeIn">
+                {deleteFeedback}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Category Filters */}
         <div className="px-4 py-2 border-b border-slate-200 dark:border-[#153824] flex items-center gap-1.5 overflow-x-auto scrollbar-none">
@@ -343,7 +402,8 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                   onClick={() => {
                     markNotificationAsRead(notif.id);
                     loadNotifs();
-                    onSelectNotification(notif);
+                    const openHandler = onSelectNotification || onNotificationClick;
+                    if (openHandler) openHandler(notif);
                     onClose();
                   }}
                   className={`p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer group hover:scale-[1.01] active:scale-[0.99] relative overflow-hidden ${
@@ -449,17 +509,48 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                         </p>
                       )}
 
-                      <div className="flex items-center justify-between mt-2 pt-1 border-t border-slate-100 dark:border-white/5">
+                      <div className="flex items-center justify-between gap-2 mt-2 pt-1.5 border-t border-slate-100 dark:border-white/5 flex-wrap">
                         {notif.locationName && !isResolved ? (
                           <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400">
                             <MapPin className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                            <span className="truncate max-w-[200px]">{notif.locationName}</span>
+                            <span className="truncate max-w-[180px]">{notif.locationName}</span>
                           </div>
                         ) : <span />}
 
-                        <div className="flex items-center gap-1 text-[11px] font-black text-[#007a4b] dark:text-[#00c880] group-hover:underline">
-                          <span>{getLang('විස්තර බලන්න', 'View Details', 'விவரங்கள்')}</span>
-                          <ExternalLink className="w-3 h-3" />
+                        <div className="flex items-center gap-2 ml-auto">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteNotificationById(notif.id, {
+                                isAdmin,
+                                postId: notif.targetPostId || notif.relatedPostId,
+                                title: notif.title,
+                                message: notif.message,
+                              });
+                              loadNotifs();
+                              setDeleteFeedback(
+                                isAdmin
+                                  ? getLang('🗑️ දැනුම්දීම ස්ථිරවම මකා දමන ලදී! (Admin)', '🗑️ Notification deleted permanently!', '🗑️ அறிவிப்பு நீக்கப்பட்டது!')
+                                  : getLang('🗑️ දැනුම්දීම ඉවත් කරන ලදී.', '🗑️ Notification removed.', '🗑️ அறிவிப்பு அகற்றப்பட்டது.')
+                              );
+                              setTimeout(() => setDeleteFeedback(null), 2500);
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 transition-all cursor-pointer active:scale-95 ${
+                              isAdmin
+                                ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-xs'
+                                : 'bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/70 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/70'
+                            }`}
+                            title={isAdmin ? 'Admin ලෙස මෙම දැනුම්දීම ස්ථිරවම මකන්න (Delete)' : 'මෙම දැනුම්දීම ඉවත් කරන්න'}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>{getLang('මකන්න', 'Delete', 'நீக்கு')}</span>
+                          </button>
+
+                          <div className="flex items-center gap-1 text-[11px] font-black text-[#007a4b] dark:text-[#00c880] group-hover:underline">
+                            <span>{getLang('විස්තර බලන්න', 'View Details', 'விவரங்கள்')}</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </div>
                         </div>
                       </div>
                     </div>

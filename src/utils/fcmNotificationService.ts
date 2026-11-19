@@ -494,7 +494,25 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
 
   const locationName = payload.locationName || '';
 
-  const notifId = payload.alertId ? `red-alert-${payload.alertId}` : payload.postId ? `notif-${payload.postId}` : `push-${Date.now()}`;
+  const notifId = (payload as any).notifId || (payload as any).docId || (payload.alertId ? `red-alert-${payload.alertId}` : payload.postId ? `notif-${payload.postId}` : `push-${Date.now()}`);
+
+  try {
+    const checkDeleted = (storageKey: string, val?: string) => {
+      if (!val) return false;
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return false;
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) && arr.map(String).includes(String(val));
+    };
+    if (
+      checkDeleted('sahaya_deleted_notification_ids', notifId) ||
+      checkDeleted('sahaya_deleted_post_ids', payload.postId) ||
+      checkDeleted('sahaya_deleted_post_ids', payload.alertId) ||
+      checkDeleted('sahaya_deleted_red_alert_ids', payload.alertId)
+    ) {
+      return;
+    }
+  } catch {}
 
   if (category === 'red_alert') {
 

@@ -11,17 +11,21 @@ import {
   ArrowRight,
   MapPin,
   Clock,
-  MessageSquare
+  MessageSquare,
+  Trash2
 } from 'lucide-react';
-import { AppNotification, markNotificationAsRead } from '../utils/notificationManager';
+import { AppNotification, markNotificationAsRead, deleteNotificationById } from '../utils/notificationManager';
 import { formatRelativeTime } from '../utils/dateUtils';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
 
 interface LiveNotificationToastProps {
   onOpenNotification: (notif: AppNotification) => void;
+  currentUser?: any;
 }
 
-export const LiveNotificationToast: React.FC<LiveNotificationToastProps> = ({ onOpenNotification }) => {
+export const LiveNotificationToast: React.FC<LiveNotificationToastProps> = ({ onOpenNotification, currentUser }) => {
   const [activeToast, setActiveToast] = useState<AppNotification | null>(null);
+  const isAdmin = checkIsAdmin(currentUser);
 
   useEffect(() => {
     const handleNewNotif = (e: Event) => {
@@ -31,8 +35,22 @@ export const LiveNotificationToast: React.FC<LiveNotificationToastProps> = ({ on
       }
     };
 
+    const handleDeletedNotif = (e: Event) => {
+      const customEvent = e as CustomEvent<{ notifId?: string; clearAll?: boolean }>;
+      setActiveToast((curr) => {
+        if (!curr) return null;
+        if (customEvent.detail?.clearAll) return null;
+        if (customEvent.detail?.notifId && curr.id === customEvent.detail.notifId) return null;
+        return curr;
+      });
+    };
+
     window.addEventListener('sahaya_new_notification', handleNewNotif);
-    return () => window.removeEventListener('sahaya_new_notification', handleNewNotif);
+    window.addEventListener('sahaya_notification_deleted', handleDeletedNotif);
+    return () => {
+      window.removeEventListener('sahaya_new_notification', handleNewNotif);
+      window.removeEventListener('sahaya_notification_deleted', handleDeletedNotif);
+    };
   }, []);
 
   // Auto-dismiss toast after 7 seconds
@@ -157,16 +175,40 @@ export const LiveNotificationToast: React.FC<LiveNotificationToastProps> = ({ on
 
         {/* Action buttons */}
         <div className="flex flex-col items-end gap-1.5 shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveToast(null);
-            }}
-            className="p-1 rounded-full text-white/70 hover:text-white hover:bg-white/20 transition-all cursor-pointer"
-            title="වසන්න (Close)"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (activeToast?.id) {
+                    deleteNotificationById(activeToast.id, {
+                      isAdmin: true,
+                      postId: activeToast.targetPostId || activeToast.relatedPostId,
+                      title: activeToast.title,
+                      message: activeToast.message,
+                    });
+                  }
+                  setActiveToast(null);
+                }}
+                className="px-2 py-1 rounded-lg bg-rose-950/70 hover:bg-rose-900 text-white text-[10px] font-black flex items-center gap-1 transition-all cursor-pointer active:scale-95 border border-white/25"
+                title="Admin ලෙස මෙම Notification එක ස්ථිරවම මකන්න"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>මකන්න</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveToast(null);
+              }}
+              className="p-1 rounded-full text-white/70 hover:text-white hover:bg-white/20 transition-all cursor-pointer"
+              title="වසන්න (Close)"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
 
           <button
             type="button"

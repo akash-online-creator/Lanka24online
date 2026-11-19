@@ -21,6 +21,8 @@ import {
   updateHelpPostInFirestore,
   cancelRedAlertByReporter,
   deleteRedAlertInFirestore,
+  deleteJobFromFirestore,
+  deleteAccommodationFromFirestore,
   addCommentToRedAlert,
   deduplicatePostReplies,
 } from '../lib/firebase';
@@ -89,6 +91,7 @@ useEffect(() => {
 injectPostFonts();
 }, []);
 const [isDeletingLocal, setIsDeletingLocal] = useState(false);
+const [confirmingDelete, setConfirmingDelete] = useState(false);
 const [imageError, setImageError] = useState(false);
 const [copiedPhone, setCopiedPhone] = useState(false);
 const [copiedLink, setCopiedLink] = useState(false);
@@ -412,83 +415,141 @@ commentsList: updatedComments
 console.warn('Comment sync error:', err);
 }
 };
-const handleDelete = async (e?: React.MouseEvent) => {
-if (e) e.stopPropagation();
-if (isBloodHonorPost && !isAdmin) return;
-if (!window.confirm(getLangText('මෙම දැන්වීම ඉවත් කිරීමට ඔබට සහතිකද?', 'Are you sure you want to delete this post?', 'இந்த இடுகையை நீக்க உறுதியாக உள்ளீர்களா?'))) {
-return;
-}
-const targetId = post.id;
-setIsDeletingLocal(true);
-if (targetId) {
-addDeletedPostId(targetId);
-const pCodeStr = String(post.postCode || '');
-const isRedAlertPost = Boolean((post as any)?.rawRedAlert || post.category === 'red_alert' || pCodeStr.startsWith('#RED-'));
-const isBloodPost = Boolean(
-  post.postType === 'blood_request' ||
-  post.serviceType === 'blood_donation' ||
-  pCodeStr.startsWith('#BLD-') ||
-  (post.tagName && String(post.tagName).includes('ලේ අවශ්‍යතාවය'))
-);
-const isDisasterPost = Boolean(
-  post.postType === 'disaster_relief' ||
-  post.serviceType === 'disaster_relief' ||
-  pCodeStr.startsWith('#EMG-') ||
-  (post.tagName && String(post.tagName).includes('ආපදා සහන'))
-);
-const isJobPost = Boolean((post as any)?.rawJobListing || post.category === 'jobs');
-const isAccPost = Boolean((post as any)?.rawAccommodationListing || post.category === 'accommodation');
-if (isRedAlertPost) {
-addDeletedRedAlertId(targetId);
-try {
-await cancelRedAlertByReporter(targetId).catch(() => {});
-await deleteRedAlertInFirestore(targetId).catch(() => {});
-} catch {}
-try {
-window.dispatchEvent(new CustomEvent('sahaya_red_alert_deleted', { detail: { alertId: targetId } }));
-} catch {}
-} else if (isBloodPost) {
-addDeletedBloodId(targetId);
-try {
-purgeBloodRequestEverywhere(targetId, pCodeStr, post.contactPersonName);
-} catch {}
-} else if (isDisasterPost) {
-addDeletedDisasterId(targetId);
-try {
-purgeDisasterReliefEverywhere(targetId, post.title || post.whatHappened, pCodeStr);
-} catch {}
-} else if (isJobPost) {
-addDeletedJobId(targetId);
-try {
-window.dispatchEvent(new CustomEvent('sahaya_jobs_updated'));
-} catch {}
-} else if (isAccPost) {
-addDeletedAccommodationId(targetId);
-try {
-window.dispatchEvent(new CustomEvent('sahaya_accommodations_updated'));
-} catch {}
-}
-try {
-  removeNotificationsForPost(targetId, post.postCode);
-} catch {}
-try {
-  window.dispatchEvent(new Event('sahaya_post_deleted'));
-} catch {}
-try {
-  await updateHelpPostInFirestore(targetId, {
-    isDeleted: true,
-    status: 'deleted',
-    deletedAt: new Date().toISOString()
-  }).catch(() => {});
-  await deleteHelpPostFromFirestore(targetId).catch(() => {});
-} catch (err) {}
-}
-if (onDeletePost) {
-  onDeletePost(targetId ? targetId : post);
-}
-try {
-  window.dispatchEvent(new Event('sahaya_post_deleted'));
-} catch {}
+const handleDelete = (e?: React.MouseEvent) => {
+  if (e) e.stopPropagation();
+  if (isBloodHonorPost && !isAdmin) return;
+  setConfirmingDelete(true);
+};
+const executeConfirmedDelete = async (e?: React.MouseEvent) => {
+  if (e) e.stopPropagation();
+  if (isBloodHonorPost && !isAdmin) return;
+  const targetId = post.id;
+  setConfirmingDelete(false);
+  setIsDeletingLocal(true);
+  setIsExpandedFullModal(false);
+  try {
+    stopContinuousSupportBell();
+  } catch {}
+  if (targetId) {
+    addDeletedPostId(targetId);
+    const pCodeStr = String(post.postCode || '');
+    const isRedAlertPost = Boolean((post as any)?.rawRedAlert || post.category === 'red_alert' || post.postType === 'red_alert' || pCodeStr.startsWith('#RED-'));
+    const isBloodPost = Boolean(
+      post.postType === 'blood_request' ||
+      post.serviceType === 'blood_donation' ||
+      pCodeStr.startsWith('#BLD-') ||
+      (post.tagName && String(post.tagName).includes('ලේ අවශ්‍යතාවය'))
+    );
+    const isDisasterPost = Boolean(
+      post.postType === 'disaster_relief' ||
+      post.serviceType === 'disaster_relief' ||
+      pCodeStr.startsWith('#EMG-') ||
+      (post.tagName && String(post.tagName).includes('ආපදා සහන'))
+    );
+    const isJobPost = Boolean((post as any)?.rawJobListing || post.category === 'jobs' || post.postType === 'job_listing');
+    const isAccPost = Boolean((post as any)?.rawAccommodationListing || post.category === 'accommodation' || post.postType === 'accommodation_listing');
+    if (isRedAlertPost) {
+      addDeletedRedAlertId(targetId);
+      try {
+        await cancelRedAlertByReporter(targetId).catch(() => {});
+        await deleteRedAlertInFirestore(targetId).catch(() => {});
+      } catch {}
+      try {
+        window.dispatchEvent(new CustomEvent('sahaya_red_alert_deleted', { detail: { alertId: targetId } }));
+      } catch {}
+    } else if (isBloodPost) {
+      addDeletedBloodId(targetId);
+      try {
+        purgeBloodRequestEverywhere(targetId, pCodeStr, post.contactPersonName);
+      } catch {}
+    } else if (isDisasterPost) {
+      addDeletedDisasterId(targetId);
+      try {
+        purgeDisasterReliefEverywhere(targetId, post.title || post.whatHappened, pCodeStr);
+      } catch {}
+    } else if (isJobPost) {
+      addDeletedJobId(targetId);
+      try {
+        const rawJobs = localStorage.getItem('sahaya_jobs_list_v1');
+        if (rawJobs) {
+          const parsedJobs = JSON.parse(rawJobs);
+          if (Array.isArray(parsedJobs)) {
+            localStorage.setItem('sahaya_jobs_list_v1', JSON.stringify(parsedJobs.filter((j: any) => j && j.id !== targetId)));
+          }
+        }
+      } catch {}
+      try {
+        await deleteJobFromFirestore(targetId).catch(() => {});
+      } catch {}
+      try {
+        window.dispatchEvent(new CustomEvent('sahaya_jobs_updated'));
+      } catch {}
+    } else if (isAccPost) {
+      addDeletedAccommodationId(targetId);
+      try {
+        const rawAcc = localStorage.getItem('sahaya_accommodations_data_v1');
+        if (rawAcc) {
+          const parsedAcc = JSON.parse(rawAcc);
+          if (Array.isArray(parsedAcc)) {
+            localStorage.setItem('sahaya_accommodations_data_v1', JSON.stringify(parsedAcc.filter((a: any) => a && a.id !== targetId)));
+          }
+        }
+      } catch {}
+      try {
+        await deleteAccommodationFromFirestore(targetId).catch(() => {});
+      } catch {}
+      try {
+        window.dispatchEvent(new CustomEvent('sahaya_accommodations_updated'));
+      } catch {}
+    }
+    try {
+      removeNotificationsForPost(targetId, post.postCode);
+    } catch {}
+    try {
+      window.dispatchEvent(new Event('sahaya_post_deleted'));
+    } catch {}
+    try {
+      await updateHelpPostInFirestore(targetId, {
+        isDeleted: true,
+        status: 'deleted',
+        deletedAt: new Date().toISOString()
+      }).catch(() => {});
+      await deleteHelpPostFromFirestore(targetId).catch(() => {});
+    } catch (err) {}
+  }
+  if (onDeletePost) {
+    onDeletePost(post);
+  }
+  try {
+    window.dispatchEvent(new Event('sahaya_post_deleted'));
+  } catch {}
+};
+const renderDeleteConfirmBar = () => {
+  if (!confirmingDelete) return null;
+  return h('div', {
+    onClick: (e: any) => e.stopPropagation(),
+    className: 'my-2 p-2.5 sm:p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/90 border-2 border-rose-500 flex items-center justify-between gap-2 flex-wrap shadow-md animate-fadeIn'
+  },
+    h('span', { className: 'text-xs font-black text-rose-900 dark:text-rose-100 flex items-center gap-1.5' },
+      h(Trash2, { className: 'w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0' }),
+      h('span', null, getLangText('මෙම දැන්වීම ස්ථිරවම මකා දමන්නද?', 'Permanently delete this post?', 'இந்த இடுகையை நிரந்தரமாக நீக்கவா?'))
+    ),
+    h('div', { className: 'flex items-center gap-1.5 shrink-0' },
+      h('button', {
+        type: 'button',
+        onClick: executeConfirmedDelete,
+        className: 'px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black shadow-sm cursor-pointer active:scale-95 transition-all'
+      }, getLangText('✓ ඔව්, මකන්න', '✓ Yes, Delete', '✓ ஆம், நீக்கு')),
+      h('button', {
+        type: 'button',
+        onClick: (e: any) => {
+          e.stopPropagation();
+          setConfirmingDelete(false);
+        },
+        className: 'px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 text-xs font-bold cursor-pointer active:scale-95'
+      }, getLangText('අවලංගු', 'Cancel', 'ரத்து'))
+    )
+  );
 };
 const handleEditClick = (e: React.MouseEvent) => {
 e.stopPropagation();
@@ -761,9 +822,11 @@ title: 'සංස්කරණය කරන්න (Edit)'
 }, h(Pencil, { className: 'w-3.5 h-3.5' })) : null, canDeletePost ? h('button', {
 type: 'button',
 onClick: handleDelete,
-className: 'p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl cursor-pointer active:scale-95',
-title: 'ඉවත් කරන්න (Delete)'
-}, h(Trash2, { className: 'w-3.5 h-3.5' })) : null));
+className: isAdmin
+  ? 'px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl cursor-pointer active:scale-95 flex items-center gap-1 text-[11px] font-black shadow-xs'
+  : 'p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl cursor-pointer active:scale-95',
+title: isAdmin ? 'Admin ලෙස දැන්වීම ස්ථිරවම මකන්න (Admin Delete)' : 'ඉවත් කරන්න (Delete)'
+}, h(Trash2, { className: 'w-3.5 h-3.5' }), isAdmin ? h('span', null, getLangText('මකන්න', 'Delete', 'நீக்கு')) : null) : null));
 };
 const renderCardHeader = () => {
   const tagDisplay = post.tagName ? post.tagName : post.tagCategory ? post.tagCategory : post.category === 'quick_services' ? 'ඉක්මන් සේවා' : 'සාමාන්‍ය සේවා';
@@ -776,7 +839,12 @@ const renderCardHeader = () => {
     loading: 'lazy',
     decoding: 'async',
     className: 'w-10 h-10 rounded-2xl object-cover border-2 border-emerald-500 shadow-md ring-2 ring-emerald-400/20'
-  }) : h('div', { className: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex items-center justify-center font-black text-sm shadow-md border-2 border-white dark:border-slate-800' }, authorName.charAt(0).toUpperCase()), ownerCheck && !isAnonymousPost ? h('span', { className: 'absolute -bottom-1 -right-1 bg-emerald-600 text-white rounded-full p-0.5 border border-white dark:border-slate-800 shadow-xs' }, h(UserCheck, { className: 'w-3 h-3' })) : null), h('div', { className: 'min-w-0 flex-1' }, h('div', { className: 'flex items-center gap-1.5 flex-wrap' }, h('h4', { className: 'font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm leading-snug truncate group-hover:text-emerald-600 transition-colors' }, authorName), isAnonymousPost ? h('span', { className: 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-zinc-300 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-slate-300 dark:border-slate-700' }, 'නම සඟවා ඇත') : null, ownerCheck ? h('span', { className: 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 text-[9px] font-black px-2 py-0.5 rounded-full border border-emerald-400 dark:border-emerald-700' }, '👤 ඔබගේ (දැන්වීම්කරු)') : myReply ? h('span', { className: isMyReplyConfirmed ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 text-[9px] font-black px-2 py-0.5 rounded-full border border-emerald-400' : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200 text-[9px] font-black px-2 py-0.5 rounded-full border border-amber-400' }, isMyReplyConfirmed ? '✅ ඔබව සහායක ලෙස තෝරාගෙන ඇත' : '⏳ ඔබ සහයට ඉදිරිපත් වී ඇත') : null, isPrivatePost ? h('span', { className: 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-amber-300' }, '🔒 Private') : null, isScheduledPost ? h('span', { className: 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-sky-300' }, '📅 ' + (post.scheduledDate ? post.scheduledDate + ' ' + (post.scheduledTime ? post.scheduledTime : '') : 'Scheduled')) : null, h('span', { className: 'font-mono text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md' }, postCode), h('span', { className: 'inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/80' }, h(Zap, { className: 'w-2.5 h-2.5 text-emerald-600' }), h('span', null, '#' + tagDisplay.replace(/^#/, '')) /* TAG_END */ )), h('div', { className: 'flex items-center gap-2 text-[10px] text-slate-400 mt-0.5 flex-wrap' }, h('span', { className: 'flex items-center gap-1' }, h(Clock, { className: 'w-3 h-3 text-slate-400' }), h('span', null, formatPostDate(post.createdAt ? post.createdAt : post.createdAtIso))), h('span', null, '•'), h('span', { className: 'flex items-center gap-0.5 text-emerald-700 dark:text-emerald-400 font-medium' }, h(MapPin, { className: 'w-3 h-3' }), h('span', { className: 'truncate max-w-[140px]' }, isBloodCardType && !ownerCheck && !isAdmin && !isMyReplyConfirmed ? (post.district || 'ශ්‍රී ලංකාව') : nearestCity)), rawDistance !== null && !isDistanceHiddenFromUsers ? h('span', { className: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-md font-mono font-bold text-[9px]' }, rawDistance.toFixed(1) + ' km') : null, rawDistance !== null && isDistanceHiddenFromUsers && isAdmin ? h('span', { className: 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded-md font-mono font-bold text-[9px] border border-amber-300' }, '🔒 දුර (Admin): ' + rawDistance.toFixed(1) + ' km') : null))), isAdmin && (isAnonymousPost ? true : isDistanceHiddenFromUsers) ? h('div', { className: 'p-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-[10px] text-amber-900 dark:text-amber-200 shrink-0' }, h('div', { className: 'font-black flex items-center gap-1' }, h(Lock, { className: 'w-3 h-3 text-amber-600' }), h('span', null, 'Admin Audit:')), h('div', { className: 'truncate max-w-[140px] font-bold' }, 'නම: ' + (post.actualAuthorName ? post.actualAuthorName : post.userName ? post.userName : 'Unknown')), rawDistance !== null ? h('div', { className: 'font-mono text-[9px] text-amber-800 dark:text-amber-300' }, 'දුර: ' + rawDistance.toFixed(1) + ' km') : null) : null);
+  }) : h('div', { className: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex items-center justify-center font-black text-sm shadow-md border-2 border-white dark:border-slate-800' }, authorName.charAt(0).toUpperCase()), ownerCheck && !isAnonymousPost ? h('span', { className: 'absolute -bottom-1 -right-1 bg-emerald-600 text-white rounded-full p-0.5 border border-white dark:border-slate-800 shadow-xs' }, h(UserCheck, { className: 'w-3 h-3' })) : null), h('div', { className: 'min-w-0 flex-1' }, h('div', { className: 'flex items-center gap-1.5 flex-wrap' }, h('h4', { className: 'font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm leading-snug truncate group-hover:text-emerald-600 transition-colors' }, authorName), isAnonymousPost ? h('span', { className: 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-zinc-300 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-slate-300 dark:border-slate-700' }, 'නම සඟවා ඇත') : null, ownerCheck ? h('span', { className: 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 text-[9px] font-black px-2 py-0.5 rounded-full border border-emerald-400 dark:border-emerald-700' }, '👤 ඔබගේ (දැන්වීම්කරු)') : myReply ? h('span', { className: isMyReplyConfirmed ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 text-[9px] font-black px-2 py-0.5 rounded-full border border-emerald-400' : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200 text-[9px] font-black px-2 py-0.5 rounded-full border border-amber-400' }, isMyReplyConfirmed ? '✅ ඔබව සහායක ලෙස තෝරාගෙන ඇත' : '⏳ ඔබ සහයට ඉදිරිපත් වී ඇත') : null, isPrivatePost ? h('span', { className: 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-amber-300' }, '🔒 Private') : null, isScheduledPost ? h('span', { className: 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-sky-300' }, '📅 ' + (post.scheduledDate ? post.scheduledDate + ' ' + (post.scheduledTime ? post.scheduledTime : '') : 'Scheduled')) : null, h('span', { className: 'font-mono text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md' }, postCode), h('span', { className: 'inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/80' }, h(Zap, { className: 'w-2.5 h-2.5 text-emerald-600' }), h('span', null, '#' + tagDisplay.replace(/^#/, '')) /* TAG_END */ )), h('div', { className: 'flex items-center gap-2 text-[10px] text-slate-400 mt-0.5 flex-wrap' }, h('span', { className: 'flex items-center gap-1' }, h(Clock, { className: 'w-3 h-3 text-slate-400' }), h('span', null, formatPostDate(post.createdAt ? post.createdAt : post.createdAtIso))), h('span', null, '•'), h('span', { className: 'flex items-center gap-0.5 text-emerald-700 dark:text-emerald-400 font-medium' }, h(MapPin, { className: 'w-3 h-3' }), h('span', { className: 'truncate max-w-[140px]' }, isBloodCardType && !ownerCheck && !isAdmin && !isMyReplyConfirmed ? (post.district || 'ශ්‍රී ලංකාව') : nearestCity)), rawDistance !== null && !isDistanceHiddenFromUsers ? h('span', { className: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-md font-mono font-bold text-[9px]' }, rawDistance.toFixed(1) + ' km') : null, rawDistance !== null && isDistanceHiddenFromUsers && isAdmin ? h('span', { className: 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded-md font-mono font-bold text-[9px] border border-amber-300' }, '🔒 දුර (Admin): ' + rawDistance.toFixed(1) + ' km') : null))), h('div', { className: 'flex items-center gap-1.5 shrink-0' }, isAdmin ? h('button', {
+    type: 'button',
+    onClick: handleDelete,
+    title: 'Admin ලෙස මෙම දැන්වීම මකන්න (Delete)',
+    className: 'px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black flex items-center gap-1 shadow-sm cursor-pointer active:scale-95 transition-all'
+  }, h(Trash2, { className: 'w-3.5 h-3.5' }), h('span', null, getLangText('මකන්න', 'Delete', 'நீக்கு'))) : null, isAdmin && (isAnonymousPost ? true : isDistanceHiddenFromUsers) ? h('div', { className: 'p-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-[10px] text-amber-900 dark:text-amber-200 shrink-0' }, h('div', { className: 'font-black flex items-center gap-1' }, h(Lock, { className: 'w-3 h-3 text-amber-600' }), h('span', null, 'Admin Audit:')), h('div', { className: 'truncate max-w-[140px] font-bold' }, 'නම: ' + (post.actualAuthorName ? post.actualAuthorName : post.userName ? post.userName : 'Unknown')), rawDistance !== null ? h('div', { className: 'font-mono text-[9px] text-amber-800 dark:text-amber-300' }, 'දුර: ' + rawDistance.toFixed(1) + ' km') : null) : null));
 };
 const renderValidityDurationForPoster = () => {
 if (!ownerCheck) return null;
@@ -831,11 +899,15 @@ onClick: () => setIsExpandedFullModal(false)
 }, h('div', {
 className: 'w-full max-w-3xl bg-white dark:bg-[#07190f] border-2 border-emerald-500 rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col',
 onClick: (e: any) => e.stopPropagation()
-}, h('div', { className: 'bg-gradient-to-r from-emerald-800 via-teal-900 to-[#04160d] px-5 py-3.5 text-white flex items-center justify-between shrink-0' }, h('div', { className: 'flex items-center gap-2' }, h(Eye, { className: 'w-5 h-5 text-emerald-300' }), h('h3', { className: 'text-sm sm:text-base font-black' }, 'දැන්වීමේ සම්පූර්ණ විස්තරය (' + postCode + ')')), h('button', {
+}, h('div', { className: 'bg-gradient-to-r from-emerald-800 via-teal-900 to-[#04160d] px-5 py-3.5 text-white flex items-center justify-between shrink-0' }, h('div', { className: 'flex items-center gap-2' }, h(Eye, { className: 'w-5 h-5 text-emerald-300' }), h('h3', { className: 'text-sm sm:text-base font-black' }, 'දැන්වීමේ සම්පූර්ණ විස්තරය (' + postCode + ')')), h('div', { className: 'flex items-center gap-2' }, isAdmin ? h('button', {
+  type: 'button',
+  onClick: handleDelete,
+  className: 'px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black flex items-center gap-1 cursor-pointer shadow-sm active:scale-95'
+}, h(Trash2, { className: 'w-3.5 h-3.5' }), h('span', null, getLangText('මකන්න', 'Delete', 'நீக்கு'))) : null, h('button', {
 type: 'button',
 onClick: () => setIsExpandedFullModal(false),
 className: 'w-8 h-8 rounded-full bg-white/10 hover:bg-rose-600 text-white flex items-center justify-center font-bold cursor-pointer'
-}, h(X, { className: 'w-4 h-4' }))), h('div', { className: 'p-5 overflow-y-auto flex-1 space-y-4' }, renderCardHeader(), post.audioUrl ? h('div', { className: 'mb-2' }, h(AudioVoicePlayer, {
+}, h(X, { className: 'w-4 h-4' })))), h('div', { className: 'p-5 overflow-y-auto flex-1 space-y-4' }, renderDeleteConfirmBar(), renderCardHeader(), post.audioUrl ? h('div', { className: 'mb-2' }, h(AudioVoicePlayer, {
 audioUrl: post.audioUrl,
 durationSec: post.audioDurationSec
 })) : null, rawHeadline ? h('div', { className: 'w-full px-4 py-3 rounded-2xl bg-gradient-to-r from-emerald-200/90 via-white to-emerald-100/90 dark:from-emerald-800/80 dark:via-[#0b291a] dark:to-emerald-900/80 border-2 border-emerald-500 shadow-xs' }, h('h2', {
@@ -994,7 +1066,7 @@ return;
 setIsExpandedFullModal(true);
 },
 className: 'relative rounded-3xl bg-white dark:bg-[#07170e] border border-slate-200/90 dark:border-emerald-950/80 shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden p-4 sm:p-5 flex flex-col justify-between cursor-pointer'
-}, renderCardHeader(), post.audioUrl ? h('div', {
+}, renderCardHeader(), renderDeleteConfirmBar(), post.audioUrl ? h('div', {
 onClick: (e: any) => e.stopPropagation(),
 className: 'mb-2.5'
 }, h(AudioVoicePlayer, {

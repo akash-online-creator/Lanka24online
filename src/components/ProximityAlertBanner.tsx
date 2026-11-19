@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Radio, X, ArrowRight } from 'lucide-react';
+import { Radio, X, ArrowRight, Trash2 } from 'lucide-react';
 import { HelpPost, BloodDonationRequest, ProximityNotificationConfig, LocationOption } from '../types';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
+import { isPostPermanentlyDeleted } from '../utils/deletedPostsManager';
 
 interface ProximityAlertBannerProps {
   nearbyUrgentPosts?: HelpPost[];
@@ -8,8 +10,10 @@ interface ProximityAlertBannerProps {
   posts?: HelpPost[];
   userLocation?: LocationOption;
   userDistanceKm?: number;
+  currentUser?: any;
   onOpenHelpPost?: (post: HelpPost) => void;
   onViewPost?: (post: any) => void;
+  onDeletePost?: (post: any) => void;
   onOpenBloodHub?: () => void;
   config?: ProximityNotificationConfig;
   onUpdateConfig?: (config: ProximityNotificationConfig) => void;
@@ -22,8 +26,10 @@ export const ProximityAlertBanner: React.FC<ProximityAlertBannerProps> = ({
   posts,
   userLocation,
   userDistanceKm,
+  currentUser,
   onOpenHelpPost: propOnOpenHelpPost,
   onViewPost,
+  onDeletePost,
   onOpenBloodHub,
   config = {
     enabled: true,
@@ -36,13 +42,18 @@ export const ProximityAlertBanner: React.FC<ProximityAlertBannerProps> = ({
   onUpdateConfig,
   className,
 }) => {
-  const nearbyUrgentPosts = propNearbyUrgentPosts || (posts ? posts.filter(p => p && (p.distanceKm <= config.radiusKm || (p.priorityLevel === 'emergency' || p.priorityLevel === 'high'))) : []);
+  const isAdmin = checkIsAdmin(currentUser);
+  const rawPosts = propNearbyUrgentPosts || (posts ? posts.filter(p => p && (p.distanceKm <= config.radiusKm || (p.priorityLevel === 'emergency' || p.priorityLevel === 'high'))) : []);
+  const nearbyUrgentPosts = rawPosts.filter(
+    (p) => p && p.id && !p.isDeleted && p.status !== 'deleted' && !isPostPermanentlyDeleted(p.id)
+  );
   const onOpenHelpPost = propOnOpenHelpPost || onViewPost;
   const [dismissed, setDismissed] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // Filter urgent nearby alerts
   const urgentHelps = nearbyUrgentPosts.filter((p) => p.distanceKm <= config.radiusKm && !p.isCompleted);
-  const urgentBloods = nearbyBloodRequests.filter((b) => b.status === 'active' && b.urgency === 'urgent');
+  const urgentBloods = nearbyBloodRequests.filter((b) => b.status === 'active' && b.urgency === 'urgent' && !isPostPermanentlyDeleted(b.id));
   const totalAlerts = urgentHelps.length + urgentBloods.length;
 
   if (dismissed || !config.enabled || totalAlerts === 0) {
@@ -202,7 +213,40 @@ export const ProximityAlertBanner: React.FC<ProximityAlertBannerProps> = ({
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+          {isAdmin && onDeletePost && firstAlert && (
+            confirmingDelete ? (
+              <div className="flex items-center gap-1 bg-rose-950/90 border border-white/40 rounded-lg px-1.5 py-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDeletePost(firstAlert);
+                    setConfirmingDelete(false);
+                  }}
+                  className="px-2 py-0.5 bg-rose-600 hover:bg-rose-500 text-white font-black rounded text-[10px] cursor-pointer active:scale-95"
+                >
+                  ✓ මකන්න
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                  className="px-1.5 py-0.5 bg-white/20 hover:bg-white/30 text-white font-bold rounded text-[10px] cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                className="px-2.5 py-1 bg-rose-950/80 hover:bg-rose-900 text-white border border-white/30 font-black rounded-lg text-[11px] flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
+                title="Admin ලෙස මෙම දැන්වීම මකන්න"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>මකන්න</span>
+              </button>
+            )
+          )}
           {isBlood ? (
             <button
               type="button"

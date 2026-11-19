@@ -17,8 +17,8 @@ import { ProximityAlertBanner } from './ProximityAlertBanner';
 import { TrustBadge } from './TrustBadge';
 import { calculateTrustProfile } from '../utils/trustScore';
 import { getStoredTags } from '../utils/tagUtils';
-import { filterNonDeletedPosts, addDeletedPostId, isPostPermanentlyDeleted, addDeletedProServiceId, downloadPostBackupJson } from '../utils/deletedPostsManager';
-import { deleteProfessionalServiceFromFirestore, subscribeToProfessionalServices, addProfessionalServiceToFirestore } from '../lib/firebase';
+import { filterNonDeletedPosts, addDeletedPostId, addDeletedRedAlertId, addDeletedJobId, addDeletedAccommodationId, isPostPermanentlyDeleted, addDeletedProServiceId, downloadPostBackupJson } from '../utils/deletedPostsManager';
+import { deleteProfessionalServiceFromFirestore, subscribeToProfessionalServices, addProfessionalServiceToFirestore, deleteRedAlertInFirestore, deleteJobFromFirestore, deleteAccommodationFromFirestore } from '../lib/firebase';
 import { isAuthorBlocked } from '../utils/blockedCredentialsManager';
 import { deduplicateUsers } from '../utils/userUtils';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
@@ -74,7 +74,7 @@ import { UniversalEntityMatch, getEntitySerialNumber } from '../utils/entitySeri
 import { MarketShop } from '../types';
 import { OmniAssistantChatBox } from './OmniAssistantChatBox';
 import { LiveNotificationToast } from './LiveNotificationToast';
-import { broadcastAppNotification, AppNotification, removeNotificationsForPost } from '../utils/notificationManager';
+import { broadcastAppNotification, AppNotification, removeNotificationsForPost, clearAllNotifications } from '../utils/notificationManager';
 import { broadcastPushNotification, isCreatedByLocalUser, markPostCreatedLocally } from '../utils/fcmNotificationService';
 import { getUserCreditBalance, deductPostingFee, getCategoryFee, awardServiceReward, resolveCategoryKeyForPost, getCategoryFeeDetail } from '../utils/creditManager';
 import { awardSPoints, getUserSPoints } from '../utils/sPointManager';
@@ -763,6 +763,12 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     const handleGlobalPostDeleted = () => {
       setLocalHelpPosts((prev) => filterNonDeletedPosts(prev || []));
     };
+    const handleGlobalRedAlertDeleted = (e: Event) => {
+      const alertId = (e as CustomEvent)?.detail?.alertId;
+      if (alertId) {
+        setRedAlerts((prev) => (prev || []).filter((a) => a && a.id !== alertId));
+      }
+    };
     const handleGlobalPostCreated = (e: Event) => {
       const customEvent = e as CustomEvent<any>;
       const newPost = customEvent.detail?.post || customEvent.detail;
@@ -775,10 +781,12 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       }
     };
     window.addEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
+    window.addEventListener('sahaya_red_alert_deleted', handleGlobalRedAlertDeleted as EventListener);
     window.addEventListener('sahaya_post_created', handleGlobalPostCreated as EventListener);
     window.addEventListener('sahaya_sync_all_services', handleSync);
     return () => {
       window.removeEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
+      window.removeEventListener('sahaya_red_alert_deleted', handleGlobalRedAlertDeleted as EventListener);
       window.removeEventListener('sahaya_post_created', handleGlobalPostCreated as EventListener);
       window.removeEventListener('sahaya_sync_all_services', handleSync);
       unsubPro();
@@ -1039,7 +1047,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   }, [navigateToNotificationTarget]);
 
   const handleClearAllNotifications = () => {
-    // Local clear
+    clearAllNotifications(checkIsAdmin(user));
   };
 
   // Trust Score calculation profile
@@ -1400,19 +1408,28 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     setEditingFromMeToYouPost(null);
     setEditingPost(null);
   };
-  const handleConfirmDeletePost = async (postId: string) => {
+  const handleConfirmDeletePost = async (postId: string, passedPost?: any) => {
     if (!postId) return;
-    const postToDelete = (helpPosts || []).find((p) => p && p.id === postId) || (localHelpPosts || []).find((p) => p && p.id === postId) || deletingPost;
+    const postToDelete = passedPost || (helpPosts || []).find((p) => p && p.id === postId) || (localHelpPosts || []).find((p) => p && p.id === postId) || deletingPost;
 
     // 1 & 2. Automatic Backup Preparation & Auto JSON File Download (Admin සඳහා පමණි)
-    if (postToDelete && checkIsAdmin(user)) {
-      downloadPostBackupJson(postToDelete, user);
-    }
+    try {
+      if (postToDelete && checkIsAdmin(user)) {
+        downloadPostBackupJson(postToDelete, user);
+      }
+    } catch {}
 
     // 3. LocalStorage Blacklist & Purge local memory & helper notifications
     addDeletedPostId(postId);
     try {
       const pCodeStr = String(postToDelete?.postCode || '');
+      const isRedAlert = Boolean(
+        (postToDelete as any)?.rawRedAlert ||
+        postToDelete?.category === 'red_alert' ||
+        postToDelete?.postType === 'red_alert' ||
+        pCodeStr.startsWith('#RED-') ||
+        (redAlerts || []).some((a) => a && a.id === postId)
+      );
       const isDisaster = Boolean(
         postToDelete?.postType === 'disaster_relief' ||
         postToDelete?.serviceType === 'disaster_relief' ||
@@ -1427,7 +1444,25 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         String(postId).startsWith('bld_') ||
         (postToDelete?.tagName && String(postToDelete.tagName).includes('ලේ අවශ්‍යතාවය'))
       );
-      if (isDisaster) {
+      const isJob = Boolean(
+        (postToDelete as any)?.rawJobListing ||
+        postToDelete?.category === 'jobs' ||
+        postToDelete?.postType === 'job_listing'
+      );
+      const isAcc = Boolean(
+        (postToDelete as any)?.rawAccommodationListing ||
+        postToDelete?.category === 'accommodation' ||
+        postToDelete?.postType === 'accommodation_listing'
+      );
+
+      if (isRedAlert) {
+        addDeletedRedAlertId(postId);
+        setRedAlerts((prev) => (prev || []).filter((a) => a && a.id !== postId));
+        deleteRedAlertInFirestore(postId).catch(() => {});
+        try {
+          window.dispatchEvent(new CustomEvent('sahaya_red_alert_deleted', { detail: { alertId: postId } }));
+        } catch {}
+      } else if (isDisaster) {
         const { purgeDisasterReliefEverywhere } = await import('../data/bloodAndDisasterData');
         purgeDisasterReliefEverywhere(
           postId,
@@ -1441,6 +1476,18 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           pCodeStr,
           (postToDelete as any)?.contactPersonName || postToDelete?.userName
         );
+      } else if (isJob) {
+        addDeletedJobId(postId);
+        deleteJobFromFirestore(postId).catch(() => {});
+        try {
+          window.dispatchEvent(new CustomEvent('sahaya_jobs_updated'));
+        } catch {}
+      } else if (isAcc) {
+        addDeletedAccommodationId(postId);
+        deleteAccommodationFromFirestore(postId).catch(() => {});
+        try {
+          window.dispatchEvent(new CustomEvent('sahaya_accommodations_updated'));
+        } catch {}
       }
     } catch {}
     try {
@@ -2004,7 +2051,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   return (
     <div className="w-full max-w-5xl mx-auto py-2 sm:py-4 space-y-4 sm:space-y-6 animate-fadeIn">
       {/* 🔔 Interactive Real-Time Live Notification Toast */}
-      <LiveNotificationToast onOpenNotification={handleOpenFromNotification} />
+      <LiveNotificationToast onOpenNotification={handleOpenFromNotification} currentUser={user} />
 
       {/* 🚨 Red Alert Ticker Banner removed */}
 
@@ -2412,7 +2459,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           onDeletePost={(p) => {
             const pid = typeof p === 'string' ? p : p?.id;
             if (pid) {
-              handleConfirmDeletePost(pid);
+              handleConfirmDeletePost(pid, typeof p === 'object' ? p : undefined);
             }
           }}
           onOpenChat={(p) => {
