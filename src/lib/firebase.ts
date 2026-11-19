@@ -820,8 +820,11 @@ export function deduplicatePostReplies(replies: any[], post?: any): any[] {
         message: existingCleanMsg,
         isConfirmed: Boolean(existing.isConfirmed || r.isConfirmed),
         isAccepted: Boolean(existing.isAccepted || r.isAccepted),
+        guidelinesAccepted: Boolean(existing.guidelinesAccepted || r.guidelinesAccepted),
+        step3GuidelinesAccepted: Boolean(existing.step3GuidelinesAccepted || r.step3GuidelinesAccepted),
         donorArrivedAtHospital: Boolean(existing.donorArrivedAtHospital || r.donorArrivedAtHospital),
         bloodDonatedByHelper: Boolean(existing.bloodDonatedByHelper || r.bloodDonatedByHelper),
+        donorLiveLocation: r.donorLiveLocation || existing.donorLiveLocation,
         workflowStep: Math.max(Number(existing.workflowStep || 0), Number(r.workflowStep || 0)),
       });
     }
@@ -1001,6 +1004,21 @@ export async function updateHelpPostInFirestore(postId: string, updateData: any)
       }
       if (sanitized.isConfirmed !== undefined) {
         bloodSyncPayload.isConfirmed = sanitized.isConfirmed;
+      }
+      if (sanitized.confirmedHelperId !== undefined) {
+        bloodSyncPayload.confirmedHelperId = sanitized.confirmedHelperId;
+      }
+      if (sanitized.confirmedHelperName !== undefined) {
+        bloodSyncPayload.confirmedHelperName = sanitized.confirmedHelperName;
+      }
+      if (sanitized.confirmedHelperPhone !== undefined) {
+        bloodSyncPayload.confirmedHelperPhone = sanitized.confirmedHelperPhone;
+      }
+      if (sanitized.step3GuidelinesAccepted !== undefined) {
+        bloodSyncPayload.step3GuidelinesAccepted = sanitized.step3GuidelinesAccepted;
+      }
+      if (sanitized.donorLiveLocation !== undefined) {
+        bloodSyncPayload.donorLiveLocation = sanitized.donorLiveLocation;
       }
       if (sanitized.bloodDonatedByHelper !== undefined) {
         bloodSyncPayload.bloodDonatedByHelper = sanitized.bloodDonatedByHelper;

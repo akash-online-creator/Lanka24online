@@ -352,6 +352,19 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
         if (Array.isArray(supList) && !supList.includes(post.id)) {
           localStorage.setItem('sahaya_supported_blood_ids', JSON.stringify([...supList, post.id]));
         }
+        const myOfferIdentity = JSON.stringify({
+          replyId: newReply.id,
+          responderId: helperUid,
+          responderPhone: phone.trim().replace(/\D/g, ''),
+          responderName: name.trim().toLowerCase(),
+        });
+        localStorage.setItem(`sahaya_my_blood_offer_${post.id}`, myOfferIdentity);
+        if (post.postCode) {
+          localStorage.setItem(
+            `sahaya_my_blood_offer_${String(post.postCode).trim().toUpperCase()}`,
+            myOfferIdentity
+          );
+        }
         if (guidelinesAcceptedFlag) {
           localStorage.setItem(`sahaya_blood_guidelines_ack_${post.id}`, 'true');
         }
@@ -392,14 +405,17 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
       guidelinesAccepted: true,
       step3GuidelinesAccepted: true,
     } as any;
-    if (onUpdatePost) onUpdatePost(updatedPost);
-    try {
-      await updateHelpPostInFirestore(post.id, {
-        replies: updatedReplies,
-        guidelinesAccepted: true,
-        step3GuidelinesAccepted: true,
-      } as any);
-    } catch {}
+    if (onUpdatePost) {
+      onUpdatePost(updatedPost);
+    } else {
+      try {
+        await updateHelpPostInFirestore(post.id, {
+          replies: updatedReplies,
+          guidelinesAccepted: true,
+          step3GuidelinesAccepted: true,
+        } as any);
+      } catch {}
+    }
     setBloodStage('patient_details');
   };
 

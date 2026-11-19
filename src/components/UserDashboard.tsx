@@ -499,11 +499,34 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               seenWorkflowStepsRef.current.set(pid, newStep);
               seenStepTimestampsRef.current.set(pid, newStepTime);
 
+              const savedOfferIdentity = (() => {
+                try {
+                  const raw =
+                    localStorage.getItem(`sahaya_my_blood_offer_${pid}`) ||
+                    (p.postCode
+                      ? localStorage.getItem(`sahaya_my_blood_offer_${String(p.postCode).trim().toUpperCase()}`)
+                      : null);
+                  return raw ? JSON.parse(raw) : null;
+                } catch {
+                  return null;
+                }
+              })();
+
               const myReply = currentU
                 ? currentReplies.find((r: any) => {
                     if (!r) return false;
                     const rPhone = String(r.responderPhone || '').replace(/\D/g, '');
                     const rName = String(r.responderName || '').trim().toLowerCase();
+                    if (
+                      savedOfferIdentity &&
+                      ((savedOfferIdentity.replyId && r.id && String(savedOfferIdentity.replyId) === String(r.id)) ||
+                        (savedOfferIdentity.responderPhone &&
+                          rPhone.length >= 9 &&
+                          String(savedOfferIdentity.responderPhone).slice(-9) === rPhone.slice(-9)) ||
+                        (savedOfferIdentity.responderName && rName && savedOfferIdentity.responderName === rName))
+                    ) {
+                      return true;
+                    }
                     return Boolean(
                       (r.responderId && currentUserId && String(r.responderId) === String(currentUserId)) ||
                       (rPhone.length >= 9 && currentUserPhone.length >= 9 && rPhone.slice(-9) === currentUserPhone.slice(-9)) ||
@@ -2674,8 +2697,30 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setIsSupportOffersModalOpen(false);
           setTargetPostForOffers(null);
         }}
-        post={targetPostForOffers ? ((helpPosts || []).find((p) => p && p.id === targetPostForOffers.id) || targetPostForOffers) : null}
-        targetPost={targetPostForOffers ? ((helpPosts || []).find((p) => p && p.id === targetPostForOffers.id) || targetPostForOffers) : null}
+        post={
+          targetPostForOffers
+            ? (helpPosts || []).find(
+                (p) =>
+                  p &&
+                  (p.id === targetPostForOffers.id ||
+                    (targetPostForOffers.postCode &&
+                      p.postCode &&
+                      String(p.postCode).trim().toUpperCase() === String(targetPostForOffers.postCode).trim().toUpperCase()))
+              ) || targetPostForOffers
+            : null
+        }
+        targetPost={
+          targetPostForOffers
+            ? (helpPosts || []).find(
+                (p) =>
+                  p &&
+                  (p.id === targetPostForOffers.id ||
+                    (targetPostForOffers.postCode &&
+                      p.postCode &&
+                      String(p.postCode).trim().toUpperCase() === String(targetPostForOffers.postCode).trim().toUpperCase()))
+              ) || targetPostForOffers
+            : null
+        }
         userPosts={helpPosts}
         currentUser={user}
         viewerLocation={currentLocation}

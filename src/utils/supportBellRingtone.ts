@@ -18,8 +18,9 @@ let audioCtx: AudioContext | null = null;
 let isRinging = false;
 let ringInterval: any = null;
 let autoStopTimeout: any = null;
+let ringCount = 0;
+const MAX_BELL_RINGS = 5;
 let currentAlertInfo: SupportAlertInfo | null = null;
-let vibrationInterval: any = null;
 let wakeLockSentinel: any = null;
 
 function getOrCreateAudioContext(): AudioContext | null {
@@ -80,30 +81,15 @@ function playSingleBellChime(): void {
   }
 }
 
-function startVibration(): void {
+function vibrateOnce(): void {
   if (typeof navigator !== 'undefined' && navigator.vibrate) {
     try {
-      navigator.vibrate([250, 150, 250, 1000]);
-      if (!vibrationInterval) {
-        vibrationInterval = setInterval(() => {
-          if (!isRinging) {
-            stopVibration();
-            return;
-          }
-          try {
-            navigator.vibrate([250, 150, 250, 1000]);
-          } catch {}
-        }, 1650);
-      }
+      navigator.vibrate([220, 120, 220]);
     } catch {}
   }
 }
 
 function stopVibration(): void {
-  if (vibrationInterval) {
-    clearInterval(vibrationInterval);
-    vibrationInterval = null;
-  }
   if (typeof navigator !== 'undefined' && navigator.vibrate) {
     try {
       navigator.vibrate(0);
@@ -112,7 +98,7 @@ function stopVibration(): void {
 }
 
 /**
- * Starts continuous, looping bell ringing for incoming support offer
+ * Starts bell ringing for incoming support offer — strictly capped at 5 rings maximum!
  */
 export function startContinuousSupportBell(info?: SupportAlertInfo): void {
   if (info) {
@@ -120,12 +106,13 @@ export function startContinuousSupportBell(info?: SupportAlertInfo): void {
   }
 
   if (isRinging) {
-    // Already ringing, update alert info
+    // Already ringing, update alert info without resetting the 5-ring limit
     notifyStateChange();
     return;
   }
 
   isRinging = true;
+  ringCount = 0;
 
   // Try to wake screen if supported
   try {
@@ -136,36 +123,53 @@ export function startContinuousSupportBell(info?: SupportAlertInfo): void {
     }
   } catch {}
 
-  // Play immediately
+  // Ring #1 immediately
+  ringCount = 1;
   playSingleBellChime();
-  startVibration();
+  vibrateOnce();
 
-  // Loop continuously every 1.65 seconds until stopped (with 60s safety cap so it can never get stuck forever)
+  // Ring #2 through #5 every 1.65 seconds, then automatically stop after exactly 5 rings!
   if (ringInterval) clearInterval(ringInterval);
   ringInterval = setInterval(() => {
-    if (!isRinging) {
+    if (!isRinging || ringCount >= MAX_BELL_RINGS) {
       stopContinuousSupportBell();
       return;
     }
+    ringCount += 1;
     playSingleBellChime();
+    vibrateOnce();
+    if (ringCount >= MAX_BELL_RINGS) {
+      if (ringInterval) {
+        clearInterval(ringInterval);
+        ringInterval = null;
+      }
+      if (autoStopTimeout) clearTimeout(autoStopTimeout);
+      autoStopTimeout = setTimeout(() => {
+        if (isRinging) {
+          stopContinuousSupportBell();
+        }
+      }, 1400);
+    }
   }, 1650);
 
+  // Hard safety cap (~10s max for 5 rings)
   if (autoStopTimeout) clearTimeout(autoStopTimeout);
   autoStopTimeout = setTimeout(() => {
     if (isRinging) {
       stopContinuousSupportBell();
     }
-  }, 60000);
+  }, 10000);
 
   notifyStateChange();
 }
 
 /**
- * STOPS the continuous bell sound immediately.
- * Called when the ad poster clicks to view helper details or opens helper modal.
+ * STOPS the bell sound immediately.
+ * Called when the user clicks stop/view or automatically after 5 rings.
  */
 export function stopContinuousSupportBell(): void {
   isRinging = false;
+  ringCount = 0;
   currentAlertInfo = null;
   if (ringInterval) {
     clearInterval(ringInterval);

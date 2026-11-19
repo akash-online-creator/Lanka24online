@@ -204,7 +204,10 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   const [showOptionalEditDetails, setShowOptionalEditDetails] = useState<boolean>(false);
   const [isSharingLocation, setIsSharingLocation] = useState(false);
   const liveLocWatchIdRef = useRef<number | null>(null);
+  const liveLocActiveRef = useRef<boolean>(false);
   const lastLiveLocPushRef = useRef<number>(0);
+  const isStepSubmittingRef = useRef<boolean>(false);
+  const [localStepPosts, setLocalStepPosts] = useState<Record<string, HelpPost>>({});
   const [completedCelebration, setCompletedCelebration] = useState<{
     donorName: string;
     hospitalName: string;
@@ -226,6 +229,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   const [acknowledgedMap, setAcknowledgedMap] = useState<Record<string, boolean>>({});
 
   const stopLiveLocationWatch = () => {
+    liveLocActiveRef.current = false;
     if (liveLocWatchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
       try {
         navigator.geolocation.clearWatch(liveLocWatchIdRef.current);
@@ -237,6 +241,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
   useEffect(() => {
     return () => {
+      liveLocActiveRef.current = false;
       if (liveLocWatchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
         try {
           navigator.geolocation.clearWatch(liveLocWatchIdRef.current);
@@ -342,7 +347,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   const myName = String(currentUser?.name || '').trim().toLowerCase();
   const isAdminUser = checkIsAdmin(currentUser);
 
-  const isMyReplyMatch = (rep: any): boolean => {
+  const isMyReplyMatch = (rep: any, post?: HelpPost): boolean => {
     if (!rep || !currentUser) return false;
     const rId = String(rep.responderId || '').trim();
     if (rId && myUserId && rId !== 'helper_user' && rId === myUserId) return true;
@@ -350,18 +355,39 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     if (rPhone.length >= 9 && myPhone.length >= 9 && rPhone.slice(-9) === myPhone.slice(-9)) return true;
     const rName = String(rep.responderName || '').trim().toLowerCase();
     if (rName && myName && rName === myName) return true;
+    // Also match saved local donor offer identity (handles cases where Donor typed a different phone/name on Step 1)
+    if (post && typeof window !== 'undefined') {
+      try {
+        const rawSaved =
+          localStorage.getItem(`sahaya_my_blood_offer_${post.id}`) ||
+          (post.postCode
+            ? localStorage.getItem(`sahaya_my_blood_offer_${String(post.postCode).trim().toUpperCase()}`)
+            : null);
+        if (rawSaved) {
+          const saved = JSON.parse(rawSaved);
+          if (saved.replyId && rep.id && String(saved.replyId) === String(rep.id)) return true;
+          if (saved.responderPhone && rPhone.length >= 9 && saved.responderPhone.slice(-9) === rPhone.slice(-9)) return true;
+          if (saved.responderName && rName && saved.responderName === rName) return true;
+        }
+      } catch {}
+    }
     return false;
   };
 
   const livePostsList: HelpPost[] = (() => {
-    const rawList = Array.isArray(userPosts) ? [...userPosts] : [];
-    if (targetPost && targetPost.id) {
-      rawList.unshift(targetPost);
+    const rawList: HelpPost[] = [];
+    // Place live userPosts first so fresh Firestore updates always take priority over stale targetPost snapshots
+    if (Array.isArray(userPosts)) {
+      rawList.push(...userPosts);
     }
-    // Strictly deduplicate posts by id AND postCode so the same blood post NEVER appears twice
+    if (targetPost && targetPost.id) {
+      rawList.push(targetPost);
+    }
+    Object.values(localStepPosts).forEach((lp) => {
+      if (lp && lp.id) rawList.push(lp);
+    });
+    // Strictly deduplicate posts by id AND postCode with monotonic Step 2->3->4->5 preservation
     const deduped: HelpPost[] = [];
-    const seenIds = new Set<string>();
-    const seenCodes = new Set<string>();
     rawList.forEach((p) => {
       if (!p || !p.id || p.status === 'deleted' || p.isDeleted) return;
       const pid = String(p.id);
@@ -370,8 +396,6 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         (d) => String(d.id) === pid || (pCode && d.postCode && String(d.postCode).trim().toUpperCase() === pCode)
       );
       if (existingIdx === -1) {
-        seenIds.add(pid);
-        if (pCode) seenCodes.add(pCode);
         deduped.push(p);
       } else {
         const existing = deduped[existingIdx];
@@ -381,13 +405,27 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         );
         const existingStep = Number((existing as any).bloodWorkflowStep || 0);
         const incomingStep = Number((p as any).bloodWorkflowStep || 0);
+        const existingTs = Number((existing as any).lastStepUpdatedAtMs || 0);
+        const incomingTs = Number((p as any).lastStepUpdatedAtMs || 0);
+        const baseOrder = incomingTs >= existingTs ? { ...existing, ...p } : { ...p, ...existing };
         deduped[existingIdx] = {
-          ...existing,
-          ...p,
+          ...baseOrder,
           id: existing.id,
           replies: mergedReps,
           repliesCount: mergedReps.length,
+          isConfirmed: Boolean(existing.isConfirmed || p.isConfirmed),
+          confirmedHelperId: (p as any).confirmedHelperId || (existing as any).confirmedHelperId,
+          confirmedHelperName: (p as any).confirmedHelperName || (existing as any).confirmedHelperName,
+          confirmedHelperPhone: (p as any).confirmedHelperPhone || (existing as any).confirmedHelperPhone,
+          guidelinesAccepted: Boolean((existing as any).guidelinesAccepted || (p as any).guidelinesAccepted),
+          step3GuidelinesAccepted: Boolean((existing as any).step3GuidelinesAccepted || (p as any).step3GuidelinesAccepted),
+          donorArrivedAtHospital: Boolean((existing as any).donorArrivedAtHospital || (p as any).donorArrivedAtHospital),
+          bloodDonatedByHelper: Boolean((existing as any).bloodDonatedByHelper || (p as any).bloodDonatedByHelper),
+          isResolved: Boolean(existing.isResolved || p.isResolved),
+          status: existing.isResolved || p.isResolved || existing.status === 'resolved' || p.status === 'resolved' ? 'resolved' : baseOrder.status,
+          serviceStage: existing.isResolved || p.isResolved ? 'completed' : baseOrder.serviceStage,
           bloodWorkflowStep: Math.max(existingStep, incomingStep) || undefined,
+          lastStepUpdatedAtMs: Math.max(existingTs, incomingTs) || undefined,
           donorLiveLocation: (p as any).donorLiveLocation || (existing as any).donorLiveLocation,
         } as any;
       }
@@ -409,8 +447,9 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     if (cleanReplies.length > 0) {
       cleanReplies.forEach((rep) => {
         if (!rep || (rep as any).declinedByPoster) return;
-        const isMine = isMyReplyMatch(rep);
-        const effectiveIsOwner = rawIsOwner || (!isMine && (isAdminUser || isTargetMatch));
+        const isMine = isMyReplyMatch(rep, post);
+        // CRITICAL: Never treat a Donor as Post Owner merely because isTargetMatch is true!
+        const effectiveIsOwner = rawIsOwner || (!isMine && isAdminUser);
         if (!effectiveIsOwner && !isMine && !isAdminUser) {
           return;
         }
@@ -480,14 +519,16 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     return true;
   });
 
-  const isAnyOfferCompleted = filteredOffers.some(
-    (off) =>
-      off.post.isResolved ||
-      off.post.status === 'resolved' ||
-      off.post.serviceStage === 'completed' ||
-      Number((off.post as any).bloodWorkflowStep) >= 5 ||
-      Number((off.reply as any).workflowStep) >= 5
-  );
+  const isAnyOfferCompleted =
+    filteredOffers.length > 0 &&
+    filteredOffers.every(
+      (off) =>
+        off.post.isResolved ||
+        off.post.status === 'resolved' ||
+        off.post.serviceStage === 'completed' ||
+        Number((off.post as any).bloodWorkflowStep) >= 5 ||
+        Number((off.reply as any).workflowStep) >= 5
+    );
 
   // Auto-close Step 5 completion screen after 5 seconds and navigate back to main notice board
   useEffect(() => {
@@ -518,7 +559,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         off.post.serviceType === 'blood_donation' ||
         String(off.post.postCode || '').toUpperCase().startsWith('#BLD-'));
     if (!isBlood) return false;
-    const isMine = isMyReplyMatch(off.reply);
+    const isMine = isMyReplyMatch(off.reply, off.post);
     if (!off.isSelected || (off.isPostOwner && !isMine)) return false;
     const isDone = Boolean(
       off.post.isResolved ||
@@ -634,8 +675,10 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         : {}),
     } as any;
 
+    setLocalStepPosts((prev) => ({ ...prev, [post.id]: updatedPost }));
+
     if (onUpdatePost) {
-      onUpdatePost(updatedPost);
+      await Promise.resolve(onUpdatePost(updatedPost));
     } else {
       try {
         await updateHelpPostInFirestore(post.id, {
@@ -702,51 +745,44 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     }
   };
 
-  const startLiveLocationWatch = (post: HelpPost, reply: PostReply, silentIfUnavailable = false) => {
-    if (liveLocWatchIdRef.current !== null) return;
+  const startLiveLocationWatch = (post: HelpPost, _reply: PostReply, silentIfUnavailable = false) => {
+    if (liveLocWatchIdRef.current !== null || liveLocActiveRef.current) return;
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       if (!silentIfUnavailable) {
         alert('ඔබගේ උපාංගයේ GPS පහසුකම ක්‍රියාත්මක නොවේ.');
       }
       return;
     }
+    liveLocActiveRef.current = true;
     setIsSharingLocation(true);
     lastLiveLocPushRef.current = 0;
 
+    const targetPostId = post.id;
+    const parsedCoords = extractParsedBloodDetails(post);
+
+    // IMPORTANT: Patch ONLY donorLiveLocation to Firestore (NEVER overwrite replies or bloodWorkflowStep with stale closure data!)
     const pushPosition = async (pos: GeolocationPosition) => {
+      if (!liveLocActiveRef.current) return;
       const now = Date.now();
       if (now - lastLiveLocPushRef.current < 6000) return;
       lastLiveLocPushRef.current = now;
-      const parsed = extractParsedBloodDetails(post);
       const distKm =
-        parsed.lat !== null && parsed.lng !== null
-          ? calculateDistanceKm(pos.coords.latitude, pos.coords.longitude, parsed.lat, parsed.lng)
+        parsedCoords.lat !== null && parsedCoords.lng !== null
+          ? calculateDistanceKm(pos.coords.latitude, pos.coords.longitude, parsedCoords.lat, parsedCoords.lng)
           : undefined;
       const liveLoc = {
         lat: pos.coords.latitude,
         lng: pos.coords.longitude,
         updatedAt: new Date().toLocaleTimeString('si-LK', { hour: '2-digit', minute: '2-digit' }),
+        updatedAtMs: now,
         distanceKm: distKm,
       };
-      const cleanReplies = deduplicatePostReplies(post.replies || [], post);
-      const updatedReplies = cleanReplies.map((r) =>
-        isReplySameHelper(r, reply) ? { ...r, donorLiveLocation: liveLoc } : r
-      );
-      const updatedPost: HelpPost = {
-        ...post,
-        replies: updatedReplies,
-        donorLiveLocation: liveLoc,
-      } as any;
-      if (onUpdatePost) {
-        onUpdatePost(updatedPost);
-      } else {
-        try {
-          await updateHelpPostInFirestore(post.id, {
-            replies: updatedReplies,
-            donorLiveLocation: liveLoc,
-          } as any);
-        } catch {}
-      }
+      if (!liveLocActiveRef.current) return;
+      try {
+        await updateHelpPostInFirestore(targetPostId, {
+          donorLiveLocation: liveLoc,
+        } as any);
+      } catch {}
     };
 
     try {
@@ -788,8 +824,10 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
       guidelinesAccepted: true,
       step3GuidelinesAccepted: true,
     } as any;
+    setLocalStepPosts((prev) => ({ ...prev, [post.id]: updatedPost }));
+
     if (onUpdatePost) {
-      onUpdatePost(updatedPost);
+      await Promise.resolve(onUpdatePost(updatedPost));
     } else {
       try {
         await updateHelpPostInFirestore(post.id, {
@@ -813,103 +851,119 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     startLiveLocationWatch(post, reply, false);
   };
 
-  // STEP 3B ACTION (Donor confirms blood donated -> stops live tracking & advances to Step 4)
+  // STEP 3B ACTION (Donor confirms blood donated -> stops live tracking & advances cleanly to Step 4!)
   const handleDonorConfirmBloodDonated = async (post: HelpPost, reply: PostReply) => {
-    stopLiveLocationWatch();
-    handleAcknowledgeBell();
-    const nowMs = Date.now();
-    const cleanReplies = deduplicatePostReplies(post.replies || [], post);
-    const updatedReplies = cleanReplies.map((r) =>
-      isReplySameHelper(r, reply)
-        ? {
-            ...r,
-            isAccepted: true,
+    if (isStepSubmittingRef.current) return;
+    isStepSubmittingRef.current = true;
+    try {
+      stopLiveLocationWatch();
+      handleAcknowledgeBell();
+      const nowMs = Date.now();
+      const cleanReplies = deduplicatePostReplies(post.replies || [], post);
+      const updatedReplies = cleanReplies.map((r) =>
+        isReplySameHelper(r, reply)
+          ? {
+              ...r,
+              isAccepted: true,
+              isConfirmed: true,
+              guidelinesAccepted: true,
+              step3GuidelinesAccepted: true,
+              donorArrivedAtHospital: true,
+              bloodDonatedByHelper: true,
+              workflowStep: 4,
+            }
+          : r
+      );
+      const updatedPost: HelpPost = {
+        ...post,
+        replies: updatedReplies,
+        repliesCount: updatedReplies.length,
+        isConfirmed: true,
+        donorArrivedAtHospital: true,
+        bloodDonatedByHelper: true,
+        bloodWorkflowStep: 4,
+        lastStepUpdatedAtMs: nowMs,
+        lastStepByRole: 'helper',
+      } as any;
+
+      setLocalStepPosts((prev) => ({ ...prev, [post.id]: updatedPost }));
+
+      if (onUpdatePost) {
+        await Promise.resolve(onUpdatePost(updatedPost));
+      } else {
+        try {
+          await updateHelpPostInFirestore(post.id, {
+            replies: updatedReplies,
+            repliesCount: updatedReplies.length,
             isConfirmed: true,
             donorArrivedAtHospital: true,
             bloodDonatedByHelper: true,
-            workflowStep: 4,
-          }
-        : r
-    );
-    const updatedPost: HelpPost = {
-      ...post,
-      replies: updatedReplies,
-      repliesCount: updatedReplies.length,
-      isConfirmed: true,
-      donorArrivedAtHospital: true,
-      bloodDonatedByHelper: true,
-      bloodWorkflowStep: 4,
-      lastStepUpdatedAtMs: nowMs,
-      lastStepByRole: 'helper',
-    } as any;
-
-    if (onUpdatePost) {
-      onUpdatePost(updatedPost);
-    } else {
-      try {
-        await updateHelpPostInFirestore(post.id, {
-          replies: updatedReplies,
-          repliesCount: updatedReplies.length,
-          isConfirmed: true,
-          donorArrivedAtHospital: true,
-          bloodDonatedByHelper: true,
-          bloodWorkflowStep: 4,
-          lastStepUpdatedAtMs: nowMs,
-          lastStepByRole: 'helper',
-        } as any);
-      } catch {}
+            bloodWorkflowStep: 4,
+            lastStepUpdatedAtMs: nowMs,
+            lastStepByRole: 'helper',
+          } as any);
+        } catch {}
+      }
+      // Stay open on Step 4 so Donor immediately sees clear confirmation & waiting message!
+    } finally {
+      isStepSubmittingRef.current = false;
     }
-    onClose();
   };
 
   // STEP 4 ACTION (Poster confirms blood received -> Publishes Free General Services Appreciation Post with Donor Name, Place & Long-Life Wish)
   const handlePosterCompleteBloodWorkflow = async (post: HelpPost, reply: PostReply) => {
-    handleAcknowledgeBell();
-    const nowMs = Date.now();
-    const cleanReplies = deduplicatePostReplies(post.replies || [], post);
-    const updatedReplies = cleanReplies.map((r) =>
-      isReplySameHelper(r, reply)
-        ? {
-            ...r,
-            isAccepted: true,
+    if (isStepSubmittingRef.current) return;
+    isStepSubmittingRef.current = true;
+    try {
+      stopLiveLocationWatch();
+      handleAcknowledgeBell();
+      const nowMs = Date.now();
+      const cleanReplies = deduplicatePostReplies(post.replies || [], post);
+      const updatedReplies = cleanReplies.map((r) =>
+        isReplySameHelper(r, reply)
+          ? {
+              ...r,
+              isAccepted: true,
+              isConfirmed: true,
+              bloodDonatedByHelper: true,
+              workflowStep: 5,
+            }
+          : r
+      );
+      const updatedPost: HelpPost = {
+        ...post,
+        replies: updatedReplies,
+        repliesCount: updatedReplies.length,
+        isConfirmed: true,
+        bloodDonatedByHelper: true,
+        isResolved: true,
+        status: 'resolved',
+        serviceStage: 'completed' as any,
+        bloodWorkflowStep: 5,
+        lastStepUpdatedAtMs: nowMs,
+        lastStepByRole: 'poster',
+      } as any;
+
+      setLocalStepPosts((prev) => ({ ...prev, [post.id]: updatedPost }));
+
+      if (onUpdatePost) {
+        await Promise.resolve(onUpdatePost(updatedPost));
+      } else {
+        try {
+          await updateHelpPostInFirestore(post.id, {
+            replies: updatedReplies,
+            repliesCount: updatedReplies.length,
             isConfirmed: true,
             bloodDonatedByHelper: true,
-            workflowStep: 5,
-          }
-        : r
-    );
-    const updatedPost: HelpPost = {
-      ...post,
-      replies: updatedReplies,
-      repliesCount: updatedReplies.length,
-      isConfirmed: true,
-      bloodDonatedByHelper: true,
-      isResolved: true,
-      status: 'resolved',
-      serviceStage: 'completed' as any,
-      bloodWorkflowStep: 5,
-      lastStepUpdatedAtMs: nowMs,
-      lastStepByRole: 'poster',
-    } as any;
-
-    if (onUpdatePost) {
-      onUpdatePost(updatedPost);
-    } else {
-      try {
-        await updateHelpPostInFirestore(post.id, {
-          replies: updatedReplies,
-          repliesCount: updatedReplies.length,
-          isConfirmed: true,
-          bloodDonatedByHelper: true,
-          isResolved: true,
-          status: 'resolved',
-          serviceStage: 'completed' as any,
-          bloodWorkflowStep: 5,
-          lastStepUpdatedAtMs: nowMs,
-          lastStepByRole: 'poster',
-        } as any);
-      } catch {}
-    }
+            isResolved: true,
+            status: 'resolved',
+            serviceStage: 'completed' as any,
+            bloodWorkflowStep: 5,
+            lastStepUpdatedAtMs: nowMs,
+            lastStepByRole: 'poster',
+          } as any);
+        } catch {}
+      }
 
     try {
       const rawBlood = localStorage.getItem('sahaya_blood_requests');
@@ -945,6 +999,9 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
       }
     }
     // Single Step 5 Thank-You screen renders automatically (no duplicate celebration overlay!) with 5s auto-close to notice board
+    } finally {
+      isStepSubmittingRef.current = false;
+    }
   };
 
   return (
@@ -1010,7 +1067,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
               const posterName = (off.post as any).contactPersonName || off.post.userName || 'දැන්වීම්කරු';
               const posterPhone = (off.post as any).contactNumber || off.post.userPhone || off.post.contactPhone || '';
               const isBloodOffer = isBloodPostCheck(off.post);
-              const isMineOffer = isMyReplyMatch(off.reply);
+              const isMineOffer = isMyReplyMatch(off.reply, off.post);
 
               const otherPartyName = off.isPostOwner ? helperName : posterName;
               const otherPartyPhone = off.isPostOwner ? helperPhone : posterPhone;
@@ -1620,8 +1677,11 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                             </button>
                           </div>
                         ) : (
-                          <div className="space-y-3 text-center">
-                            <p className="text-sm font-black text-amber-700 dark:text-amber-300 flex items-center justify-center gap-1.5">
+                          <div className="p-4 rounded-2xl bg-amber-50/90 dark:bg-amber-950/30 border-2 border-amber-400 dark:border-amber-800 space-y-3 text-center">
+                            <p className="text-xs font-black text-emerald-700 dark:text-emerald-300">
+                              ✅ ඔබ ලේ පරිත්‍යාග කළ බව දැන්වීම්කරු වෙත සාර්ථකව යොමු කරන ලදී!
+                            </p>
+                            <p className="text-sm font-black text-amber-800 dark:text-amber-300 flex items-center justify-center gap-1.5">
                               <Clock className="w-4 h-4 shrink-0" />
                               <span>දැන්වීම්කරු ලේ ලැබුණු බව තහවුරු කරන තෙක් රැඳී සිටින්න.</span>
                             </p>
