@@ -29,9 +29,10 @@ import {
   calculateDistanceKm,
   createBloodDonationHonorPost,
 } from '../types';
-import { updateHelpPostInFirestore, deduplicatePostReplies, addHelpPostToFirestore } from '../lib/firebase';
+import { updateHelpPostInFirestore, deduplicatePostReplies, addHelpPostToFirestore, deleteBloodRequestFromFirestore } from '../lib/firebase';
 import { getStoredHelpPosts, saveHelpPostsToStorage } from '../utils/storage';
 import { checkIsPostOwner, checkIsAdmin } from '../utils/postOwnerHelper';
+import { removeNotificationsForPost } from '../utils/notificationManager';
 
 interface SupportOffersModalProps {
   isOpen: boolean;
@@ -207,7 +208,15 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   const liveLocActiveRef = useRef<boolean>(false);
   const lastLiveLocPushRef = useRef<number>(0);
   const isStepSubmittingRef = useRef<boolean>(false);
+  const [isConfirmingReceived, setIsConfirmingReceived] = useState<boolean>(false);
   const [localStepPosts, setLocalStepPosts] = useState<Record<string, HelpPost>>({});
+  const [completedStep5Summary, setCompletedStep5Summary] = useState<{
+    donorName: string;
+    hospitalName: string;
+    receivedPints: number;
+    requiredPints: number;
+    isAllPintsFulfilled: boolean;
+  } | null>(null);
   const [completedCelebration, setCompletedCelebration] = useState<{
     donorName: string;
     hospitalName: string;
@@ -215,6 +224,8 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   const [celebrationCountdown, setCelebrationCountdown] = useState<number>(5);
   const celebrationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [step5AutoCloseSec, setStep5AutoCloseSec] = useState<number>(5);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   // Poster Step 2 optional override fields (collapsed by default so Step 2 stays clean & clutter-free)
   const [posterPatientName, setPosterPatientName] = useState('');
@@ -275,6 +286,9 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     }
     setBellRinging(isSupportBellRinging());
     setCompletedCelebration(null);
+    setCompletedStep5Summary(null);
+    setIsConfirmingReceived(false);
+    isStepSubmittingRef.current = false;
     setShowOptionalEditDetails(false);
   }, [isOpen, targetPost?.id]);
 
@@ -312,6 +326,9 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     stopContinuousSupportBell();
     setBellRinging(false);
     setCompletedCelebration(null);
+    setCompletedStep5Summary(null);
+    setIsConfirmingReceived(false);
+    isStepSubmittingRef.current = false;
     onClose();
   };
 
@@ -407,26 +424,55 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         const incomingStep = Number((p as any).bloodWorkflowStep || 0);
         const existingTs = Number((existing as any).lastStepUpdatedAtMs || 0);
         const incomingTs = Number((p as any).lastStepUpdatedAtMs || 0);
-        const baseOrder = incomingTs >= existingTs ? { ...existing, ...p } : { ...p, ...existing };
+        const existingUnitsRec = Number((existing as any).unitsReceived || 0);
+        const incomingUnitsRec = Number((p as any).unitsReceived || 0);
+        const preferIncomingCycle =
+          incomingUnitsRec > existingUnitsRec ||
+          (incomingUnitsRec === existingUnitsRec && incomingTs > existingTs);
+        const baseOrder = preferIncomingCycle ? { ...existing, ...p } : { ...p, ...existing };
+        const advancedPintCycle = incomingUnitsRec !== existingUnitsRec;
+        const newerCyclePost = incomingUnitsRec > existingUnitsRec ? p : existing;
+        const resolvedFlag = Boolean(existing.isResolved || p.isResolved || existing.status === 'resolved' || p.status === 'resolved');
         deduped[existingIdx] = {
           ...baseOrder,
           id: existing.id,
           replies: mergedReps,
           repliesCount: mergedReps.length,
-          isConfirmed: Boolean(existing.isConfirmed || p.isConfirmed),
-          confirmedHelperId: (p as any).confirmedHelperId || (existing as any).confirmedHelperId,
-          confirmedHelperName: (p as any).confirmedHelperName || (existing as any).confirmedHelperName,
-          confirmedHelperPhone: (p as any).confirmedHelperPhone || (existing as any).confirmedHelperPhone,
-          guidelinesAccepted: Boolean((existing as any).guidelinesAccepted || (p as any).guidelinesAccepted),
-          step3GuidelinesAccepted: Boolean((existing as any).step3GuidelinesAccepted || (p as any).step3GuidelinesAccepted),
-          donorArrivedAtHospital: Boolean((existing as any).donorArrivedAtHospital || (p as any).donorArrivedAtHospital),
-          bloodDonatedByHelper: Boolean((existing as any).bloodDonatedByHelper || (p as any).bloodDonatedByHelper),
-          isResolved: Boolean(existing.isResolved || p.isResolved),
-          status: existing.isResolved || p.isResolved || existing.status === 'resolved' || p.status === 'resolved' ? 'resolved' : baseOrder.status,
-          serviceStage: existing.isResolved || p.isResolved ? 'completed' : baseOrder.serviceStage,
-          bloodWorkflowStep: Math.max(existingStep, incomingStep) || undefined,
+          unitsReceived: Math.max(existingUnitsRec, incomingUnitsRec) || undefined,
+          isConfirmed: advancedPintCycle ? Boolean(newerCyclePost.isConfirmed) : Boolean(existing.isConfirmed || p.isConfirmed),
+          confirmedHelperId: advancedPintCycle
+            ? (newerCyclePost as any).confirmedHelperId || ''
+            : (p as any).confirmedHelperId || (existing as any).confirmedHelperId,
+          confirmedHelperName: advancedPintCycle
+            ? (newerCyclePost as any).confirmedHelperName || ''
+            : (p as any).confirmedHelperName || (existing as any).confirmedHelperName,
+          confirmedHelperPhone: advancedPintCycle
+            ? (newerCyclePost as any).confirmedHelperPhone || ''
+            : (p as any).confirmedHelperPhone || (existing as any).confirmedHelperPhone,
+          guidelinesAccepted: advancedPintCycle
+            ? Boolean((newerCyclePost as any).guidelinesAccepted)
+            : Boolean((existing as any).guidelinesAccepted || (p as any).guidelinesAccepted),
+          step3GuidelinesAccepted: advancedPintCycle
+            ? Boolean((newerCyclePost as any).step3GuidelinesAccepted)
+            : Boolean((existing as any).step3GuidelinesAccepted || (p as any).step3GuidelinesAccepted),
+          donorArrivedAtHospital: advancedPintCycle
+            ? Boolean((newerCyclePost as any).donorArrivedAtHospital)
+            : Boolean((existing as any).donorArrivedAtHospital || (p as any).donorArrivedAtHospital),
+          bloodDonatedByHelper: advancedPintCycle
+            ? Boolean((newerCyclePost as any).bloodDonatedByHelper)
+            : Boolean((existing as any).bloodDonatedByHelper || (p as any).bloodDonatedByHelper),
+          isResolved: resolvedFlag,
+          status: resolvedFlag ? 'resolved' : baseOrder.status,
+          serviceStage: resolvedFlag ? 'completed' : baseOrder.serviceStage,
+          bloodWorkflowStep: resolvedFlag
+            ? 5
+            : advancedPintCycle
+            ? Number((newerCyclePost as any).bloodWorkflowStep || 1)
+            : Math.max(existingStep, incomingStep) || undefined,
           lastStepUpdatedAtMs: Math.max(existingTs, incomingTs) || undefined,
-          donorLiveLocation: (p as any).donorLiveLocation || (existing as any).donorLiveLocation,
+          donorLiveLocation: advancedPintCycle
+            ? (newerCyclePost as any).donorLiveLocation || null
+            : (p as any).donorLiveLocation || (existing as any).donorLiveLocation,
         } as any;
       }
     });
@@ -453,16 +499,23 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         if (!effectiveIsOwner && !isMine && !isAdminUser) {
           return;
         }
+        // On multi-pint blood requests that are still open, hide already-completed donors from the Poster's active selection queue
+        const isAlreadyCompletedDonor = Boolean((rep as any).bloodReceivedConfirmed || Number((rep as any).workflowStep) >= 5);
+        const isPostFullyResolved = Boolean(post.isResolved || post.status === 'resolved' || (post as any).isFulfilled);
+        if (effectiveIsOwner && !isMine && !isPostFullyResolved && isAlreadyCompletedDonor) {
+          return;
+        }
         const isSelected = Boolean(
-          rep.isConfirmed ||
-            rep.isAccepted ||
-            (post.isConfirmed &&
-              (post.confirmedHelperName === rep.responderName ||
-                post.confirmedBy === rep.responderName ||
-                (post.confirmedHelperPhone &&
-                  rep.responderPhone &&
-                  String(post.confirmedHelperPhone).replace(/\D/g, '').slice(-9) ===
-                    String(rep.responderPhone).replace(/\D/g, '').slice(-9))))
+          (!isAlreadyCompletedDonor || isPostFullyResolved) &&
+            (rep.isConfirmed ||
+              rep.isAccepted ||
+              (post.isConfirmed &&
+                (post.confirmedHelperName === rep.responderName ||
+                  post.confirmedBy === rep.responderName ||
+                  (post.confirmedHelperPhone &&
+                    rep.responderPhone &&
+                    String(post.confirmedHelperPhone).replace(/\D/g, '').slice(-9) ===
+                      String(rep.responderPhone).replace(/\D/g, '').slice(-9)))))
         );
         allOffers.push({
           post: { ...post, replies: cleanReplies, repliesCount: cleanReplies.length },
@@ -531,8 +584,9 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     );
 
   // Auto-close Step 5 completion screen after 5 seconds and navigate back to main notice board
+  const shouldAutoCloseStep5 = Boolean(completedStep5Summary || isAnyOfferCompleted);
   useEffect(() => {
-    if (!isOpen || !isAnyOfferCompleted) return;
+    if (!isOpen || !shouldAutoCloseStep5) return;
     let sec = 5;
     setStep5AutoCloseSec(sec);
     const timer = setInterval(() => {
@@ -542,13 +596,14 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         clearInterval(timer);
         stopContinuousSupportBell();
         setBellRinging(false);
+        setCompletedStep5Summary(null);
         window.dispatchEvent(new CustomEvent('sahaya_blood_modal_close'));
-        onClose();
+        onCloseRef.current();
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     }, 1000);
     return () => clearInterval(timer);
-  }, [isOpen, isAnyOfferCompleted, onClose]);
+  }, [isOpen, shouldAutoCloseStep5]);
 
   // AUTO-START Live Location streaming when Selected Donor is on Step 3B so Poster sees Donor arriving live automatically!
   const activeSelectedDonorOffer = filteredOffers.find((off) => {
@@ -910,15 +965,33 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     }
   };
 
-  // STEP 4 ACTION (Poster confirms blood received -> Publishes Free General Services Appreciation Post with Donor Name, Place & Long-Life Wish)
+  // STEP 4 ACTION (Poster confirms blood received -> Publishes Simplified Honor Post & Removes Blood Ad Once Required Pints Are Received)
   const handlePosterCompleteBloodWorkflow = async (post: HelpPost, reply: PostReply) => {
     if (isStepSubmittingRef.current) return;
     isStepSubmittingRef.current = true;
+    setIsConfirmingReceived(true);
     try {
       stopLiveLocationWatch();
       handleAcknowledgeBell();
       const nowMs = Date.now();
+      const nowIso = new Date().toISOString();
+      const parsed = extractParsedBloodDetails(post);
+      const requiredPints = Math.max(
+        1,
+        parseInt(String(parsed.unitsNeeded || (post as any).unitsNeeded || post.helpersNeeded || '1').replace(/[^0-9]/g, ''), 10) || 1
+      );
+
       const cleanReplies = deduplicatePostReplies(post.replies || [], post);
+      const completedRepliesBefore = cleanReplies.filter(
+        (r: any) => r && (r.bloodReceivedConfirmed === true || Number(r.workflowStep) >= 5)
+      ).length;
+      const alreadyConfirmedThisDonor = Boolean(
+        (reply as any).bloodReceivedConfirmed === true || Number((reply as any).workflowStep) >= 5
+      );
+      const prevReceivedPints = Math.max(Number((post as any).unitsReceived || 0), completedRepliesBefore);
+      const nextReceivedPints = alreadyConfirmedThisDonor ? prevReceivedPints : prevReceivedPints + 1;
+      const isAllPintsFulfilled = nextReceivedPints >= requiredPints;
+
       const updatedReplies = cleanReplies.map((r) =>
         isReplySameHelper(r, reply)
           ? {
@@ -926,81 +999,220 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
               isAccepted: true,
               isConfirmed: true,
               bloodDonatedByHelper: true,
+              bloodReceivedConfirmed: true,
               workflowStep: 5,
+              completedAt: nowIso,
             }
           : r
       );
-      const updatedPost: HelpPost = {
-        ...post,
-        replies: updatedReplies,
-        repliesCount: updatedReplies.length,
-        isConfirmed: true,
-        bloodDonatedByHelper: true,
-        isResolved: true,
-        status: 'resolved',
-        serviceStage: 'completed' as any,
-        bloodWorkflowStep: 5,
-        lastStepUpdatedAtMs: nowMs,
-        lastStepByRole: 'poster',
-      } as any;
 
-      setLocalStepPosts((prev) => ({ ...prev, [post.id]: updatedPost }));
+      const remainingWaitingReplies = updatedReplies.filter(
+        (r: any) => r && !r.declinedByPoster && !r.bloodReceivedConfirmed && Number(r.workflowStep || 0) < 5
+      );
 
-      if (onUpdatePost) {
-        await Promise.resolve(onUpdatePost(updatedPost));
-      } else {
-        try {
-          await updateHelpPostInFirestore(post.id, {
+      const donorName = reply.responderName || (post as any).confirmedHelperName || 'උතුම් පරිත්‍යාගශීලියා';
+      const hospitalName = parsed.hospitalName || post.locationName || 'රෝහල';
+
+      // 1. IMMEDIATELY show Step 5 Thank-You Confirmation UI (never blocked by network latency!)
+      setCompletedStep5Summary({
+        donorName,
+        hospitalName,
+        receivedPints: nextReceivedPints,
+        requiredPints,
+        isAllPintsFulfilled,
+      });
+
+      const updatedPost: HelpPost = isAllPintsFulfilled
+        ? ({
+            ...post,
             replies: updatedReplies,
             repliesCount: updatedReplies.length,
+            unitsNeeded: requiredPints,
+            unitsReceived: nextReceivedPints,
             isConfirmed: true,
             bloodDonatedByHelper: true,
             isResolved: true,
+            isCompleted: true,
+            isFulfilled: true,
+            completedAt: nowIso,
             status: 'resolved',
             serviceStage: 'completed' as any,
             bloodWorkflowStep: 5,
             lastStepUpdatedAtMs: nowMs,
             lastStepByRole: 'poster',
+          } as any)
+        : ({
+            ...post,
+            replies: updatedReplies,
+            repliesCount: updatedReplies.length,
+            unitsNeeded: requiredPints,
+            unitsReceived: nextReceivedPints,
+            isConfirmed: false,
+            confirmedHelperId: '',
+            confirmedHelperName: '',
+            confirmedHelperPhone: '',
+            confirmedBy: '',
+            bloodDonatedByHelper: false,
+            donorArrivedAtHospital: false,
+            step3GuidelinesAccepted: false,
+            guidelinesAccepted: false,
+            donorLiveLocation: null,
+            isResolved: false,
+            isFulfilled: false,
+            status: 'open',
+            serviceStage: 'open' as any,
+            bloodWorkflowStep: remainingWaitingReplies.length > 0 ? 2 : 1,
+            lastStepUpdatedAtMs: nowMs,
+            lastStepByRole: 'poster',
           } as any);
-        } catch {}
-      }
 
-    try {
-      const rawBlood = localStorage.getItem('sahaya_blood_requests');
-      if (rawBlood) {
-        const parsedBlood = JSON.parse(rawBlood);
-        if (Array.isArray(parsedBlood)) {
-          const updatedBlood = parsedBlood.map((b: any) =>
-            b && (String(b.id) === String(post.id) || String(b.id) === String(post.postCode || '').replace('#', ''))
-              ? { ...b, status: 'fulfilled' }
-              : b
+      setLocalStepPosts((prev) => ({ ...prev, [post.id]: updatedPost }));
+
+      // 2. IMMEDIATELY publish the simplified Blood Donation Honor Post (Donor Name + Place + Invitation)
+      if (isBloodPostCheck(post)) {
+        try {
+          const honorPost = createBloodDonationHonorPost(
+            donorName,
+            hospitalName,
+            parsed.district || post.district,
+            parsed.lat,
+            parsed.lng
           );
-          localStorage.setItem('sahaya_blood_requests', JSON.stringify(updatedBlood));
-          window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+          const stored = getStoredHelpPosts();
+          const nextStored = [honorPost, ...(stored || []).filter((p) => p && p.id !== honorPost.id)];
+          saveHelpPostsToStorage(nextStored);
+          window.dispatchEvent(new CustomEvent('sahaya_post_created', { detail: { post: honorPost } }));
+          addHelpPostToFirestore(honorPost).catch((err) => {
+            console.warn('Honor post Firestore save notice:', err);
+          });
+        } catch (err) {
+          console.warn('Honor post creation error:', err);
         }
       }
-    } catch {}
 
-    // 04. අවසානයේ සාමාන්‍ය සේවා හරහා නොමිලේ ලේ පරිත්‍යාග කළ තැනැත්තාට ස්තූති කරමින් නම සහ ස්ථානය සඳහන් කර දීර්ඝායුෂ ප්‍රාර්ථනා කිරීම
-    const parsed = extractParsedBloodDetails(post);
-    const donorName = reply.responderName || (post as any).confirmedHelperName || 'උතුම් පරිත්‍යාගශීලියා';
-    const hospitalName = parsed.hospitalName || post.locationName || 'රෝහල';
-
-    if (isBloodPostCheck(post)) {
+      // 3. Update or REMOVE the Blood Request from sahaya_blood_requests & Firestore blood_requests
       try {
-        const honorPost = createBloodDonationHonorPost(donorName, hospitalName, parsed.district || post.district);
-        addHelpPostToFirestore(honorPost).catch(() => {});
-        const stored = getStoredHelpPosts();
-        const next = [honorPost, ...(stored || []).filter((p) => p && p.id !== honorPost.id)];
-        saveHelpPostsToStorage(next);
-        window.dispatchEvent(new CustomEvent('sahaya_post_created', { detail: { post: honorPost } }));
+        const postCodeUpper = String(post.postCode || '').trim().toUpperCase();
+        const postCodeDigits = postCodeUpper.replace(/^#/, '');
+        const rawBlood = localStorage.getItem('sahaya_blood_requests');
+        const matchedBloodIds = new Set<string>();
+        if (String(post.id).startsWith('bld_')) {
+          matchedBloodIds.add(String(post.id));
+        }
+
+        if (rawBlood) {
+          const parsedBlood = JSON.parse(rawBlood);
+          if (Array.isArray(parsedBlood)) {
+            const isMatchingBlood = (b: any) => {
+              if (!b) return false;
+              const bId = String(b.id || '');
+              const bCode = String(b.postCode || '').trim().toUpperCase();
+              return (
+                bId === String(post.id) ||
+                (postCodeDigits && bId === postCodeDigits) ||
+                (postCodeUpper && bCode && bCode === postCodeUpper)
+              );
+            };
+            parsedBlood.forEach((b: any) => {
+              if (isMatchingBlood(b) && b.id) {
+                matchedBloodIds.add(String(b.id));
+              }
+            });
+
+            const updatedBlood = isAllPintsFulfilled
+              ? parsedBlood.filter((b: any) => !isMatchingBlood(b))
+              : parsedBlood.map((b: any) =>
+                  isMatchingBlood(b)
+                    ? {
+                        ...b,
+                        unitsNeeded: requiredPints,
+                        unitsReceived: nextReceivedPints,
+                        status: 'active',
+                      }
+                    : b
+                );
+            localStorage.setItem('sahaya_blood_requests', JSON.stringify(updatedBlood));
+          }
+        }
+
+        if (isAllPintsFulfilled) {
+          // Delete fulfilled blood request documents from Firestore blood_requests so it disappears from all devices
+          matchedBloodIds.forEach((bid) => {
+            deleteBloodRequestFromFirestore(bid).catch(() => {});
+          });
+          // Clear stale alert notifications for this fulfilled blood request
+          try {
+            removeNotificationsForPost(post.id, post.postCode);
+          } catch {}
+        }
+
+        window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+        window.dispatchEvent(new CustomEvent('sahaya_sync_all_services'));
       } catch (err) {
-        console.warn('Honor post creation error:', err);
+        console.warn('Blood request storage cleanup notice:', err);
       }
-    }
-    // Single Step 5 Thank-You screen renders automatically (no duplicate celebration overlay!) with 5s auto-close to notice board
+
+      // 4. Persist updated post to App state & Firestore (non-blocking so UI NEVER stalls!)
+      const firestorePayload = isAllPintsFulfilled
+        ? {
+            replies: updatedReplies,
+            repliesCount: updatedReplies.length,
+            unitsNeeded: requiredPints,
+            unitsReceived: nextReceivedPints,
+            isConfirmed: true,
+            bloodDonatedByHelper: true,
+            isResolved: true,
+            isCompleted: true,
+            isFulfilled: true,
+            completedAt: nowIso,
+            status: 'resolved',
+            serviceStage: 'completed' as any,
+            bloodWorkflowStep: 5,
+            lastStepUpdatedAtMs: nowMs,
+            lastStepByRole: 'poster',
+          }
+        : {
+            replies: updatedReplies,
+            repliesCount: updatedReplies.length,
+            unitsNeeded: requiredPints,
+            unitsReceived: nextReceivedPints,
+            isConfirmed: false,
+            confirmedHelperId: '',
+            confirmedHelperName: '',
+            confirmedHelperPhone: '',
+            confirmedBy: '',
+            bloodDonatedByHelper: false,
+            donorArrivedAtHospital: false,
+            step3GuidelinesAccepted: false,
+            guidelinesAccepted: false,
+            donorLiveLocation: null,
+            isResolved: false,
+            isFulfilled: false,
+            status: 'open',
+            serviceStage: 'open' as any,
+            bloodWorkflowStep: remainingWaitingReplies.length > 0 ? 2 : 1,
+            lastStepUpdatedAtMs: nowMs,
+            lastStepByRole: 'poster',
+          };
+
+      if (onUpdatePost) {
+        try {
+          Promise.resolve(onUpdatePost(updatedPost)).catch((err) => {
+            console.warn('onUpdatePost background notice:', err);
+          });
+        } catch (err) {
+          console.warn('onUpdatePost sync notice:', err);
+        }
+      }
+      // Also directly patch Firestore with the clean minimal payload so rules/size limits never fail
+      updateHelpPostInFirestore(post.id, firestorePayload as any).catch((err) => {
+        console.warn('Direct Firestore blood completion notice:', err);
+      });
+    } catch (outerErr) {
+      console.warn('handlePosterCompleteBloodWorkflow error:', outerErr);
     } finally {
       isStepSubmittingRef.current = false;
+      setIsConfirmingReceived(false);
     }
   };
 
@@ -1062,7 +1274,46 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-slate-800 dark:text-slate-200 flex-1">
-          {(filteredOffers || []).length === 0 ? (
+          {completedStep5Summary ? (
+            <div className="p-5 rounded-2xl bg-gradient-to-b from-amber-50 via-rose-50/70 to-emerald-50 dark:from-emerald-950/60 dark:to-teal-950/40 border-2 border-amber-400 dark:border-emerald-500 space-y-3.5 text-center animate-fadeIn">
+              <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950/80 text-rose-600 flex items-center justify-center mx-auto">
+                <Heart className="w-6 h-6 fill-current" />
+              </div>
+              <h4 className="text-base font-black text-slate-900 dark:text-white">
+                🙏 හදපිරි ස්තූතිය! 🩸❤️
+              </h4>
+              <div className="p-3.5 rounded-xl bg-white/95 dark:bg-slate-900/80 border border-amber-200 dark:border-emerald-800 space-y-1 text-xs sm:text-sm">
+                <p className="font-black text-slate-900 dark:text-white">
+                  👤 නම: {completedStep5Summary.donorName}
+                </p>
+                <p className="font-bold text-slate-700 dark:text-slate-200">
+                  📍 ලේ පරිත්‍යාග කළ ස්ථානය: {completedStep5Summary.hospitalName}
+                </p>
+              </div>
+              <p className="text-xs sm:text-sm font-black text-rose-700 dark:text-rose-300 leading-relaxed">
+                මෙවැනි උතුම් පිංකමකට ඔබත් සහභාගි වී තවත් ජිවිතයක් රැකගැනීමට දායකවන්න.
+              </p>
+              <div className="p-2.5 rounded-xl bg-emerald-100/90 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-800 text-[11px] font-black text-emerald-900 dark:text-emerald-200">
+                {completedStep5Summary.isAllPintsFulfilled
+                  ? `✅ අවශ්‍ය රුධිර පයින්ට් සියල්ල (${completedStep5Summary.receivedPints}/${completedStep5Summary.requiredPints}) ලැබුණු බැවින් ලේ ඉල්ලීම් දැන්වීම පුවරුවෙන් ඉවත් කර ස්තූති දැන්වීම පළ කරන ලදී.`
+                  : `🩸 පයින්ට් ${completedStep5Summary.receivedPints} / ${completedStep5Summary.requiredPints} ලැබුණි! තව පයින්ට් ${Math.max(0, completedStep5Summary.requiredPints - completedStep5Summary.receivedPints)}ක් අවශ්‍ය බැවින් දැන්වීම තවදුරටත් සක්‍රීයව පවතී.`}
+              </div>
+              <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                තත්පර {step5AutoCloseSec}කින් දැන්වීම් පුවරුව වෙත යොමු වේ...
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('sahaya_blood_modal_close'));
+                  handleCloseModal();
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs cursor-pointer"
+              >
+                හරි (OK)
+              </button>
+            </div>
+          ) : (filteredOffers || []).length === 0 ? (
             <div className="py-8 text-center space-y-2">
               <p className="text-sm font-black text-slate-800 dark:text-slate-200">
                 තවමත් කිසිවෙකු ඉදිරිපත් වී නොමැත.
@@ -1688,19 +1939,38 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                         (off.isSelected || off.isPostOwner) &&
                         (off.isPostOwner ? (
                           <div className="space-y-3 text-center">
+                            {(() => {
+                              const reqP = Math.max(
+                                1,
+                                parseInt(String(parsedDetails.unitsNeeded || (off.post as any).unitsNeeded || 1).replace(/[^0-9]/g, ''), 10) || 1
+                              );
+                              const recP = Number((off.post as any).unitsReceived || 0);
+                              return reqP > 1 ? (
+                                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-[11px] font-black text-rose-800 dark:text-rose-200">
+                                  <span>🩸 අවශ්‍ය පයින්ට්: {reqP}</span>
+                                  <span>•</span>
+                                  <span>දැනට ලැබුණු: {recP}/{reqP}</span>
+                                </div>
+                              ) : null;
+                            })()}
                             <p className="text-sm sm:text-base font-black text-slate-900 dark:text-white leading-snug">
                               "{helperName}" විසින් ({parsedDetails.hospitalName}) වෙත ගොස් ලේ පරිත්‍යාග කළ බව දන්වා ඇත. රුධිරය ලැබුණාද?
                             </p>
                             <p className="text-xs text-slate-600 dark:text-slate-300 font-bold">
-                              තහවුරු කළ විට සාමාන්‍ය සේවා හරහා නොමිලේ "{helperName}" මහත්මා/මහත්මියට ස්තූති කරමින් සහ දීර්ඝායුෂ ප්‍රාර්ථනා කරමින් උපහාර දැන්වීමක් පළ වේ.
+                              තහවුරු කළ විට "{helperName}" වෙත ස්තූති කරමින් උපහාර දැන්වීමක් පළ වේ.
                             </p>
                             <button
                               type="button"
+                              disabled={isConfirmingReceived}
                               onClick={() => handlePosterCompleteBloodWorkflow(off.post, off.reply)}
-                              className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all"
+                              className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-60 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all"
                             >
                               <CheckCircle2 className="w-5 h-5" />
-                              <span>🎉 ඔව්, ලේ ලැබුණා (ස්තූති කර දීර්ඝායුෂ ප්‍රාර්ථනා කරන්න)</span>
+                              <span>
+                                {isConfirmingReceived
+                                  ? '⏳ තහවුරු කරමින් පවතී...'
+                                  : '🎉 ඔව්, ලේ ලැබුණා (ස්තූති කර දීර්ඝායුෂ ප්‍රාර්ථනා කරන්න)'}
+                              </span>
                             </button>
                           </div>
                         ) : (

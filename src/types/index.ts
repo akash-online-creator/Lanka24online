@@ -195,6 +195,8 @@ export interface HelpPost {
   patientName?: string;
   hospitalName?: string;
   unitsNeeded?: number;
+  unitsReceived?: number;
+  isFulfilled?: boolean;
   neededDate?: string;
   additionalNotes?: string;
   bloodWorkflowStep?: number;
@@ -961,6 +963,8 @@ export interface BloodDonationRequest {
   patientName: string;
   bloodGroup: BloodGroup;
   unitsNeeded: number;
+  unitsReceived?: number;
+  isFulfilled?: boolean;
   hospitalName: string;
   district: string;
   urgency: 'urgent' | 'within_24h' | 'planned';

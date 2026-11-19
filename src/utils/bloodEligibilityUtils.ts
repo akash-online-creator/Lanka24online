@@ -108,9 +108,13 @@ export function createBloodDonationHonorPost(
         posterName?: string;
         posterId?: string;
         originalPostCode?: string;
+        lat?: number | null;
+        lng?: number | null;
       },
   hospitalNameArg?: string,
-  districtArg?: string
+  districtArg?: string,
+  latArg?: number | null,
+  lngArg?: number | null
 ): HelpPost {
   const isObj = typeof donorNameOrParams === 'object' && donorNameOrParams !== null;
   const rawDonor = isObj ? donorNameOrParams.donorName : donorNameOrParams;
@@ -120,6 +124,9 @@ export function createBloodDonationHonorPost(
   const district = isObj ? donorNameOrParams.location : districtArg;
   const cleanDist =
     district && !cleanHosp.includes(district) ? ` (${district})` : '';
+  const coordLat = isObj ? donorNameOrParams.lat : latArg;
+  const coordLng = isObj ? donorNameOrParams.lng : lngArg;
+  const hasCoords = typeof coordLat === 'number' && !isNaN(coordLat) && typeof coordLng === 'number' && !isNaN(coordLng);
   const nowIso = new Date().toISOString();
   const nowMs = Date.now();
   const postCode = `#SRV-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -150,6 +157,7 @@ export function createBloodDonationHonorPost(
     location: `${cleanHosp}${cleanDist}`,
     locationName: `${cleanHosp}${cleanDist}`,
     district: district || 'ශ්‍රී ලංකා',
+    ...(hasCoords ? { lat: coordLat, lng: coordLng, latitude: coordLat, longitude: coordLng } : {}),
     date: 'මේ දැන්',
     createdAt: nowIso,
     createdAtIso: nowIso,

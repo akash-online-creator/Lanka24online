@@ -615,6 +615,24 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       const txt = `${p?.title || ''} ${p?.whatHappened || ''} ${p?.whatIsNeeded || ''}`.trim().toLowerCase();
       if (txt) existingTextLower.push(txt);
     });
+    // Also record resolved/fulfilled blood post IDs & postCodes so storedBloodPosts NEVER resurrects a completed blood ad!
+    const resolvedBloodKeys = new Set<string>();
+    (helpPosts || []).forEach((p: any) => {
+      if (!p) return;
+      const isDone = Boolean(
+        p.isResolved ||
+          p.status === 'resolved' ||
+          p.status === 'fulfilled' ||
+          p.status === 'completed' ||
+          p.isFulfilled ||
+          Number(p.bloodWorkflowStep || 0) >= 5 ||
+          (Number(p.unitsReceived || 0) > 0 && Number(p.unitsReceived || 0) >= Math.max(1, Number(p.unitsNeeded || 1)))
+      );
+      if (isDone) {
+        if (p.id) resolvedBloodKeys.add(String(p.id));
+        if (p.postCode) resolvedBloodKeys.add(String(p.postCode).trim().toUpperCase());
+      }
+    });
 
     const isRedAlertCategoryView = Boolean(
       !boardCategoryFilter ||
@@ -743,6 +761,23 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
           .filter((b: any) => {
             if (!b || !b.id) return false;
             if (isBloodPermanentlyDeleted(b.id) || isPostPermanentlyDeleted(b.id)) return false;
+            const reqUnits = Math.max(1, Number(b.unitsNeeded || 1));
+            const recUnits = Number(b.unitsReceived || 0);
+            if (
+              b.status === 'fulfilled' ||
+              b.status === 'resolved' ||
+              b.status === 'completed' ||
+              b.status === 'cancelled' ||
+              b.isFulfilled === true ||
+              b.isResolved === true ||
+              (recUnits > 0 && recUnits >= reqUnits)
+            ) {
+              return false;
+            }
+            const bCodeUpper = String(b.postCode || '').trim().toUpperCase();
+            if (resolvedBloodKeys.has(String(b.id)) || (bCodeUpper && resolvedBloodKeys.has(bCodeUpper))) {
+              return false;
+            }
             if (existingCodes.has(String(b.id)) || existingCodes.has(String(b.postCode || ''))) return false;
             const pName = String(b.patientName || '').trim().toLowerCase();
             const hName = String(b.hospitalName || '').trim().toLowerCase();
@@ -761,6 +796,8 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
               serviceType: 'blood_donation',
               postType: 'blood_request',
               bloodGroup: b.bloodGroup,
+              unitsNeeded: Number(b.unitsNeeded || 1),
+              unitsReceived: Number(b.unitsReceived || 0),
               tagCategory: 'හදිසි / ආපදා',
               tagName: `🩸 හදිසි ${b.bloodGroup} ලේ අවශ්‍යතාවය`,
               headline: bTitle,
@@ -1031,7 +1068,24 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       if (existingIds.has(String(a.alertCode || a.id)) || existingIds.has(String(a.id))) return false;
       return true;
     }).length;
-    const extraBloodCount = (getStoredBloodRequests() || []).filter((b: any) => b && b.id && !isBloodPermanentlyDeleted(b.id) && !isPostPermanentlyDeleted(b.id) && !existingIds.has(String(b.postCode || b.id))).length;
+    const extraBloodCount = (getStoredBloodRequests() || []).filter((b: any) => {
+      if (!b || !b.id) return false;
+      if (isBloodPermanentlyDeleted(b.id) || isPostPermanentlyDeleted(b.id)) return false;
+      const reqUnits = Math.max(1, Number(b.unitsNeeded || 1));
+      const recUnits = Number(b.unitsReceived || 0);
+      if (
+        b.status === 'fulfilled' ||
+        b.status === 'resolved' ||
+        b.status === 'completed' ||
+        b.status === 'cancelled' ||
+        b.isFulfilled === true ||
+        b.isResolved === true ||
+        (recUnits > 0 && recUnits >= reqUnits)
+      ) {
+        return false;
+      }
+      return !existingIds.has(String(b.postCode || b.id)) && !existingIds.has(String(b.id));
+    }).length;
     const extraDisasterCount = (getStoredDisasterReliefItems() || []).filter((d: any) => d && d.id && !isDisasterPermanentlyDeleted(d.id) && !isPostPermanentlyDeleted(d.id) && !existingIds.has(String(d.id))).length;
     const extraJobsCount = (Array.isArray(liveJobs) ? liveJobs : []).filter((j: any) => j && j.id && !existingIds.has(String(j.id))).length;
     const extraAccCount = (Array.isArray(liveAccommodations) ? liveAccommodations : []).filter((acc: any) => acc && acc.id && !existingIds.has(String(acc.id))).length;

@@ -82,7 +82,14 @@ export function isPostHelpersSatisfiedOrFilled(post: HelpPost): boolean {
       (post.tagName && String(post.tagName).includes('ලේ'))
   );
   if (isBloodPost) {
-    return Number((post as any).bloodWorkflowStep || 0) >= 5;
+    const reqUnits = Math.max(1, Number((post as any).unitsNeeded || post.helpersNeeded || 1));
+    const recUnits = Number((post as any).unitsReceived || 0);
+    return (
+      Number((post as any).bloodWorkflowStep || 0) >= 5 ||
+      Boolean((post as any).isFulfilled) ||
+      (post.status as string) === 'fulfilled' ||
+      (recUnits > 0 && recUnits >= reqUnits)
+    );
   }
 
   // 2. If status is already confirmed or filled

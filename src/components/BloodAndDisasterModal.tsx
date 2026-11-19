@@ -574,9 +574,43 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     const seenPostCodes = new Set<string>();
     const seenPatients = new Set<string>();
 
+    const resolvedHelpPostKeys = new Set<string>();
+    (helpPosts || []).forEach((p: any) => {
+      if (!p) return;
+      const reqU = Math.max(1, Number(p.unitsNeeded || p.helpersNeeded || 1));
+      const recU = Number(p.unitsReceived || 0);
+      if (
+        p.isResolved ||
+        p.status === 'resolved' ||
+        p.status === 'fulfilled' ||
+        p.status === 'completed' ||
+        p.isFulfilled ||
+        Number(p.bloodWorkflowStep || 0) >= 5 ||
+        (recU > 0 && recU >= reqU)
+      ) {
+        if (p.id) resolvedHelpPostKeys.add(String(p.id));
+        if (p.postCode) resolvedHelpPostKeys.add(String(p.postCode).trim().toUpperCase());
+      }
+    });
+
     for (const b of bloodRequests) {
       if (!b || !b.id) continue;
       if (isBloodPermanentlyDeleted(b.id) || isPostPermanentlyDeleted(b.id)) continue;
+      const bReqU = Math.max(1, Number(b.unitsNeeded || 1));
+      const bRecU = Number((b as any).unitsReceived || 0);
+      const bCodeUpper = String(b.postCode || '').trim().toUpperCase();
+      if (
+        b.status === 'fulfilled' ||
+        (b.status as string) === 'resolved' ||
+        (b.status as string) === 'completed' ||
+        b.status === 'cancelled' ||
+        (b as any).isFulfilled === true ||
+        (bRecU > 0 && bRecU >= bReqU) ||
+        resolvedHelpPostKeys.has(String(b.id)) ||
+        (bCodeUpper && resolvedHelpPostKeys.has(bCodeUpper))
+      ) {
+        continue;
+      }
       map.set(String(b.id), b);
       if (b.postCode) seenPostCodes.add(String(b.postCode));
       if (b.patientName) seenPatients.add(`${b.patientName.trim().toLowerCase()}|${(b.bloodGroup || '').toLowerCase()}`);
@@ -585,6 +619,19 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       for (const p of helpPosts) {
         if (!p || !p.id) continue;
         if (p.isDeleted || p.status === 'deleted' || isPostPermanentlyDeleted(p.id) || isBloodPermanentlyDeleted(p.id)) {
+          continue;
+        }
+        const pReqU = Math.max(1, Number((p as any).unitsNeeded || p.helpersNeeded || 1));
+        const pRecU = Number((p as any).unitsReceived || 0);
+        if (
+          p.isResolved ||
+          p.status === 'resolved' ||
+          (p.status as string) === 'fulfilled' ||
+          p.status === 'completed' ||
+          (p as any).isFulfilled === true ||
+          Number((p as any).bloodWorkflowStep || 0) >= 5 ||
+          (pRecU > 0 && pRecU >= pReqU)
+        ) {
           continue;
         }
         const pCode = String(p.postCode || '');
@@ -605,7 +652,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
           if (map.has(id) || (pCode && seenPostCodes.has(pCode))) continue;
           const bgMatch = `${p.tagName || ''} ${p.whatHappened || ''} ${p.whatIsNeeded || ''}`.match(/(A\+|A-|B\+|B-|AB\+|AB-|O\+|O-)/i);
           const bg = (bgMatch ? bgMatch[1].toUpperCase() : 'O+') as BloodGroup;
-          const pName = (p.contactPersonName || p.authorName || 'රෝගියා').trim();
+          const pName = ((p as any).patientName || p.contactPersonName || p.authorName || 'රෝගියා').trim();
           const patientKey = `${pName.toLowerCase()}|${bg.toLowerCase()}`;
           if (seenPatients.has(patientKey)) continue;
           if (pCode) seenPostCodes.add(pCode);
@@ -615,11 +662,12 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
             postCode: pCode || `#BLD-${id.slice(-4)}`,
             patientName: pName,
             bloodGroup: bg,
-            unitsNeeded: 1,
-            hospitalName: p.locationName || p.district || 'රෝහල',
+            unitsNeeded: pReqU,
+            unitsReceived: pRecU,
+            hospitalName: (p as any).hospitalName || p.locationName || p.district || 'රෝහල',
             district: p.district || 'කොළඹ',
             urgency: 'urgent',
-            neededDate: 'හදිසි (Urgent)',
+            neededDate: (p as any).neededDate || 'හදිසි (Urgent)',
             contactName: p.contactPersonName || p.authorName || 'සම්බන්ධීකාරක',
             contactPhone: p.contactNumber || p.phone || '',
             additionalNotes: p.whatIsNeeded || p.whatHappened || '',
@@ -901,10 +949,13 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                 const linkedPost = resolveLinkedHelpPost(req);
                 const isPoster = isPosterOfBloodReq(req, linkedPost);
                 const repliesList = deduplicatePostReplies(Array.isArray(linkedPost?.replies) ? linkedPost.replies : [], linkedPost);
-                const offersCount = repliesList.length > 0 ? repliesList.length : Math.min(req.supportedCount || 0, 1);
+                const activeRepliesList = repliesList.filter((r: any) => r && !r.declinedByPoster && !r.bloodReceivedConfirmed && Number(r.workflowStep || 0) < 5);
+                const offersCount = activeRepliesList.length > 0 ? activeRepliesList.length : 0;
+                const reqUnitsTotal = Math.max(1, Number((linkedPost as any)?.unitsNeeded || req.unitsNeeded || 1));
+                const recUnitsTotal = Math.max(Number((linkedPost as any)?.unitsReceived || 0), Number((req as any).unitsReceived || 0));
                 const viewerPhone = (currentUser?.phone || (currentUser as any)?.whatsappNumber || '').replace(/\D/g, '');
                 const myReply = !isPoster && currentUser
-                  ? repliesList.find((r: any) => {
+                  ? activeRepliesList.find((r: any) => {
                       if (!r) return false;
                       const rPhone = String(r.responderPhone || '').replace(/\D/g, '');
                       return Boolean(
@@ -916,7 +967,12 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                   : null;
                 const isSupported = Boolean(myReply || (req.id ? supportedBloodIds.includes(req.id) : false));
                 const isMyReplyConfirmed = Boolean(myReply && (myReply.isConfirmed || myReply.isAccepted));
-                const isFulfilled = Boolean(req.status === 'fulfilled' || linkedPost?.isResolved || linkedPost?.status === 'resolved');
+                const isFulfilled = Boolean(
+                  req.status === 'fulfilled' ||
+                    linkedPost?.isResolved ||
+                    linkedPost?.status === 'resolved' ||
+                    (recUnitsTotal > 0 && recUnitsTotal >= reqUnitsTotal)
+                );
                 const currentStepNum = isFulfilled
                   ? 4
                   : Boolean((linkedPost as any)?.bloodDonatedByHelper || Number((linkedPost as any)?.bloodWorkflowStep || 0) >= 4 || Number(myReply?.workflowStep || 0) >= 4)
@@ -961,6 +1017,11 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                               ⏳ ඉදිරිපත් වී ඇත (සහයක)
                             </span>
                           ) : null}
+                          {recUnitsTotal > 0 && recUnitsTotal < reqUnitsTotal && (
+                            <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 font-black px-2.5 py-0.5 rounded-full border border-emerald-400">
+                              🩸 ලැබුණු පයින්ට්: {recUnitsTotal}/{reqUnitsTotal}
+                            </span>
+                          )}
                           {isFulfilled && (
                             <span className="text-[10px] bg-teal-600 text-white font-black px-2.5 py-0.5 rounded-full">
                               🎉 ලේ ලැබුණා • අවසන්
@@ -968,8 +1029,8 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                           )}
                           <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
                             {isPoster || isAdmin || isMyReplyConfirmed
-                              ? `${maskName(req.patientName, isDemo)} වෙනුවෙන් (පයින්ට් ${req.unitsNeeded}ක්)`
-                              : `${req.bloodGroup} රුධිර අවශ්‍යතාවයක් (පයින්ට් ${req.unitsNeeded}ක්)`}
+                              ? `${maskName(req.patientName, isDemo)} වෙනුවෙන් (පයින්ට් ${reqUnitsTotal}ක්)`
+                              : `${req.bloodGroup} රුධිර අවශ්‍යතාවයක් (පයින්ට් ${reqUnitsTotal}ක්)`}
                           </h4>
                           {req.urgency === 'urgent' && !isFulfilled && (
                             <span className="text-[9px] bg-red-600 text-white font-extrabold px-2 py-0.5 rounded-full animate-pulse">

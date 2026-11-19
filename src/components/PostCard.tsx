@@ -609,25 +609,33 @@ const isMyReplyConfirmed = Boolean(
     (post.isConfirmed && (post.confirmedHelperName === myReply.responderName || post.confirmedHelperId === myReply.responderId))
   )
 );
-const offersCount = cleanReplies.length;
+const activeBloodReplies = cleanReplies.filter(
+  (r: any) => r && !r.declinedByPoster && !r.bloodReceivedConfirmed && Number(r.workflowStep || 0) < 5
+);
+const offersCount = isBloodCardType ? activeBloodReplies.length : cleanReplies.length;
+const bloodUnitsNeededCard = Math.max(1, Number((post as any).unitsNeeded || post.helpersNeeded || 1));
+const bloodUnitsReceivedCard = Number((post as any).unitsReceived || 0);
 const isBloodCompletedOnCard = Boolean(
   post.isResolved ||
   post.status === 'resolved' ||
+  (post.status as string) === 'fulfilled' ||
+  (post as any).isFulfilled === true ||
   post.serviceStage === 'completed' ||
-  Number((post as any).bloodWorkflowStep) >= 5
+  Number((post as any).bloodWorkflowStep) >= 5 ||
+  (bloodUnitsReceivedCard > 0 && bloodUnitsReceivedCard >= bloodUnitsNeededCard)
 );
 const isBloodStep3DoneOnCard = Boolean(
   isBloodCompletedOnCard ||
   (post as any).bloodDonatedByHelper ||
   Number((post as any).bloodWorkflowStep) >= 4 ||
-  cleanReplies.some((r: any) => r?.bloodDonatedByHelper || Number(r?.workflowStep) >= 4)
+  activeBloodReplies.some((r: any) => r?.bloodDonatedByHelper || Number(r?.workflowStep) >= 4)
 );
 const isBloodStep2DoneOnCard = Boolean(
   isBloodStep3DoneOnCard ||
   post.isConfirmed ||
-  isMyReplyConfirmed ||
+  (isMyReplyConfirmed && !((myReply as any)?.bloodReceivedConfirmed || Number((myReply as any)?.workflowStep) >= 5)) ||
   Number((post as any).bloodWorkflowStep) >= 3 ||
-  cleanReplies.some((r: any) => r?.isConfirmed || r?.isAccepted || Number(r?.workflowStep) >= 3)
+  activeBloodReplies.some((r: any) => r?.isConfirmed || r?.isAccepted || Number(r?.workflowStep) >= 3)
 );
 const cardBloodStep: 1 | 2 | 3 | 4 | 5 = isBloodCompletedOnCard
   ? 5
@@ -920,7 +928,11 @@ isBloodCardType ? h('div', { className: 'p-4 rounded-2xl bg-rose-50/80 dark:bg-r
       h(Droplet, { className: 'w-4 h-4 fill-current' }),
       h('span', null, 'අවශ්‍ය රුධිර වර්ගය: ' + (bloodGroupVal || 'හදිසි'))
     ),
-    h('span', { className: 'px-3 py-1 rounded-full bg-rose-600 text-white text-xs font-black' }, 'ඒකක ' + unitsVal)
+    h('span', { className: 'px-3 py-1 rounded-full bg-rose-600 text-white text-xs font-black' },
+      bloodUnitsReceivedCard > 0 && bloodUnitsReceivedCard < Number(unitsVal || 1)
+        ? `පයින්ට් ${bloodUnitsReceivedCard}/${unitsVal} ලැබුණි`
+        : 'ඒකක ' + unitsVal
+    )
   ),
   canSeeBloodConfidential ? h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs' },
     h('div', { className: 'p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-rose-200/70 dark:border-slate-800' },

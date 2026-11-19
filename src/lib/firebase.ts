@@ -1023,8 +1023,15 @@ export async function updateHelpPostInFirestore(postId: string, updateData: any)
       if (sanitized.bloodDonatedByHelper !== undefined) {
         bloodSyncPayload.bloodDonatedByHelper = sanitized.bloodDonatedByHelper;
       }
-      if (sanitized.isResolved === true || sanitized.status === 'resolved') {
+      if (sanitized.unitsReceived !== undefined) {
+        bloodSyncPayload.unitsReceived = sanitized.unitsReceived;
+      }
+      if (sanitized.unitsNeeded !== undefined) {
+        bloodSyncPayload.unitsNeeded = sanitized.unitsNeeded;
+      }
+      if (sanitized.isResolved === true || sanitized.status === 'resolved' || sanitized.isFulfilled === true) {
         bloodSyncPayload.status = 'fulfilled';
+        bloodSyncPayload.isFulfilled = true;
       }
       if (Object.keys(bloodSyncPayload).length > 0) {
         setDoc(doc(db, 'blood_requests', postId), bloodSyncPayload, { merge: true }).catch(() => {});

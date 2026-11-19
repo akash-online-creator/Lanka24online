@@ -930,7 +930,17 @@ export const App: React.FC = () => {
               setHelpPosts((prev) => prev.filter((p) => p && p.id !== postId));
             }}
             onUpdatePost={(updated) => {
-              setHelpPosts((prev) => prev.map((p) => p && p.id === updated.id ? updated : p));
+              const upCode = String(updated?.postCode || '').trim().toUpperCase();
+              setHelpPosts((prev) =>
+                prev.map((p) => {
+                  if (!p) return p;
+                  const pCode = String(p.postCode || '').trim().toUpperCase();
+                  if (p.id === updated.id || (upCode && pCode && pCode === upCode)) {
+                    return { ...p, ...updated, id: p.id };
+                  }
+                  return p;
+                })
+              );
             }}
           />
         )}

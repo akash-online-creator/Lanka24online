@@ -389,22 +389,25 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
         const getPostStepNumber = (p: any): number => {
           if (!p) return 1;
-          if (p.isResolved || p.status === 'resolved' || p.serviceStage === 'completed' || Number(p.bloodWorkflowStep) >= 5) return 5;
+          if (p.isResolved || p.status === 'resolved' || p.status === 'fulfilled' || p.isFulfilled || p.serviceStage === 'completed' || Number(p.bloodWorkflowStep) >= 5) return 5;
+          const activeReps = Array.isArray(p.replies)
+            ? p.replies.filter((r: any) => r && !r.declinedByPoster && !r.bloodReceivedConfirmed && Number(r.workflowStep || 0) < 5)
+            : [];
           if (
             p.bloodDonatedByHelper ||
             Number(p.bloodWorkflowStep) >= 4 ||
-            (Array.isArray(p.replies) && p.replies.some((r: any) => r?.bloodDonatedByHelper || Number(r?.workflowStep) >= 4))
+            activeReps.some((r: any) => r?.bloodDonatedByHelper || Number(r?.workflowStep) >= 4)
           ) {
             return 4;
           }
           if (
             p.isConfirmed ||
             Number(p.bloodWorkflowStep) >= 3 ||
-            (Array.isArray(p.replies) && p.replies.some((r: any) => r?.isConfirmed || r?.isAccepted || Number(r?.workflowStep) >= 3))
+            activeReps.some((r: any) => r?.isConfirmed || r?.isAccepted || Number(r?.workflowStep) >= 3)
           ) {
             return 3;
           }
-          if ((Array.isArray(p.replies) && p.replies.length > 0) || Number(p.bloodWorkflowStep) >= 2) return 2;
+          if (activeReps.length > 0 || Number(p.bloodWorkflowStep) >= 2) return 2;
           return 1;
         };
 
@@ -612,7 +615,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 newStep === 3 &&
                 (prevStep < 3 || (newStepTime > prevStepTime && p.lastStepByRole === 'poster'))
               ) {
-                const step3Key = `${stepPostKey}:step3`;
+                const pintTag = `p${Number((p as any).unitsReceived || 0)}`;
+                const step3Key = `${stepPostKey}:${pintTag}:step3`;
                 if (!handledBloodStepKeysRef.current.has(step3Key)) {
                   handledBloodStepKeysRef.current.add(step3Key);
                   setSelectedPostForOffer(null);
@@ -638,13 +642,15 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               // Step 3 (Donor started coming / Live Location active) -> Silently Auto Pop-Up ONCE on Poster's screen showing ONLY Live Location + Phone + Chat (NO bell ringing!)
               if (isBlood && isOwner && newStep === 3) {
                 const selectedRep =
-                  currentReplies.find((r: any) => r && (r.isConfirmed || r.isAccepted)) || currentReplies[0];
+                  currentReplies.find((r: any) => r && !r.bloodReceivedConfirmed && Number(r.workflowStep || 0) < 5 && (r.isConfirmed || r.isAccepted)) ||
+                  currentReplies.find((r: any) => r && !r.bloodReceivedConfirmed && Number(r.workflowStep || 0) < 5) ||
+                  currentReplies[0];
                 const liveLoc = (selectedRep as any)?.donorLiveLocation || (p as any).donorLiveLocation;
                 const hasLiveOrAck = Boolean(
                   (liveLoc && typeof liveLoc.lat === 'number' && typeof liveLoc.lng === 'number') ||
                     (selectedRep as any)?.step3GuidelinesAccepted
                 );
-                const posterLiveKey = `${stepPostKey}:poster_live_loc`;
+                const posterLiveKey = `${stepPostKey}:p${Number((p as any).unitsReceived || 0)}:poster_live_loc`;
                 if (hasLiveOrAck && !handledBloodStepKeysRef.current.has(posterLiveKey)) {
                   handledBloodStepKeysRef.current.add(posterLiveKey);
                   stopContinuousSupportBell();
@@ -661,7 +667,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 newStep === 4 &&
                 (prevStep < 4 || (newStepTime > prevStepTime && p.lastStepByRole === 'helper'))
               ) {
-                const step4Key = `${stepPostKey}:step4`;
+                const step4Key = `${stepPostKey}:p${Number((p as any).unitsReceived || 0)}:step4`;
                 if (!handledBloodStepKeysRef.current.has(step4Key)) {
                   handledBloodStepKeysRef.current.add(step4Key);
                   setSelectedPostForOffer(null);
@@ -671,7 +677,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                   if (isBlood) {
                     const donatedDonorName =
                       p.confirmedHelperName ||
-                      currentReplies.find((r: any) => r?.isConfirmed || r?.isAccepted)?.responderName ||
+                      currentReplies.find((r: any) => r && !r.bloodReceivedConfirmed && (r.isConfirmed || r.isAccepted))?.responderName ||
                       'පරිත්‍යාගශීලියා';
                     triggerSupportOfferAlert({
                       postId: pid,
@@ -776,8 +782,17 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         setLocalHelpPosts((prev) => {
           const list = prev || [];
           if (list.some((p) => p && p.id === newPost.id)) return list;
-          return [newPost, ...list];
+          const next = [newPost, ...list];
+          saveHelpPostsToStorage(next);
+          return next;
         });
+        if (typeof setHelpPosts === 'function') {
+          setHelpPosts((prev: HelpPost[]) => {
+            const list = prev || [];
+            if (list.some((p) => p && p.id === newPost.id)) return list;
+            return [newPost, ...list];
+          });
+        }
       }
     };
     window.addEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
@@ -1735,10 +1750,16 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     // 01. දැන්වීමට අවශ්‍ය සහයකයින් ගණන තෝරාගත් පසු හෝ සේවාව අවසන් වූ පසු දැන්වීම ප්‍රධාන පුවරුවෙන් ඉවත් කිරීම (දැන්වීම්කරුට අවසන් වන තුරුම පෙනේ)
     if (boardCategoryFilter !== 'resolved') {
       const isOwner = checkIsPostOwner(user, post);
-      if (!isOwner && isPostHelpersSatisfiedOrFilled(post)) {
+      const isFullyDone = Boolean(
+        post.isResolved ||
+          post.status === 'resolved' ||
+          (post.status as string) === 'fulfilled' ||
+          (post as any).isFulfilled === true
+      );
+      if (isFullyDone) {
         return false;
       }
-      if (isOwner && (post.isResolved || post.status === 'resolved')) {
+      if (!isOwner && isPostHelpersSatisfiedOrFilled(post)) {
         return false;
       }
     }
