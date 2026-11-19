@@ -996,7 +996,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
 
                         <div className="flex items-center gap-3 flex-wrap text-[11px] text-slate-500 dark:text-slate-400">
                           <span>
-                            🏥 දැන්වීම්කරු: <strong className="text-slate-700 dark:text-slate-300">{req.contactName || req.patientName}</strong>
+                            🏥 දැන්වීම්කරු: <strong className="text-slate-700 dark:text-slate-300">{req.contactName || (isPoster || isAdmin || isMyReplyConfirmed ? req.patientName : 'දැන්වීම්කරු')}</strong>
                           </span>
                           <span>
                             🗓️ අවශ්‍ය දිනය: <strong className="text-slate-700 dark:text-slate-300">{req.neededDate}</strong>
@@ -1114,7 +1114,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                             className="px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl bg-gradient-to-r from-rose-600 via-red-600 to-rose-700 hover:from-rose-700 hover:to-red-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg active:scale-95 transition-all cursor-pointer border-2 border-rose-300/80 hover:scale-105"
                           >
                             <HeartHandshake className="w-4 h-4 text-rose-200" />
-                            <span>🩸 ලේ ලබාදෙන්න</span>
+                            <span>🩸 රුධිර පරික්ෂණය</span>
                           </button>
                         </div>
                       )}

@@ -169,6 +169,13 @@ const isDemo = Boolean(propIsDemo ?? currentUser?.isDemo);
 const isAdmin = !isDemo && checkIsAdmin(currentUser);
 const ownerCheck = isOwner ?? checkIsPostOwner(currentUser, post);
 const canModify = ownerCheck ? true : isAdmin;
+const isBloodHonorPost = Boolean(
+  post.postType === ('blood_donation_honor' as any) ||
+  (post as any).isAdminOnlyDelete ||
+  String(post.postCode || '').toUpperCase().startsWith('#HONOR-')
+);
+const canEditPost = isBloodHonorPost ? isAdmin : canModify;
+const canDeletePost = isBloodHonorPost ? isAdmin : canModify;
 const isHiddenByReports = Boolean(post.isHidden ? true : post.reportsCount && post.reportsCount >= 5);
 if (!isAdmin && isHiddenByReports) {
 return null;
@@ -407,6 +414,7 @@ console.warn('Comment sync error:', err);
 };
 const handleDelete = async (e?: React.MouseEvent) => {
 if (e) e.stopPropagation();
+if (isBloodHonorPost && !isAdmin) return;
 if (!window.confirm(getLangText('මෙම දැන්වීම ඉවත් කිරීමට ඔබට සහතිකද?', 'Are you sure you want to delete this post?', 'இந்த இடுகையை நீக்க உறுதியாக உள்ளீர்களா?'))) {
 return;
 }
@@ -705,7 +713,7 @@ const renderInteractiveActionBar = () => {
           ? getLangText('✅ තෝරාගෙන ඇත • විස්තර', '✅ Confirmed • Details', '✅ உறுதி')
           : getLangText('⏳ ඉදිරිපත් වී ඇත • විස්තර', '⏳ Offered • Details', '⏳ வழங்கப்பட்டது')
         : isBloodCardType
-          ? getLangText('🩸 ලේ ලබාදෙන්න (පියවර 1)', '🩸 Donate Blood (Step 1)', '🩸 இரத்தம் வழங்கவும்')
+          ? getLangText('🩸 රුධිර පරික්ෂණය', '🩸 Blood Test', '🩸 இரத்த பரிசோதனை')
           : getLangText('සහාය වන්න', 'Help', 'உதவுக');
 
 return h('div', {
@@ -740,17 +748,17 @@ type: 'button',
 onClick: handleChatClick,
 className: 'px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700/60 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 text-xs font-bold shadow-xs',
 title: 'අවශ්‍ය නම් පමණක් Chat පණිවිඩයක් එවන්න'
-}, h(MessageCircle, { className: 'w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400' }), h('span', null, 'Chat')), Boolean(onOfferSupport ? true : onOpenSupportOffers ? true : onOpenConfirm) ? h('button', {
+}, h(MessageCircle, { className: 'w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400' }), h('span', null, 'Chat')), !isBloodHonorPost && Boolean(onOfferSupport ? true : onOpenSupportOffers ? true : onOpenConfirm) ? h('button', {
 type: 'button',
 onClick: handleSupportClick,
 className: 'px-3 py-1.5 rounded-xl ' + ((post as any)?.rawRedAlert || (isBloodCardType && !ownerCheck && !myReply) ? 'bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 ' : ownerCheck ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 ' : 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 ') + 'text-white flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 text-xs font-black shadow-sm',
 title: (post as any)?.rawRedAlert ? 'රතු එළිය විස්තරය සහ සත්‍ය/අසත්‍ය ලකුණු' : ownerCheck ? 'ඉදිරිපත් වූ සහායකයින් / පරිත්‍යාග පියවර බලන්න' : myReply ? 'ලේ පරිත්‍යාග පියවර විවෘත කරන්න' : 'සහාය වන්න (Offer Support)'
-}, h(ownerCheck && !(post as any)?.rawRedAlert ? UserCheck : HelpCircle, { className: 'w-3.5 h-3.5' }), h('span', null, supportBtnLabel)) : null, canModify && onEditPost ? h('button', {
+}, h(ownerCheck && !(post as any)?.rawRedAlert ? UserCheck : HelpCircle, { className: 'w-3.5 h-3.5' }), h('span', null, supportBtnLabel)) : null, canEditPost && onEditPost ? h('button', {
 type: 'button',
 onClick: handleEditClick,
 className: 'p-1.5 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/60 rounded-xl cursor-pointer active:scale-95',
 title: 'සංස්කරණය කරන්න (Edit)'
-}, h(Pencil, { className: 'w-3.5 h-3.5' })) : null, canModify ? h('button', {
+}, h(Pencil, { className: 'w-3.5 h-3.5' })) : null, canDeletePost ? h('button', {
 type: 'button',
 onClick: handleDelete,
 className: 'p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl cursor-pointer active:scale-95',
@@ -885,7 +893,7 @@ isBloodCardType ? h('div', { className: 'p-4 rounded-2xl bg-rose-50/80 dark:bg-r
         h('span', null, '🔒 රෝහල, වාට්ටු අංකය, ගොනු අංකය සහ දුරකථන අංකය ආරක්ෂිතව සඟවා ඇත')
       ),
       h('p', { className: 'text-[11px] font-bold leading-relaxed' },
-        'පරිත්‍යාගශීලියෙකු තෝරාගන්නා තුරු රෝහල, වාට්ටු අංකය, ගොනු අංකය සහ දුරකථන අංක පෙන්වනු නොලැබේ. ලේ පරිත්‍යාග කිරීමට පහත "🩸 ලේ ලබාදෙන්න" බොත්තම ඔබා සුදුසුකම් පරීක්ෂාවට ඉදිරිපත් වන්න.'
+        'පරිත්‍යාගශීලියෙකු තෝරාගන්නා තුරු රෝහල, වාට්ටු අංකය, ගොනු අංකය සහ දුරකථන අංක පෙන්වනු නොලැබේ. ලේ පරිත්‍යාග කිරීමට පහත "🩸 රුධිර පරික්ෂණය" බොත්තම ඔබා සුදුසුකම් පරීක්ෂාවට ඉදිරිපත් වන්න.'
       )
     )
   )
@@ -986,7 +994,9 @@ audioUrl: post.audioUrl,
 durationSec: post.audioDurationSec
 })) : null, h('div', {
 className: (shouldCap16x9 ? 'w-full aspect-video max-h-[250px] justify-between ' : 'w-full h-auto ') + 'rounded-2xl ' + (
-  (post?.category === 'red_alert' || post?.category === 'emergency' || (post?.title && post.title.includes('රතු එළිය')) || (post?.tag && post.tag.includes('රතු එළිය')) || (post?.disasterType))
+  isBloodHonorPost
+    ? 'bg-gradient-to-br from-amber-50 via-rose-50/90 to-emerald-50 dark:from-[#1d1405] dark:via-[#1e0b11] dark:to-[#071f14] border-2 border-amber-400 dark:border-amber-600/80 '
+    : (post?.category === 'red_alert' || post?.category === 'emergency' || (post?.title && post.title.includes('රතු එළිය')) || (post?.tag && post.tag.includes('රතු එළිය')) || (post?.disasterType))
     ? 'bg-gradient-to-br from-[#450a0a] via-[#991b1b] to-[#f43f5e] text-white border-2 border-red-500/80 '
     : (post?.category === 'quick_services' || post?.category === 'quick_service' || (post?.title && post.title.includes('ඉක්මන්')) || (post?.tag && post.tag.includes('ඉක්මන්')) || (post?.serviceType === 'quick'))
     ? 'bg-gradient-to-br from-[#064e3b] via-[#047857] to-[#10b981] text-white border-2 border-emerald-500/80 '
@@ -994,7 +1004,7 @@ className: (shouldCap16x9 ? 'w-full aspect-video max-h-[250px] justify-between '
     ? 'bg-gradient-to-br from-[#fbbf24] via-[#f97316] to-[#ea580c] text-slate-950 border-2 border-amber-300 '
     : 'bg-gradient-to-br from-[#f2fcf7] via-white to-[#e8f7f0] dark:from-[#05180f] dark:via-[#072014] dark:to-[#04140b] border-2 border-emerald-400/80 dark:border-emerald-800/90 '
 ) + 'p-3 sm:p-3.5 flex flex-col overflow-hidden shadow-inner group relative'
-}, rawHeadline ? h('div', { className: 'w-full px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-200/90 via-white to-emerald-100/90 dark:from-emerald-800/85 dark:via-[#0b291a] dark:to-emerald-900/85 border-2 border-emerald-500/70 shadow-2xs shrink-0 ' + (Boolean(shortDesc ? true : hasValidImage ? true : localPoll) ? 'mb-2 ' : '') + 'flex items-center justify-between gap-2' }, h('h3', {
+}, rawHeadline ? h('div', { className: 'w-full px-3.5 py-2 rounded-xl ' + (isBloodHonorPost ? 'bg-gradient-to-r from-amber-200/90 via-rose-100 to-emerald-100 dark:from-amber-900/80 dark:via-rose-950/80 dark:to-emerald-900/80 border-2 border-amber-500/80 ' : 'bg-gradient-to-r from-emerald-200/90 via-white to-emerald-100/90 dark:from-emerald-800/85 dark:via-[#0b291a] dark:to-emerald-900/85 border-2 border-emerald-500/70 ') + 'shadow-2xs shrink-0 ' + (Boolean(shortDesc ? true : hasValidImage ? true : localPoll) ? 'mb-2 ' : '') + 'flex items-center justify-between gap-2' }, h('h3', {
 className: 'text-xs sm:text-base font-black text-slate-950 dark:text-white leading-snug line-clamp-2',
 style: { fontFamily: fontStyle }
 }, rawHeadline)) : null, (hasValidImage ? true : Boolean(shortDesc) ? true : Boolean(localPoll)) ? h('div', { className: (shouldCap16x9 ? 'flex-1 min-h-0 ' : '') + 'overflow-hidden flex gap-3 items-center' }, hasValidImage ? h('div', { className: (shortDesc ? 'w-1/2 ' : 'w-full ') + 'h-full max-h-[180px] rounded-xl overflow-hidden bg-slate-900 border border-emerald-300 dark:border-emerald-800 relative shrink-0' }, h('img', {

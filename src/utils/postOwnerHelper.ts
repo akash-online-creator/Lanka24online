@@ -50,6 +50,15 @@ export const checkIsPostOwner = (
   if (!user || !post) return false;
   if ((user as any).isDemo) return false;
 
+  // Blood Donation Honor / Appreciation posts can ONLY be edited or deleted by Admin
+  if (
+    post.postType === ('blood_donation_honor' as any) ||
+    (post as any).isAdminOnlyDelete ||
+    String(post.postCode || '').toUpperCase().startsWith('#HONOR-')
+  ) {
+    return false;
+  }
+
   // 1. Check if this post was created on this browser/device by the current local user
   if (post.id && typeof window !== 'undefined') {
     try {

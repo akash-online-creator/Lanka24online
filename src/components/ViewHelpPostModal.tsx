@@ -55,6 +55,13 @@ const isDemo = Boolean(currentUser?.isDemo);
 const isAdmin = checkIsAdmin(currentUser ? currentUser : undefined);
 const isPostOwner = checkIsPostOwner(currentUser ? currentUser : undefined, post);
 const canModify = isPostOwner ? true : isAdmin;
+const isBloodHonorPost = Boolean(
+  post.postType === ('blood_donation_honor' as any) ||
+  (post as any).isAdminOnlyDelete ||
+  String(post.postCode || '').toUpperCase().startsWith('#HONOR-')
+);
+const canEditPost = isBloodHonorPost ? isAdmin : canModify;
+const canDeletePost = isBloodHonorPost ? isAdmin : canModify;
 const getLangText = (si: string, en: string, ta: string) => {
 if (activeLang === 'en') return en;
 if (activeLang === 'ta') return ta;
@@ -123,11 +130,11 @@ onOpenConfirm: onOpenConfirm ? (p: HelpPost) => {
 onClose();
 onOpenConfirm(p);
 } : undefined,
-onEditPost: onEditPost ? (p: HelpPost) => {
+onEditPost: canEditPost && onEditPost ? (p: HelpPost) => {
 onClose();
 onEditPost(p);
 } : undefined,
-onDeletePost: onDeletePost ? (p: HelpPost) => {
+onDeletePost: canDeletePost && onDeletePost ? (p: HelpPost) => {
 onClose();
 onDeletePost(p);
 } : undefined,
@@ -184,28 +191,28 @@ rel: 'noopener noreferrer',
 className: 'px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[10px] shadow-sm flex items-center gap-1'
 }, 'WhatsApp') : null)));
 }))) : null), /* Footer */
-h('div', { className: 'p-4 bg-slate-100 dark:bg-[#05170f] border-t border-emerald-200 dark:border-emerald-800/80 flex items-center justify-between shrink-0 flex-wrap gap-2' }, h('span', { className: 'text-xs text-slate-500 dark:text-slate-400 font-bold flex items-center gap-1' }, h(CheckCircle2, { className: 'w-4 h-4 text-emerald-500' }), h('span', null, getLangText('සක්‍රීය දැන්වීමකි (Active Ad)', 'Active Ad', 'செயலில் உள்ள விளம்பரம்'))), h('div', { className: 'flex items-center gap-2 flex-wrap justify-end' }, canModify && onEditPost ? h('button', {
+h('div', { className: 'p-4 bg-slate-100 dark:bg-[#05170f] border-t border-emerald-200 dark:border-emerald-800/80 flex items-center justify-between shrink-0 flex-wrap gap-2' }, h('span', { className: 'text-xs text-slate-500 dark:text-slate-400 font-bold flex items-center gap-1' }, h(CheckCircle2, { className: 'w-4 h-4 text-emerald-500' }), h('span', null, getLangText('සක්‍රීය දැන්වීමකි (Active Ad)', 'Active Ad', 'செயலில் உள்ள விளம்பரம்'))), h('div', { className: 'flex items-center gap-2 flex-wrap justify-end' }, canEditPost && onEditPost ? h('button', {
 type: 'button',
 onClick: () => {
 onClose();
 onEditPost(post);
 },
 className: 'px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl cursor-pointer flex items-center gap-1.5 shadow-md active:scale-95 transition-all'
-}, h(Pencil, { className: 'w-3.5 h-3.5' }), h('span', null, getLangText('සංස්කරණය (Edit)', 'Edit', 'திருத்து'))) : null, canModify && onDeletePost ? h('button', {
+}, h(Pencil, { className: 'w-3.5 h-3.5' }), h('span', null, getLangText('සංස්කරණය (Edit)', 'Edit', 'திருத்து'))) : null, canDeletePost && onDeletePost ? h('button', {
 type: 'button',
 onClick: () => {
 onClose();
 onDeletePost(post);
 },
 className: 'px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl cursor-pointer flex items-center gap-1.5 shadow-md active:scale-95 transition-all'
-}, h(Trash2, { className: 'w-3.5 h-3.5' }), h('span', null, getLangText('මකා දමන්න (Delete)', 'Delete', 'நீக்கு'))) : null, !isPostOwner && onOfferSupport ? h('button', {
+}, h(Trash2, { className: 'w-3.5 h-3.5' }), h('span', null, getLangText('මකා දමන්න (Delete)', 'Delete', 'நீக்கு'))) : null, !isPostOwner && !isBloodHonorPost && onOfferSupport ? h('button', {
 type: 'button',
 onClick: () => {
 onClose();
 onOfferSupport(post);
 },
-className: 'px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 text-white font-black text-xs rounded-xl cursor-pointer flex items-center gap-1.5 shadow-md active:scale-95 transition-all'
-}, h(HelpCircle, { className: 'w-4 h-4' }), h('span', null, getLangText('සහාය වන්න', 'Offer Support', 'உதவுக'))) : null, onOpenChat ? h('button', {
+className: 'px-4 py-2 ' + (isBloodPostModal ? 'bg-gradient-to-r from-red-600 to-rose-700 ' : 'bg-gradient-to-r from-emerald-600 to-teal-700 ') + 'text-white font-black text-xs rounded-xl cursor-pointer flex items-center gap-1.5 shadow-md active:scale-95 transition-all'
+}, h(HelpCircle, { className: 'w-4 h-4' }), h('span', null, isBloodPostModal ? getLangText('🩸 රුධිර පරික්ෂණය', '🩸 Blood Test', '🩸 இரத்த பரிசோதனை') : getLangText('සහාය වන්න', 'Offer Support', 'உதவுக'))) : null, onOpenChat ? h('button', {
 type: 'button',
 onClick: () => {
 onClose();

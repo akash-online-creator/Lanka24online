@@ -155,6 +155,8 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
             ? 'patient_details'
             : 'guidelines'
         );
+      } else if (existingMyReply) {
+        setBloodStage('awaiting_selection');
       } else {
         setBloodStage('questions');
       }
@@ -358,8 +360,8 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
     } catch (_) {}
   };
 
-  // Step 1 -> Step 2 handler for Blood Post
-  const handleProceedToGuidelines = (e: React.FormEvent) => {
+  // Step 1 -> Save donor offer immediately and wait for Poster selection (NO confidential leak before selection, NO duplicate guidelines!)
+  const handleProceedToGuidelines = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !phone.trim()) {
       alert('කරුණාකර ඔබගේ නම සහ දුරකථන අංකය ඇතුළත් කරන්න.');
@@ -369,12 +371,35 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
       alert('ලේ පරිත්‍යාග කිරීමට නම් ඔබගේ රුධිර වර්ගය ගැළපිය යුතු අතර සියලුම සුදුසුකම් ප්‍රශ්න සඳහා සුදුසුකම් සපුරා තිබිය යුතුය.');
       return;
     }
-    setBloodStage('guidelines');
+    await saveDonorOfferToSystem(false);
+    setBloodStage('awaiting_selection');
   };
 
-  // Step 2 -> Step 3 ("තේරුම් ගත්තෙමි" button click)
+  // Fallback handler if opened directly when already selected by poster
   const handleAcknowledgeGuidelines = async () => {
-    await saveDonorOfferToSystem(true);
+    try {
+      localStorage.setItem(`sahaya_blood_guidelines_ack_${post.id}`, 'true');
+      localStorage.setItem(`sahaya_blood_step3_ack_${post.id}`, 'true');
+    } catch {}
+    const updatedReplies = (Array.isArray(post.replies) ? post.replies : []).map((r: any) =>
+      existingMyReply && r?.id === existingMyReply.id
+        ? { ...r, guidelinesAccepted: true, step3GuidelinesAccepted: true }
+        : r
+    );
+    const updatedPost: HelpPost = {
+      ...post,
+      replies: updatedReplies,
+      guidelinesAccepted: true,
+      step3GuidelinesAccepted: true,
+    } as any;
+    if (onUpdatePost) onUpdatePost(updatedPost);
+    try {
+      await updateHelpPostInFirestore(post.id, {
+        replies: updatedReplies,
+        guidelinesAccepted: true,
+        step3GuidelinesAccepted: true,
+      } as any);
+    } catch {}
     setBloodStage('patient_details');
   };
 
@@ -432,10 +457,12 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
                 <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
                   {isBloodPost
                     ? bloodStage === 'questions'
-                      ? '🩸 පියවර 01: රුධිර ගැලපුම තහවුරු කිරීම'
+                      ? '🩸 පියවර 1/4: රුධිර ගැලපුම තහවුරු කිරීම'
+                      : bloodStage === 'awaiting_selection'
+                      ? '⏳ පියවර 2/4: දැන්වීම්කරුගේ තහවුරු කිරීම'
                       : bloodStage === 'guidelines'
-                      ? '📋 පියවර 02: රෝහලට යනතුරු පිළිපැදිය යුතු උපදෙස්'
-                      : '🏥 පියවර 03: රෝගියාගේ සහ රෝහලේ විස්තර'
+                      ? '📋 පියවර 3/4: රෝහලට යනතුරු පිළිපැදිය යුතු උපදෙස්'
+                      : '🏥 පියවර 3/4: රෝගියාගේ සහ රෝහලේ විස්තර'
                     : '🤝 සහය ලබාදීමට ඉදිරිපත් වන්නවාද?'}
                 </h3>
                 {isBloodPost && (
@@ -689,7 +716,46 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
                   </form>
                 )}
 
-                {/* STAGE 2: PRE-DONATION INSTRUCTIONS + "තේරුම් ගත්තෙමි" BUTTON */}
+                {/* STAGE 2: AWAITING POSTER SELECTION (No confidential patient info leaked before selection) */}
+                {bloodStage === 'awaiting_selection' && (
+                  <div className="space-y-4 text-xs animate-fadeIn py-2">
+                    <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border-2 border-emerald-500 text-center space-y-2">
+                      <div className="w-12 h-12 rounded-full bg-emerald-600 text-white flex items-center justify-center mx-auto shadow-md">
+                        <CheckCircle2 className="w-7 h-7" />
+                      </div>
+                      <h4 className="text-sm sm:text-base font-black text-emerald-900 dark:text-emerald-200">
+                        ✅ ස්තූතියි! ඔබගේ ඉදිරිපත් වීම දැන්වීම්කරු වෙත යොමු කරන ලදී.
+                      </h4>
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        🩸 ඔබගේ ({donorGroup || patientBloodGroup}) රුධිර වර්ගය රෝගියාගේ ({patientBloodGroup}) රුධිර අවශ්‍යතාවයට ගැළපෙන බව තහවුරු වී ඇත.
+                      </p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-400 dark:border-amber-700 text-center space-y-2">
+                      <p className="text-sm font-black text-amber-900 dark:text-amber-200 leading-snug">
+                        ⏳ දැන්වීම පළකරන්නා ඔබව තෝරාගන්නා තෙක් රැඳී සිටින්න.
+                      </p>
+                      <p className="text-[11px] font-bold text-amber-800 dark:text-amber-300 leading-relaxed">
+                        දැන්වීම්කරු ඔබව තෝරාගත් වහාම රෝගියාගේ නම, වාට්ටු අංකය, විස්තර ගොනුව, උපදෙස් සහ සිතියම සීනු නාදයක් සමඟ ඔබගේ තිරයේ ස්වයංක්‍රීයව පෙන්වනු ඇත.
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                      <span>🏥 ප්‍රදේශය: {districtName || hospitalName}</span>
+                      <span className="text-emerald-700 dark:text-emerald-400 font-black">🔒 පෞද්ගලිකත්වය සුරක්ෂිතයි</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs sm:text-sm shadow-md cursor-pointer active:scale-95 transition-all"
+                    >
+                      හරි (OK)
+                    </button>
+                  </div>
+                )}
+
+                {/* STAGE 2 (Fallback if already selected): PRE-DONATION INSTRUCTIONS */}
                 {bloodStage === 'guidelines' && (
                   <div className="space-y-4 text-xs animate-fadeIn">
                     <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border-2 border-emerald-400 text-emerald-900 dark:text-emerald-200 font-black flex items-center gap-2">

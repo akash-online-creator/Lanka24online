@@ -493,14 +493,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               seenWorkflowStepsRef.current.set(pid, newStep);
               seenStepTimestampsRef.current.set(pid, newStepTime);
 
-              // 🛑 As soon as someone is selected (Step >= 3 or isConfirmed), immediately deactivate Bell Tone!
-              if (newStep >= 3 || p.isConfirmed || p.isResolved) {
-                const activeBell = getActiveSupportAlert();
-                if (!activeBell || activeBell.postId === pid) {
-                  stopContinuousSupportBell();
-                }
-              }
-
               const myReply = currentU
                 ? currentReplies.find((r: any) => {
                     if (!r) return false;
@@ -519,6 +511,31 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 p.postType === 'blood_request' ||
                 p.serviceType === 'blood_donation' ||
                 Boolean(p.bloodGroup);
+
+              const isSelectedDonorMe = Boolean(
+                myReply &&
+                  (myReply.isConfirmed ||
+                    myReply.isAccepted ||
+                    (p.confirmedHelperId && currentUserId && String(p.confirmedHelperId) === String(currentUserId)) ||
+                    (p.confirmedHelperPhone &&
+                      currentUserPhone.length >= 9 &&
+                      String(p.confirmedHelperPhone).replace(/\D/g, '').slice(-9) === currentUserPhone.slice(-9)) ||
+                    (p.confirmedHelperName &&
+                      myReply.responderName &&
+                      String(p.confirmedHelperName).trim().toLowerCase() === String(myReply.responderName).trim().toLowerCase()))
+              );
+
+              // 🛑 Stop Bell Tone on this post for non-active steps (keep active for Selected Donor Step 3 & Poster Step 4)
+              if (newStep >= 3 || p.isConfirmed || p.isResolved) {
+                const keepRingingForDonorStep3 = isBlood && isSelectedDonorMe && newStep === 3;
+                const keepRingingForPosterStep4 = isBlood && isOwner && newStep === 4;
+                if (!keepRingingForDonorStep3 && !keepRingingForPosterStep4) {
+                  const activeBell = getActiveSupportAlert();
+                  if (!activeBell || activeBell.postId === pid) {
+                    stopContinuousSupportBell();
+                  }
+                }
+              }
 
               // Step 1 completed by Helper/Donor -> Auto Pop-Up on Poster's screen for Step 2 + Ring Bell until someone is selected!
               if (
@@ -553,33 +570,61 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 }
               }
 
-              // Step 2 completed by Poster (Helper Selected!) -> Stop Bell Tone & Auto Pop-Up Full Details + Map Navigation on Donor/Helper's screen!
+              // Step 2 completed by Poster (Donor/Helper Selected!) -> Auto Pop-Up on Selected Donor's screen + Continuous Bell Tone until stopped!
               if (
-                (!isOwner || Boolean(myReply)) &&
-                Boolean(myReply) &&
+                (!isOwner || isSelectedDonorMe) &&
+                isSelectedDonorMe &&
                 newStep === 3 &&
                 (prevStep < 3 || (newStepTime > prevStepTime && p.lastStepByRole === 'poster'))
               ) {
-                stopContinuousSupportBell();
                 setTargetPostForOffers(p);
                 setIsSupportOffersModalOpen(true);
+                if (isBlood) {
+                  triggerSupportOfferAlert({
+                    postId: pid,
+                    postAuthorId: currentUserId,
+                    postTitle: '✅ ඔබගේ ලේ ගැලපුම තහවුරු වී දැන්වීම්කරු විසින් ලේ පරිත්‍යාගය සඳහා ඔබව තෝරාගෙන ඇත!',
+                    helperName: p.userName || 'දැන්වීම්කරු',
+                    helperPhone: p.userPhone || '',
+                    helperMsg: 'BLOOD_DONOR_SELECTED',
+                    timestamp: Date.now(),
+                  });
+                } else {
+                  stopContinuousSupportBell();
+                }
               }
 
-              // Step 3 completed by Donor -> Auto Pop-Up on Poster's screen for Step 4 (Bell stays OFF)
+              // Step 3 completed by Donor (Clicked "ඔව්, මම ලේ පරිත්‍යාගය සිදු කළෙමි") -> Auto Pop-Up on Poster's screen for Step 4 + Alert Bell!
               if (
                 isOwner &&
                 newStep === 4 &&
                 (prevStep < 4 || (newStepTime > prevStepTime && p.lastStepByRole === 'helper'))
               ) {
-                stopContinuousSupportBell();
                 setTargetPostForOffers(p);
                 setIsSupportOffersModalOpen(true);
+                if (isBlood) {
+                  const donatedDonorName =
+                    p.confirmedHelperName ||
+                    currentReplies.find((r: any) => r?.isConfirmed || r?.isAccepted)?.responderName ||
+                    'පරිත්‍යාගශීලියා';
+                  triggerSupportOfferAlert({
+                    postId: pid,
+                    postAuthorId: currentUserId,
+                    postTitle: `🩸 "${donatedDonorName}" ලේ පරිත්‍යාගය සිදු කළ බව දන්වා ඇත. රුධිරය ලැබුණාද තහවුරු කරන්න!`,
+                    helperName: donatedDonorName,
+                    helperPhone: p.confirmedHelperPhone || '',
+                    helperMsg: 'BLOOD_DONATED_CONFIRM',
+                    timestamp: Date.now(),
+                  });
+                } else {
+                  stopContinuousSupportBell();
+                }
               }
 
-              // Step 4 completed by Poster -> Auto Pop-Up final completion notice on Donor's screen (Bell stays OFF)
+              // Step 4 completed by Poster -> Stop Bell & Auto Pop-Up Final Thank-You Notice on Selected Donor's screen (auto-closes after 5s)
               if (
-                (!isOwner || Boolean(myReply)) &&
-                Boolean(myReply) &&
+                (!isOwner || isSelectedDonorMe) &&
+                isSelectedDonorMe &&
                 newStep === 5 &&
                 (prevStep < 5 || (newStepTime > prevStepTime && p.lastStepByRole === 'poster'))
               ) {
@@ -1876,36 +1921,48 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              stopContinuousSupportBell();
-              const matchingPost =
-                (helpPosts || []).find((p: any) => p && p.id === ringingSupportAlert.postId) || targetPostForOffers;
-              if (ringingSupportAlert.helperMsg === 'CHAT_MSG') {
-                if (matchingPost) {
-                  setSelectedPostForChat(matchingPost);
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                stopContinuousSupportBell();
+                setRingingSupportAlert(null);
+              }}
+              className="px-3 py-2 rounded-xl bg-white/90 hover:bg-white text-slate-950 font-black text-xs cursor-pointer shadow-xs"
+            >
+              🔇 නිහඬ කරන්න
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                stopContinuousSupportBell();
+                const matchingPost =
+                  (helpPosts || []).find((p: any) => p && p.id === ringingSupportAlert.postId) || targetPostForOffers;
+                if (ringingSupportAlert.helperMsg === 'CHAT_MSG') {
+                  if (matchingPost) {
+                    setSelectedPostForChat(matchingPost);
+                  }
+                } else if (ringingSupportAlert.helperMsg === 'NEW_POST_REQUEST') {
+                  if (matchingPost) {
+                    setViewingPost(matchingPost);
+                  }
+                } else {
+                  if (matchingPost) {
+                    setTargetPostForOffers(matchingPost);
+                  }
+                  setIsSupportOffersModalOpen(true);
                 }
-              } else if (ringingSupportAlert.helperMsg === 'NEW_POST_REQUEST') {
-                if (matchingPost) {
-                  setViewingPost(matchingPost);
-                }
-              } else {
-                if (matchingPost) {
-                  setTargetPostForOffers(matchingPost);
-                }
-                setIsSupportOffersModalOpen(true);
-              }
-              setRingingSupportAlert(null);
-            }}
-            className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-amber-300 font-black text-xs shrink-0 cursor-pointer"
-          >
-            {ringingSupportAlert.helperMsg === 'CHAT_MSG'
-              ? 'පණිවිඩය බලන්න'
-              : ringingSupportAlert.helperMsg === 'NEW_POST_REQUEST'
-              ? 'විස්තර බලන්න'
-              : 'බලන්න'}
-          </button>
+                setRingingSupportAlert(null);
+              }}
+              className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-amber-300 font-black text-xs shrink-0 cursor-pointer"
+            >
+              {ringingSupportAlert.helperMsg === 'CHAT_MSG'
+                ? 'පණිවිඩය බලන්න'
+                : ringingSupportAlert.helperMsg === 'NEW_POST_REQUEST'
+                ? 'විස්තර බලන්න'
+                : 'බලන්න'}
+            </button>
+          </div>
         </div>
       )}
 

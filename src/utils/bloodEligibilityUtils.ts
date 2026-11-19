@@ -124,13 +124,12 @@ export function createBloodDonationHonorPost(
   const nowMs = Date.now();
   const postCode = `#SRV-${Math.floor(1000 + Math.random() * 9000)}`;
 
-  const title = `🙏 නොමිලේ උතුම් ලේ පරිත්‍යාගයක් සිදුකළ ${cleanDonor} වෙත හදපිරි ස්තූතිය සහ දීර්ඝායුෂ ප්‍රාර්ථනාව! 🩸❤️`;
+  const title = `🙏 හදපිරි ස්තූතිය සහ දීර්ඝායුෂ ප්‍රාර්ථනාව! 🩸❤️`;
   const body =
-    `🩸 උතුම් මිනිස් ජීවිතයක් බේරාගැනීම වෙනුවෙන් නොමිලේ ලේ පරිත්‍යාග කළ පින්වත් පරිත්‍යාගශීලියාට අපගේ හදපිරි ගෞරවය සහ ස්තූතිය පුද කර සිටිමු! 🙏\n\n` +
+    `🙏 නොමිලේ උතුම් රුධිර පරිත්‍යාගයක් සිදුකළ පින්වත් පරිත්‍යාගශීලියා වෙත හදපිරි ස්තූතිය සහ දීර්ඝායුෂ ප්‍රාර්ථනාව!\n\n` +
     `👤 ලේ පරිත්‍යාග කළ පුද්ගලයාගේ නම: ${cleanDonor}\n` +
-    `🏥 ලේ පරිත්‍යාග කළ ස්ථානය / රෝහල: ${cleanHosp}${cleanDist}\n` +
-    `💝 සේවා වර්ගය: සාමාන්‍ය සේවා (නොමිලේ සිදුකළ උතුම් පරිත්‍යාගයකි)\n\n` +
-    `🌟 මෙම උතුම් රුධිර පරිත්‍යාග පුණ්‍යකර්මයේ බලයෙන් "${cleanDonor}" මහත්මා / මහත්මියට නිදුක් නීරෝගී සුවය, සතුට, සැනසීම සහ දීර්ඝායුෂ ලැබේවායි අපි හදවතින්ම ප්‍රාර්ථනා කරමු! 🙏🌸`;
+    `🏥 ලේ පරිත්‍යාග කළ ස්ථානය: ${cleanHosp}${cleanDist}\n\n` +
+    `🌟 උතුම් මිනිස් ජීවිතයක් බේරාගැනීමට දායක වූ "${cleanDonor}" මහත්මා / මහත්මියට නිදුක් නීරෝගී සුවය සහ දීර්ඝායුෂ ලැබේවා! 🙏🌸`;
 
   return {
     id: `honor_bld_${nowMs}`,
@@ -140,11 +139,13 @@ export function createBloodDonationHonorPost(
     description: body,
     whatHappened: body,
     content: body,
-    whatIsNeeded: `ලේ පරිත්‍යාග කළ පුද්ගලයා: ${cleanDonor} • ලේ පරිත්‍යාග කළ ස්ථානය: ${cleanHosp}${cleanDist} • දීර්ඝායුෂ ප්‍රාර්ථනා කරමු! 🙏`,
+    whatIsNeeded: `👤 ${cleanDonor} | 🏥 ${cleanHosp}${cleanDist}`,
+    donorName: cleanDonor,
+    hospitalName: `${cleanHosp}${cleanDist}`,
     category: 'සාමාන්‍ය සේවා',
     postType: 'blood_donation_honor' as any,
     serviceType: 'general_service' as any,
-    tagName: 'සෞඛ්‍ය හා සත්කාර',
+    tagName: 'රුධිර පරිත්‍යාග ප්‍රණාමය',
     tagCategory: 'සාමාන්‍ය සේවා',
     location: `${cleanHosp}${cleanDist}`,
     locationName: `${cleanHosp}${cleanDist}`,
@@ -153,10 +154,13 @@ export function createBloodDonationHonorPost(
     createdAt: nowIso,
     createdAtIso: nowIso,
     createdAtMs: nowMs,
-    posterId: (isObj && donorNameOrParams.posterId) || 'system_honor',
+    userId: 'system_honor',
+    authorId: 'system_honor',
+    posterId: 'system_honor',
     posterName: 'සහය සේවා ප්‍රණාම පුවරුව (නොමිලේ)',
     userName: 'සහය සේවා ප්‍රණාම පුවරුව (නොමිලේ)',
-    payment: 'නොමිලේ (රු. 0.00)',
+    payment: 'නොමිලේ',
+    isAdminOnlyDelete: true,
     isPinnedEmergency: false,
     priorityLevel: 'normal',
     isResolved: false,
