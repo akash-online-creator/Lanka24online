@@ -743,12 +743,12 @@ type: 'button',
 onClick: handleCopyPhone,
 className: 'px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-[11px] font-black flex items-center gap-1 cursor-pointer active:scale-95',
 title: 'දුරකථන අංකය පිටපත් කරන්න'
-}, h(Phone, { className: 'w-3.5 h-3.5 text-emerald-600' }), h('span', null, displayPhone), copiedPhone ? h('span', { className: 'text-[10px] text-emerald-600' }, '✓') : null) : null, h('button', {
+}, h(Phone, { className: 'w-3.5 h-3.5 text-emerald-600' }), h('span', null, displayPhone), copiedPhone ? h('span', { className: 'text-[10px] text-emerald-600' }, '✓') : null) : null, !isBloodHonorPost ? h('button', {
 type: 'button',
 onClick: handleChatClick,
 className: 'px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700/60 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 text-xs font-bold shadow-xs',
 title: 'අවශ්‍ය නම් පමණක් Chat පණිවිඩයක් එවන්න'
-}, h(MessageCircle, { className: 'w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400' }), h('span', null, 'Chat')), !isBloodHonorPost && Boolean(onOfferSupport ? true : onOpenSupportOffers ? true : onOpenConfirm) ? h('button', {
+}, h(MessageCircle, { className: 'w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400' }), h('span', null, 'Chat')) : null, !isBloodHonorPost && Boolean(onOfferSupport ? true : onOpenSupportOffers ? true : onOpenConfirm) ? h('button', {
 type: 'button',
 onClick: handleSupportClick,
 className: 'px-3 py-1.5 rounded-xl ' + ((post as any)?.rawRedAlert || (isBloodCardType && !ownerCheck && !myReply) ? 'bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 ' : ownerCheck ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 ' : 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 ') + 'text-white flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 text-xs font-black shadow-sm',
@@ -897,6 +897,14 @@ isBloodCardType ? h('div', { className: 'p-4 rounded-2xl bg-rose-50/80 dark:bg-r
       )
     )
   )
+) : isBloodHonorPost ? h('div', { className: 'p-4 rounded-2xl bg-gradient-to-br from-amber-50 via-rose-50/90 to-emerald-50 dark:from-[#1d1405] dark:via-[#1e0b11] dark:to-[#071f14] border-2 border-amber-400 dark:border-amber-600/80 space-y-3 text-center' },
+  h('div', { className: 'p-3.5 rounded-xl bg-white/95 dark:bg-[#071d12]/95 border border-amber-200 dark:border-amber-800/60 space-y-1.5 text-sm' },
+    h('p', { className: 'font-black text-slate-900 dark:text-white' }, '👤 නම: ' + ((post as any).donorName || 'පරිත්‍යාගශීලියා')),
+    h('p', { className: 'font-bold text-slate-800 dark:text-slate-200' }, '📍 ලේ පරිත්‍යාග කළ ස්ථානය: ' + ((post as any).hospitalName || post.locationName || post.location || 'රෝහල'))
+  ),
+  h('p', { className: 'text-xs sm:text-sm font-black text-rose-700 dark:text-rose-300 leading-relaxed pt-1' },
+    'මෙවැනි උතුම් පිංකමකට ඔබත් සහභාගි වී තවත් ජිවිතයක් රැකගැනීමට දායකවන්න.'
+  )
 ) : h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs' },
   h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' },
     h('span', { className: 'font-black text-slate-500 block mb-0.5' }, '👤 දැන්වීම්කරු:'),
@@ -923,11 +931,11 @@ alt: rawHeadline,
 loading: 'lazy',
 decoding: 'async',
 className: 'w-full max-h-[65vh] object-contain mx-auto'
-})) : null, (fullDesc && !isBloodCardType) ? h('div', { className: 'p-4 rounded-2xl bg-emerald-50/50 dark:bg-[#06180f] border border-emerald-200 dark:border-emerald-800 space-y-1' }, h('span', { className: 'text-[11px] font-black text-emerald-700 dark:text-emerald-400 block' }, 'සම්පූර්ණ විස්තරය:'), h('p', {
+})) : null, (fullDesc && !isBloodCardType && !isBloodHonorPost) ? h('div', { className: 'p-4 rounded-2xl bg-emerald-50/50 dark:bg-[#06180f] border border-emerald-200 dark:border-emerald-800 space-y-1' }, h('span', { className: 'text-[11px] font-black text-emerald-700 dark:text-emerald-400 block' }, 'සම්පූර්ණ විස්තරය:'), h('p', {
 className: 'text-sm sm:text-base text-slate-900 dark:text-zinc-100 font-bold whitespace-pre-wrap leading-relaxed',
 style: { fontFamily: fontStyle }
-}, fullDesc)) : null, (neededText && !isBloodCardType) ? h('div', { className: 'p-3.5 rounded-2xl bg-slate-50 dark:bg-[#06180f] border border-slate-200 dark:border-emerald-900 space-y-1' }, h('span', { className: 'text-xs font-black text-emerald-700 dark:text-emerald-400 block' }, 'වියයුතු දේ / අවශ්‍යතාවය:'), h('p', { className: 'text-xs sm:text-sm text-slate-800 dark:text-zinc-200 font-bold whitespace-pre-wrap leading-relaxed' }, neededText)) : null, (!isBloodCardType && (condText ? true : Boolean(noticeText) ? true : Boolean(transportText) ? true : Boolean(paymentText))) ? h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs' }, condText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'කොන්දේසි:'), h('span', { className: 'font-bold text-slate-900 dark:text-white' }, condText)) : null, noticeText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'විශේෂ දැනුවත් කිරීම:'), h('span', { className: 'font-bold text-slate-900 dark:text-white' }, noticeText)) : null, transportText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'ප්‍රවාහනය / ලබාදීම:'), h('span', { className: 'font-bold text-slate-900 dark:text-white' }, transportText)) : null, paymentText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'ගෙවීම් / ප්‍රතිලාභ:'), h('span', { className: 'font-bold text-emerald-700 dark:text-emerald-400' }, paymentText)) : null) : null,
-(!isBloodCardType || canSeeBloodConfidential) ? h('div', { className: 'p-3.5 rounded-2xl bg-slate-50 dark:bg-[#06180f] border border-emerald-300 dark:border-emerald-800/80 space-y-2.5' },
+}, fullDesc)) : null, (neededText && !isBloodCardType && !isBloodHonorPost) ? h('div', { className: 'p-3.5 rounded-2xl bg-slate-50 dark:bg-[#06180f] border border-slate-200 dark:border-emerald-900 space-y-1' }, h('span', { className: 'text-xs font-black text-emerald-700 dark:text-emerald-400 block' }, 'වියයුතු දේ / අවශ්‍යතාවය:'), h('p', { className: 'text-xs sm:text-sm text-slate-800 dark:text-zinc-200 font-bold whitespace-pre-wrap leading-relaxed' }, neededText)) : null, (!isBloodCardType && !isBloodHonorPost && (condText ? true : Boolean(noticeText) ? true : Boolean(transportText) ? true : Boolean(paymentText))) ? h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs' }, condText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'කොන්දේසි:'), h('span', { className: 'font-bold text-slate-900 dark:text-white' }, condText)) : null, noticeText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'විශේෂ දැනුවත් කිරීම:'), h('span', { className: 'font-bold text-slate-900 dark:text-white' }, noticeText)) : null, transportText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'ප්‍රවාහනය / ලබාදීම:'), h('span', { className: 'font-bold text-slate-900 dark:text-white' }, transportText)) : null, paymentText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'ගෙවීම් / ප්‍රතිලාභ:'), h('span', { className: 'font-bold text-emerald-700 dark:text-emerald-400' }, paymentText)) : null) : null,
+(!isBloodHonorPost && (!isBloodCardType || canSeeBloodConfidential)) ? h('div', { className: 'p-3.5 rounded-2xl bg-slate-50 dark:bg-[#06180f] border border-emerald-300 dark:border-emerald-800/80 space-y-2.5' },
   h('div', { className: 'flex items-center justify-between gap-2' },
     h('span', { className: 'text-xs font-black text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5' },
       h(MapPin, { className: 'w-4 h-4 text-emerald-600' }),
@@ -972,9 +980,9 @@ const hasDistinctDesc = Boolean(
 );
 const effectiveDesc = hasDistinctDesc ? rawDesc : '';
 const lineCount = effectiveDesc ? effectiveDesc.split(String.fromCharCode(10)).length : 0;
-const isLongText = Boolean(Math.max(effectiveDesc.length, 165) === effectiveDesc.length && effectiveDesc.length !== 165 ? true : Math.max(lineCount, 4) === lineCount);
+const isLongText = !isBloodHonorPost && Boolean(Math.max(effectiveDesc.length, 165) === effectiveDesc.length && effectiveDesc.length !== 165 ? true : Math.max(lineCount, 4) === lineCount);
 const hasValidImage = Boolean(imgUrl && !imageError);
-const shouldCap16x9 = Boolean(isLongText ? true : hasValidImage);
+const shouldCap16x9 = !isBloodHonorPost && Boolean(isLongText ? true : hasValidImage);
 const shortDesc = isLongText ? effectiveDesc.slice(0, 165) + '...' : effectiveDesc;
 return h(React.Fragment, null, h('div', {
 onClick: () => {
@@ -992,11 +1000,22 @@ className: 'mb-2.5'
 }, h(AudioVoicePlayer, {
 audioUrl: post.audioUrl,
 durationSec: post.audioDurationSec
-})) : null, h('div', {
+})) : null, isBloodHonorPost ? h('div', {
+className: 'w-full rounded-2xl bg-gradient-to-br from-amber-50 via-rose-50/90 to-emerald-50 dark:from-[#1d1405] dark:via-[#1e0b11] dark:to-[#071f14] border-2 border-amber-400 dark:border-amber-600/80 p-3.5 sm:p-4 space-y-2.5 shadow-inner text-center'
+},
+  h('div', { className: 'px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-200/90 via-rose-100 to-emerald-100 dark:from-amber-900/80 dark:via-rose-950/80 dark:to-emerald-900/80 border border-amber-500/70' },
+    h('h3', { className: 'text-sm sm:text-base font-black text-slate-950 dark:text-white' }, rawHeadline || '🙏 හදපිරි ස්තූතිය! 🩸❤️')
+  ),
+  h('div', { className: 'p-3 rounded-xl bg-white/95 dark:bg-[#071d12]/95 border border-amber-200/90 dark:border-amber-800/70 space-y-1 text-xs sm:text-sm' },
+    h('p', { className: 'font-black text-slate-950 dark:text-white' }, '👤 නම: ' + ((post as any).donorName || 'පරිත්‍යාගශීලියා')),
+    h('p', { className: 'font-bold text-slate-800 dark:text-slate-200' }, '📍 ලේ පරිත්‍යාග කළ ස්ථානය: ' + ((post as any).hospitalName || post.locationName || post.location || 'රෝහල'))
+  ),
+  h('p', { className: 'text-xs sm:text-sm font-black text-rose-700 dark:text-rose-300 leading-relaxed pt-0.5' },
+    'මෙවැනි උතුම් පිංකමකට ඔබත් සහභාගි වී තවත් ජිවිතයක් රැකගැනීමට දායකවන්න.'
+  )
+) : h('div', {
 className: (shouldCap16x9 ? 'w-full aspect-video max-h-[250px] justify-between ' : 'w-full h-auto ') + 'rounded-2xl ' + (
-  isBloodHonorPost
-    ? 'bg-gradient-to-br from-amber-50 via-rose-50/90 to-emerald-50 dark:from-[#1d1405] dark:via-[#1e0b11] dark:to-[#071f14] border-2 border-amber-400 dark:border-amber-600/80 '
-    : (post?.category === 'red_alert' || post?.category === 'emergency' || (post?.title && post.title.includes('රතු එළිය')) || (post?.tag && post.tag.includes('රතු එළිය')) || (post?.disasterType))
+  (post?.category === 'red_alert' || post?.category === 'emergency' || (post?.title && post.title.includes('රතු එළිය')) || (post?.tag && post.tag.includes('රතු එළිය')) || (post?.disasterType))
     ? 'bg-gradient-to-br from-[#450a0a] via-[#991b1b] to-[#f43f5e] text-white border-2 border-red-500/80 '
     : (post?.category === 'quick_services' || post?.category === 'quick_service' || (post?.title && post.title.includes('ඉක්මන්')) || (post?.tag && post.tag.includes('ඉක්මන්')) || (post?.serviceType === 'quick'))
     ? 'bg-gradient-to-br from-[#064e3b] via-[#047857] to-[#10b981] text-white border-2 border-emerald-500/80 '
@@ -1004,7 +1023,7 @@ className: (shouldCap16x9 ? 'w-full aspect-video max-h-[250px] justify-between '
     ? 'bg-gradient-to-br from-[#fbbf24] via-[#f97316] to-[#ea580c] text-slate-950 border-2 border-amber-300 '
     : 'bg-gradient-to-br from-[#f2fcf7] via-white to-[#e8f7f0] dark:from-[#05180f] dark:via-[#072014] dark:to-[#04140b] border-2 border-emerald-400/80 dark:border-emerald-800/90 '
 ) + 'p-3 sm:p-3.5 flex flex-col overflow-hidden shadow-inner group relative'
-}, rawHeadline ? h('div', { className: 'w-full px-3.5 py-2 rounded-xl ' + (isBloodHonorPost ? 'bg-gradient-to-r from-amber-200/90 via-rose-100 to-emerald-100 dark:from-amber-900/80 dark:via-rose-950/80 dark:to-emerald-900/80 border-2 border-amber-500/80 ' : 'bg-gradient-to-r from-emerald-200/90 via-white to-emerald-100/90 dark:from-emerald-800/85 dark:via-[#0b291a] dark:to-emerald-900/85 border-2 border-emerald-500/70 ') + 'shadow-2xs shrink-0 ' + (Boolean(shortDesc ? true : hasValidImage ? true : localPoll) ? 'mb-2 ' : '') + 'flex items-center justify-between gap-2' }, h('h3', {
+}, rawHeadline ? h('div', { className: 'w-full px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-200/90 via-white to-emerald-100/90 dark:from-emerald-800/85 dark:via-[#0b291a] dark:to-emerald-900/85 border-2 border-emerald-500/70 shadow-2xs shrink-0 ' + (Boolean(shortDesc ? true : hasValidImage ? true : localPoll) ? 'mb-2 ' : '') + 'flex items-center justify-between gap-2' }, h('h3', {
 className: 'text-xs sm:text-base font-black text-slate-950 dark:text-white leading-snug line-clamp-2',
 style: { fontFamily: fontStyle }
 }, rawHeadline)) : null, (hasValidImage ? true : Boolean(shortDesc) ? true : Boolean(localPoll)) ? h('div', { className: (shouldCap16x9 ? 'flex-1 min-h-0 ' : '') + 'overflow-hidden flex gap-3 items-center' }, hasValidImage ? h('div', { className: (shortDesc ? 'w-1/2 ' : 'w-full ') + 'h-full max-h-[180px] rounded-xl overflow-hidden bg-slate-900 border border-emerald-300 dark:border-emerald-800 relative shrink-0' }, h('img', {

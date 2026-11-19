@@ -1722,19 +1722,25 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                           </div>
                         ))}
 
-                      {/* STEP 5: Completed Appreciation & Long-Life Wish (Auto-closes to notice board after 5s) */}
+                      {/* STEP 5: Completed Appreciation Post (Auto-closes to notice board after 5s) */}
                       {currentStep === 5 && (off.isSelected || off.isPostOwner) && (
-                        <div className="p-4 rounded-2xl bg-gradient-to-b from-emerald-50 to-teal-50 dark:from-emerald-950/60 dark:to-teal-950/40 border-2 border-emerald-500 space-y-3 text-center">
+                        <div className="p-4 rounded-2xl bg-gradient-to-b from-amber-50 via-rose-50/70 to-emerald-50 dark:from-emerald-950/60 dark:to-teal-950/40 border-2 border-amber-400 dark:border-emerald-500 space-y-3 text-center">
                           <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950/80 text-rose-600 flex items-center justify-center mx-auto">
                             <Heart className="w-6 h-6 fill-current" />
                           </div>
-                          <h4 className="text-sm sm:text-base font-black text-emerald-900 dark:text-emerald-200">
-                            🙏 නොමිලේ ලේ පරිත්‍යාග කළ "{helperName}" වෙත හදපිරි ස්තූතිය සහ දීර්ඝායුෂ ප්‍රාර්ථනාව!
+                          <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+                            🙏 හදපිරි ස්තූතිය! 🩸❤️
                           </h4>
-                          <p className="text-xs font-bold text-slate-700 dark:text-slate-200 leading-relaxed">
-                            👤 ලේ පරිත්‍යාග කළ පුද්ගලයාගේ නම: <strong>{helperName}</strong>
-                            <br />
-                            🏥 ලේ පරිත්‍යාග කළ ස්ථානය: <strong>{parsedDetails.hospitalName}</strong>
+                          <div className="p-3 rounded-xl bg-white/95 dark:bg-slate-900/80 border border-amber-200 dark:border-emerald-800 space-y-1 text-xs sm:text-sm">
+                            <p className="font-black text-slate-900 dark:text-white">
+                              👤 නම: {helperName}
+                            </p>
+                            <p className="font-bold text-slate-700 dark:text-slate-200">
+                              📍 ලේ පරිත්‍යාග කළ ස්ථානය: {parsedDetails.hospitalName}
+                            </p>
+                          </div>
+                          <p className="text-xs sm:text-sm font-black text-rose-700 dark:text-rose-300 leading-relaxed">
+                            මෙවැනි උතුම් පිංකමකට ඔබත් සහභාගි වී තවත් ජිවිතයක් රැකගැනීමට දායකවන්න.
                           </p>
                           <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
                             තත්පර {step5AutoCloseSec}කින් දැන්වීම් පුවරුව වෙත යොමු වේ...
