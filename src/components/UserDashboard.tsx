@@ -1851,6 +1851,17 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       if (!checkIsPostOwner(user, post)) return false;
       if (postponedResolutionPostIds.includes(post.id)) return false;
 
+      // Blood donation posts have their own dedicated Step 3 (Auto Live Location + Contact) & Step 4 flow in SupportOffersModal
+      const isBloodPost = Boolean(
+        post.postType === 'blood_request' ||
+          post.postType === ('blood_donation_honor' as any) ||
+          post.serviceType === 'blood_donation' ||
+          String(post.postCode || '').toUpperCase().startsWith('#BLD-') ||
+          (post as any).bloodGroup ||
+          (post.tagName && String(post.tagName).includes('ලේ'))
+      );
+      if (isBloodPost) return false;
+
       // Has accepted replies or satisfied helper count
       const hasAcceptedHelper = (post.replies || []).some((r) => r && (r.isAccepted || r.isConfirmed));
       return hasAcceptedHelper;
@@ -1999,7 +2010,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
       {/* 🔔 ALWAYS-VISIBLE Fixed Floating Bell Stop Banner (Sits above ALL modals so user can ALWAYS stop the sound immediately!) */}
       {ringingSupportAlert && (
-        <div className="fixed top-3 left-3 right-3 sm:left-1/2 sm:-translate-x-1/2 sm:max-w-xl z-[220] rounded-2xl bg-amber-500 p-3.5 text-slate-950 shadow-2xl border-2 border-white flex items-center justify-between gap-2.5 animate-in slide-in-from-top-3 duration-200">
+        <div className="fixed top-3 left-3 right-3 sm:left-1/2 sm:-translate-x-1/2 sm:max-w-xl z-[100000] rounded-2xl bg-amber-500 p-3.5 text-slate-950 shadow-2xl border-2 border-white flex items-center justify-between gap-2.5 animate-in slide-in-from-top-3 duration-200">
           <div className="flex items-center gap-2.5 min-w-0">
             <Bell className="w-5 h-5 text-slate-950 shrink-0 animate-bounce" />
             <p className="text-xs sm:text-sm font-black text-slate-950 truncate">

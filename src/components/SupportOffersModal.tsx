@@ -1029,20 +1029,35 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
           </div>
         )}
 
-        {/* Top Bar */}
-        <div className="px-4 py-3 bg-gradient-to-r from-rose-900 via-red-900 to-slate-900 text-white flex items-center justify-between shrink-0">
-          <span className="text-xs sm:text-sm font-black flex items-center gap-2">
-            <Droplet className="w-4 h-4 fill-current text-rose-400" />
-            <span>රුධිර පරිත්‍යාග සත්කාරක පියවර (නොමිලේ සේවාවකි)</span>
+        {/* Top Bar with ALWAYS-ACCESSIBLE Stop Notification Sound Button */}
+        <div className="px-4 py-3 bg-gradient-to-r from-rose-900 via-red-900 to-slate-900 text-white flex items-center justify-between gap-2 shrink-0">
+          <span className="text-xs sm:text-sm font-black flex items-center gap-2 min-w-0">
+            <Droplet className="w-4 h-4 fill-current text-rose-400 shrink-0" />
+            <span className="truncate">රුධිර පරිත්‍යාග සත්කාරක පියවර</span>
           </span>
-          <button
-            id="close-support-offers-modal"
-            onClick={handleCloseModal}
-            className="w-7 h-7 rounded-full bg-white/15 hover:bg-rose-600 flex items-center justify-center text-white transition-all cursor-pointer"
-            aria-label="Close"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={handleAcknowledgeBell}
+              className={`px-2.5 py-1.5 rounded-xl font-black text-[11px] flex items-center gap-1 transition-all cursor-pointer active:scale-95 ${
+                bellRinging
+                  ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-md animate-pulse'
+                  : 'bg-white/15 hover:bg-white/25 text-white'
+              }`}
+              title="නාදය නිහඬ කරන්න (Mute Notification Sound)"
+            >
+              <VolumeX className="w-3.5 h-3.5" />
+              <span>{bellRinging ? '🔇 නාදය නවත්වන්න' : '🔇 නිහඬ'}</span>
+            </button>
+            <button
+              id="close-support-offers-modal"
+              onClick={handleCloseModal}
+              className="w-7 h-7 rounded-full bg-white/15 hover:bg-rose-600 flex items-center justify-center text-white transition-all cursor-pointer"
+              aria-label="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Body */}
@@ -1626,32 +1641,44 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                               );
                             })()}
 
-                            {/* ONLY Phone Number & Chat Button */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                              {helperPhone && (
-                                <a
-                                  href={`tel:${helperPhone}`}
-                                  onClick={handleAcknowledgeBell}
-                                  className="py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-mono font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 active:scale-95 transition-all"
-                                >
-                                  <Phone className="w-4 h-4" />
-                                  <span>{helperPhone}</span>
-                                </a>
-                              )}
-                              {onOpenChat && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    handleAcknowledgeBell();
-                                    onClose();
-                                    onOpenChat(off.post);
-                                  }}
-                                  className="py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all"
-                                >
-                                  <MessageCircle className="w-4 h-4" />
-                                  <span>💬 Chat</span>
-                                </button>
-                              )}
+                            {/* ONLY Donor Contact Details: Name, Phone Number & Chat Button */}
+                            <div className="p-3.5 rounded-2xl bg-white dark:bg-[#06150d] border-2 border-emerald-500/60 space-y-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <div>
+                                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 block">
+                                    🩸 ලේ පරිත්‍යාගශීලියාගේ සම්බන්ධතා විස්තර
+                                  </span>
+                                  <span className="text-sm font-black text-slate-900 dark:text-white">
+                                    👤 {helperName}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                {helperPhone && (
+                                  <a
+                                    href={`tel:${helperPhone}`}
+                                    onClick={handleAcknowledgeBell}
+                                    className="py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-mono font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 active:scale-95 transition-all"
+                                  >
+                                    <Phone className="w-4 h-4" />
+                                    <span>{helperPhone}</span>
+                                  </a>
+                                )}
+                                {onOpenChat && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleAcknowledgeBell();
+                                      onClose();
+                                      onOpenChat(off.post);
+                                    }}
+                                    className="py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all"
+                                  >
+                                    <MessageCircle className="w-4 h-4" />
+                                    <span>💬 Chat</span>
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           </div>
                         ))}

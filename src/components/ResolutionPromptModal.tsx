@@ -11,10 +11,12 @@ import {
   AlertCircle,
   Receipt,
   FileText,
-  DollarSign
+  DollarSign,
+  VolumeX
 } from 'lucide-react';
 import { HelpPost, Language } from '../types';
 import { SlideToConfirmButton } from './SlideToConfirmButton';
+import { stopContinuousSupportBell } from '../utils/supportBellRingtone';
 
 interface ResolutionPromptModalProps {
   isOpen?: boolean;
@@ -45,11 +47,16 @@ export const ResolutionPromptModal: React.FC<ResolutionPromptModalProps> = ({
   const bill = post.serviceBill;
   const isBloodPost = Boolean(
     post.postType === 'blood_request' ||
+      post.postType === 'blood_donation_honor' ||
       post.serviceType === 'blood_donation' ||
       String(post.postCode || '').toUpperCase().startsWith('#BLD-') ||
       post.bloodGroup ||
       (post.tagName && String(post.tagName).includes('ලේ'))
   );
+
+  // Blood donation uses its own dedicated 4-step SupportOffersModal (Auto Live Location + Contact + Step 4 Confirmation).
+  // Never lock the Poster's screen with ResolutionPromptModal for blood posts!
+  if (isBloodPost) return null;
 
   const handleSlideResolved = async () => {
     setIsSubmitting(true);
@@ -92,7 +99,18 @@ export const ResolutionPromptModal: React.FC<ResolutionPromptModalProps> = ({
             </div>
           </div>
 
-          <ShieldCheck className="w-7 h-7 text-emerald-300 shrink-0 opacity-80" />
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => stopContinuousSupportBell()}
+              className="px-2.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-[11px] flex items-center gap-1 shadow-md cursor-pointer"
+              title="නාදය නවත්වන්න"
+            >
+              <VolumeX className="w-3.5 h-3.5" />
+              <span>නාදය නවත්වන්න</span>
+            </button>
+            <ShieldCheck className="w-6 h-6 text-emerald-300 shrink-0 opacity-80" />
+          </div>
         </div>
 
         {/* Modal Main Content */}
