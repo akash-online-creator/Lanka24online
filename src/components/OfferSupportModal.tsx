@@ -317,6 +317,19 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
 
     if (onUpdatePost) {
       onUpdatePost(updatedPost);
+    } else {
+      try {
+        await updateHelpPostInFirestore(post.id, {
+          postCode: post.postCode,
+          postType: post.postType,
+          replies: updatedReplies,
+          repliesCount: updatedReplies.length,
+          helpersCount: updatedPost.helpersCount,
+          lastStepUpdatedAtMs: nowMs,
+          lastStepByRole: 'helper',
+          ...(isBloodPost ? { bloodWorkflowStep: 2, guidelinesAccepted: guidelinesAcceptedFlag } : {}),
+        } as any);
+      } catch (_) {}
     }
 
     if (isBloodPost) {
@@ -345,19 +358,6 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
         window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
       } catch {}
     }
-
-    try {
-      await updateHelpPostInFirestore(post.id, {
-        postCode: post.postCode,
-        postType: post.postType,
-        replies: updatedReplies,
-        repliesCount: updatedReplies.length,
-        helpersCount: updatedPost.helpersCount,
-        lastStepUpdatedAtMs: nowMs,
-        lastStepByRole: 'helper',
-        ...(isBloodPost ? { bloodWorkflowStep: 2, guidelinesAccepted: guidelinesAcceptedFlag } : {}),
-      } as any);
-    } catch (_) {}
   };
 
   // Step 1 -> Save donor offer immediately and wait for Poster selection (NO confidential leak before selection, NO duplicate guidelines!)

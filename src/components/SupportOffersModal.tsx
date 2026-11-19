@@ -273,14 +273,26 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     setShowOptionalEditDetails(false);
   }, [isOpen, targetPost?.id]);
 
+  const autoStartedLiveLocKeyRef = useRef<string>('');
+
   useEffect(() => {
     const handleBellState = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       setBellRinging(Boolean(detail && detail.isRinging));
     };
     window.addEventListener('sahaya_support_bell_state', handleBellState);
-    return () => window.removeEventListener('sahaya_support_bell_state', handleBellState);
-  }, []);
+    // Sync bell state immediately & periodically while open so stop button never misses an alert
+    setBellRinging(isSupportBellRinging());
+    const syncTimer = isOpen
+      ? setInterval(() => {
+          setBellRinging(isSupportBellRinging());
+        }, 600)
+      : null;
+    return () => {
+      window.removeEventListener('sahaya_support_bell_state', handleBellState);
+      if (syncTimer) clearInterval(syncTimer);
+    };
+  }, [isOpen]);
 
   const handleAcknowledgeBell = () => {
     stopContinuousSupportBell();
@@ -342,31 +354,45 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   };
 
   const livePostsList: HelpPost[] = (() => {
-    const base = Array.isArray(userPosts) ? [...userPosts] : [];
+    const rawList = Array.isArray(userPosts) ? [...userPosts] : [];
     if (targetPost && targetPost.id) {
-      const idx = base.findIndex(
-        (p) =>
-          p &&
-          (String(p.id) === String(targetPost.id) ||
-            (targetPost.postCode && p.postCode && String(p.postCode).toUpperCase() === String(targetPost.postCode).toUpperCase()))
+      rawList.unshift(targetPost);
+    }
+    // Strictly deduplicate posts by id AND postCode so the same blood post NEVER appears twice
+    const deduped: HelpPost[] = [];
+    const seenIds = new Set<string>();
+    const seenCodes = new Set<string>();
+    rawList.forEach((p) => {
+      if (!p || !p.id || p.status === 'deleted' || p.isDeleted) return;
+      const pid = String(p.id);
+      const pCode = String(p.postCode || '').trim().toUpperCase();
+      const existingIdx = deduped.findIndex(
+        (d) => String(d.id) === pid || (pCode && d.postCode && String(d.postCode).trim().toUpperCase() === pCode)
       );
-      if (idx === -1) {
-        base.unshift(targetPost);
+      if (existingIdx === -1) {
+        seenIds.add(pid);
+        if (pCode) seenCodes.add(pCode);
+        deduped.push(p);
       } else {
-        const existing = base[idx];
+        const existing = deduped[existingIdx];
         const mergedReps = deduplicatePostReplies(
-          [...(Array.isArray(existing.replies) ? existing.replies : []), ...(Array.isArray(targetPost.replies) ? targetPost.replies : [])],
+          [...(Array.isArray(existing.replies) ? existing.replies : []), ...(Array.isArray(p.replies) ? p.replies : [])],
           existing
         );
-        base[idx] = {
-          ...targetPost,
+        const existingStep = Number((existing as any).bloodWorkflowStep || 0);
+        const incomingStep = Number((p as any).bloodWorkflowStep || 0);
+        deduped[existingIdx] = {
           ...existing,
+          ...p,
+          id: existing.id,
           replies: mergedReps,
           repliesCount: mergedReps.length,
-        };
+          bloodWorkflowStep: Math.max(existingStep, incomingStep) || undefined,
+          donorLiveLocation: (p as any).donorLiveLocation || (existing as any).donorLiveLocation,
+        } as any;
       }
-    }
-    return base;
+    });
+    return deduped;
   })();
 
   const allOffers: FlattenedOffer[] = [];
@@ -434,7 +460,8 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
               (targetPost?.postCode && off.post.postCode && String(off.post.postCode).toUpperCase() === String(targetPost.postCode).toUpperCase()))
         );
 
-  // If a post already has a selected/confirmed donor, Poster only needs to see the selected donor (no clutter from unselected offers)
+  // Deduplicate by (postCode/postId + donor identity) AND hide unselected offers for Poster once a donor is selected
+  const seenOfferKeys = new Set<string>();
   const filteredOffers = rawFilteredOffers.filter((off) => {
     if (off.isPostOwner && off.post.isConfirmed) {
       const hasAnySelectedForPost = rawFilteredOffers.some(
@@ -442,6 +469,14 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
       );
       if (hasAnySelectedForPost && !off.isSelected) return false;
     }
+    const postKey = String(off.post.postCode || off.post.id).trim().toUpperCase();
+    const donorKey =
+      String(off.reply.responderPhone || '').replace(/\D/g, '').slice(-9) ||
+      String(off.reply.responderId || '').trim().toLowerCase() ||
+      String(off.reply.responderName || '').trim().toLowerCase();
+    const compositeKey = `${postKey}::${donorKey}`;
+    if (seenOfferKeys.has(compositeKey)) return false;
+    seenOfferKeys.add(compositeKey);
     return true;
   });
 
@@ -456,7 +491,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
   // Auto-close Step 5 completion screen after 5 seconds and navigate back to main notice board
   useEffect(() => {
-    if (!isOpen || !isAnyOfferCompleted || completedCelebration) return;
+    if (!isOpen || !isAnyOfferCompleted) return;
     let sec = 5;
     setStep5AutoCloseSec(sec);
     const timer = setInterval(() => {
@@ -472,7 +507,41 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
       }
     }, 1000);
     return () => clearInterval(timer);
-  }, [isOpen, isAnyOfferCompleted, completedCelebration, onClose]);
+  }, [isOpen, isAnyOfferCompleted, onClose]);
+
+  // AUTO-START Live Location streaming when Selected Donor is on Step 3B so Poster sees Donor arriving live automatically!
+  const activeSelectedDonorOffer = filteredOffers.find((off) => {
+    if (!off || !off.post || !off.reply) return false;
+    const isBlood =
+      off.post.postType !== ('blood_donation_honor' as any) &&
+      (off.post.postType === 'blood_request' ||
+        off.post.serviceType === 'blood_donation' ||
+        String(off.post.postCode || '').toUpperCase().startsWith('#BLD-'));
+    if (!isBlood) return false;
+    const isMine = isMyReplyMatch(off.reply);
+    if (!off.isSelected || (off.isPostOwner && !isMine)) return false;
+    const isDone = Boolean(
+      off.post.isResolved ||
+        off.post.status === 'resolved' ||
+        (off.post as any).bloodDonatedByHelper ||
+        Number((off.post as any).bloodWorkflowStep) >= 4
+    );
+    if (isDone) return false;
+    const hasAck = Boolean(
+      acknowledgedMap[off.post.id] ||
+        (off.reply as any).step3GuidelinesAccepted ||
+        (typeof window !== 'undefined' && localStorage.getItem(`sahaya_blood_step3_ack_${off.post.id}`) === 'true')
+    );
+    return hasAck;
+  });
+
+  useEffect(() => {
+    if (!isOpen || !activeSelectedDonorOffer) return;
+    const key = `${activeSelectedDonorOffer.post.id}:${activeSelectedDonorOffer.reply.id || 'sel'}`;
+    if (autoStartedLiveLocKeyRef.current === key || liveLocWatchIdRef.current !== null) return;
+    autoStartedLiveLocKeyRef.current = key;
+    startLiveLocationWatch(activeSelectedDonorOffer.post, activeSelectedDonorOffer.reply, true);
+  }, [isOpen, activeSelectedDonorOffer?.post?.id, activeSelectedDonorOffer?.reply?.id]);
 
   if (!isOpen) return null;
 
@@ -567,35 +636,35 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
     if (onUpdatePost) {
       onUpdatePost(updatedPost);
+    } else {
+      try {
+        await updateHelpPostInFirestore(post.id, {
+          replies: updatedReplies,
+          repliesCount: updatedReplies.length,
+          isConfirmed: true,
+          confirmedHelperId: updatedPost.confirmedHelperId || '',
+          confirmedHelperName: updatedPost.confirmedHelperName || '',
+          confirmedHelperPhone: updatedPost.confirmedHelperPhone || '',
+          confirmedBy: updatedPost.confirmedBy || '',
+          confirmedAt: nowIso,
+          serviceStage: 'in_progress' as any,
+          lastStepUpdatedAtMs: nowMs,
+          lastStepByRole: 'poster',
+          ...(isBloodPost
+            ? {
+                bloodWorkflowStep: 3,
+                patientName: finalPatientName,
+                wardNumber: finalWardNumber,
+                requestSlipNumber: finalSlipNumber,
+                requestSlipPhotoUrl: finalSlipPhotoUrl,
+                dropLocationUrl: finalDropLocationUrl,
+                hospitalPinLat: finalPinLat || null,
+                hospitalPinLng: finalPinLng || null,
+              }
+            : {}),
+        } as any);
+      } catch {}
     }
-
-    try {
-      await updateHelpPostInFirestore(post.id, {
-        replies: updatedReplies,
-        repliesCount: updatedReplies.length,
-        isConfirmed: true,
-        confirmedHelperId: updatedPost.confirmedHelperId || '',
-        confirmedHelperName: updatedPost.confirmedHelperName || '',
-        confirmedHelperPhone: updatedPost.confirmedHelperPhone || '',
-        confirmedBy: updatedPost.confirmedBy || '',
-        confirmedAt: nowIso,
-        serviceStage: 'in_progress' as any,
-        lastStepUpdatedAtMs: nowMs,
-        lastStepByRole: 'poster',
-        ...(isBloodPost
-          ? {
-              bloodWorkflowStep: 3,
-              patientName: finalPatientName,
-              wardNumber: finalWardNumber,
-              requestSlipNumber: finalSlipNumber,
-              requestSlipPhotoUrl: finalSlipPhotoUrl,
-              dropLocationUrl: finalDropLocationUrl,
-              hospitalPinLat: finalPinLat || null,
-              hospitalPinLng: finalPinLng || null,
-            }
-          : {}),
-      } as any);
-    } catch {}
 
     if (onSelectHelper) {
       onSelectHelper(updatedPost, reply);
@@ -604,7 +673,10 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
       onOpenConfirm(updatedPost, reply);
       return;
     }
-    onClose();
+    // For blood posts, keep modal open so Poster transitions smoothly into Live Location tracking + Phone & Chat!
+    if (!isBloodPost) {
+      onClose();
+    }
   };
 
   const handleDeclineAction = async (post: HelpPost, reply: PostReply) => {
@@ -618,52 +690,24 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
       replies: updatedReplies,
       repliesCount: updatedReplies.length,
     } as any;
-    if (onUpdatePost) onUpdatePost(updatedPost);
-    try {
-      await updateHelpPostInFirestore(post.id, {
-        replies: updatedReplies,
-        repliesCount: updatedReplies.length,
-      } as any);
-    } catch {}
-  };
-
-  // STEP 3A: Donor clicks "තේරුම් ගත්තෙමි" on Pre-Donation Guidelines -> stops bell & reveals Patient Name, Ward No, File No/Photo, Drop Location
-  const handleDonorAcknowledgeGuidelines = async (post: HelpPost, reply: PostReply) => {
-    handleAcknowledgeBell();
-    setAcknowledgedMap((prev) => ({ ...prev, [post.id]: true }));
-    try {
-      localStorage.setItem(`sahaya_blood_step3_ack_${post.id}`, 'true');
-    } catch {}
-
-    const cleanReplies = deduplicatePostReplies(post.replies || [], post);
-    const updatedReplies = cleanReplies.map((r) =>
-      isReplySameHelper(r, reply)
-        ? { ...r, guidelinesAccepted: true, step3GuidelinesAccepted: true }
-        : r
-    );
-    const updatedPost: HelpPost = {
-      ...post,
-      replies: updatedReplies,
-      guidelinesAccepted: true,
-      step3GuidelinesAccepted: true,
-    } as any;
-    if (onUpdatePost) onUpdatePost(updatedPost);
-    try {
-      await updateHelpPostInFirestore(post.id, {
-        replies: updatedReplies,
-        guidelinesAccepted: true,
-        step3GuidelinesAccepted: true,
-      } as any);
-    } catch {}
-  };
-
-  const handleToggleShareLocation = (post: HelpPost, reply: PostReply) => {
-    if (isSharingLocation) {
-      stopLiveLocationWatch();
-      return;
+    if (onUpdatePost) {
+      onUpdatePost(updatedPost);
+    } else {
+      try {
+        await updateHelpPostInFirestore(post.id, {
+          replies: updatedReplies,
+          repliesCount: updatedReplies.length,
+        } as any);
+      } catch {}
     }
-    if (!navigator.geolocation) {
-      alert('ඔබගේ උපාංගයේ GPS පහසුකම ක්‍රියාත්මක නොවේ.');
+  };
+
+  const startLiveLocationWatch = (post: HelpPost, reply: PostReply, silentIfUnavailable = false) => {
+    if (liveLocWatchIdRef.current !== null) return;
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      if (!silentIfUnavailable) {
+        alert('ඔබගේ උපාංගයේ GPS පහසුකම ක්‍රියාත්මක නොවේ.');
+      }
       return;
     }
     setIsSharingLocation(true);
@@ -671,7 +715,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
     const pushPosition = async (pos: GeolocationPosition) => {
       const now = Date.now();
-      if (now - lastLiveLocPushRef.current < 8000) return;
+      if (now - lastLiveLocPushRef.current < 6000) return;
       lastLiveLocPushRef.current = now;
       const parsed = extractParsedBloodDetails(post);
       const distKm =
@@ -693,13 +737,16 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         replies: updatedReplies,
         donorLiveLocation: liveLoc,
       } as any;
-      if (onUpdatePost) onUpdatePost(updatedPost);
-      try {
-        await updateHelpPostInFirestore(post.id, {
-          replies: updatedReplies,
-          donorLiveLocation: liveLoc,
-        } as any);
-      } catch {}
+      if (onUpdatePost) {
+        onUpdatePost(updatedPost);
+      } else {
+        try {
+          await updateHelpPostInFirestore(post.id, {
+            replies: updatedReplies,
+            donorLiveLocation: liveLoc,
+          } as any);
+        } catch {}
+      }
     };
 
     try {
@@ -719,6 +766,51 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         () => stopLiveLocationWatch()
       );
     }
+  };
+
+  // STEP 3A: Donor clicks "තේරුම් ගත්තෙමි" -> stops bell, reveals Patient/Hospital details & AUTO-STARTS Live Location!
+  const handleDonorAcknowledgeGuidelines = async (post: HelpPost, reply: PostReply) => {
+    handleAcknowledgeBell();
+    setAcknowledgedMap((prev) => ({ ...prev, [post.id]: true }));
+    try {
+      localStorage.setItem(`sahaya_blood_step3_ack_${post.id}`, 'true');
+    } catch {}
+
+    const cleanReplies = deduplicatePostReplies(post.replies || [], post);
+    const updatedReplies = cleanReplies.map((r) =>
+      isReplySameHelper(r, reply)
+        ? { ...r, guidelinesAccepted: true, step3GuidelinesAccepted: true }
+        : r
+    );
+    const updatedPost: HelpPost = {
+      ...post,
+      replies: updatedReplies,
+      guidelinesAccepted: true,
+      step3GuidelinesAccepted: true,
+    } as any;
+    if (onUpdatePost) {
+      onUpdatePost(updatedPost);
+    } else {
+      try {
+        await updateHelpPostInFirestore(post.id, {
+          replies: updatedReplies,
+          guidelinesAccepted: true,
+          step3GuidelinesAccepted: true,
+        } as any);
+      } catch {}
+    }
+
+    // Automatically start Live Location sharing so Poster immediately tracks Donor arriving!
+    autoStartedLiveLocKeyRef.current = `${post.id}:${reply.id || 'sel'}`;
+    startLiveLocationWatch(updatedPost, reply, true);
+  };
+
+  const handleToggleShareLocation = (post: HelpPost, reply: PostReply) => {
+    if (isSharingLocation) {
+      stopLiveLocationWatch();
+      return;
+    }
+    startLiveLocationWatch(post, reply, false);
   };
 
   // STEP 3B ACTION (Donor confirms blood donated -> stops live tracking & advances to Step 4)
@@ -753,19 +845,20 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
     if (onUpdatePost) {
       onUpdatePost(updatedPost);
+    } else {
+      try {
+        await updateHelpPostInFirestore(post.id, {
+          replies: updatedReplies,
+          repliesCount: updatedReplies.length,
+          isConfirmed: true,
+          donorArrivedAtHospital: true,
+          bloodDonatedByHelper: true,
+          bloodWorkflowStep: 4,
+          lastStepUpdatedAtMs: nowMs,
+          lastStepByRole: 'helper',
+        } as any);
+      } catch {}
     }
-    try {
-      await updateHelpPostInFirestore(post.id, {
-        replies: updatedReplies,
-        repliesCount: updatedReplies.length,
-        isConfirmed: true,
-        donorArrivedAtHospital: true,
-        bloodDonatedByHelper: true,
-        bloodWorkflowStep: 4,
-        lastStepUpdatedAtMs: nowMs,
-        lastStepByRole: 'helper',
-      } as any);
-    } catch {}
     onClose();
   };
 
@@ -801,21 +894,22 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
     if (onUpdatePost) {
       onUpdatePost(updatedPost);
+    } else {
+      try {
+        await updateHelpPostInFirestore(post.id, {
+          replies: updatedReplies,
+          repliesCount: updatedReplies.length,
+          isConfirmed: true,
+          bloodDonatedByHelper: true,
+          isResolved: true,
+          status: 'resolved',
+          serviceStage: 'completed' as any,
+          bloodWorkflowStep: 5,
+          lastStepUpdatedAtMs: nowMs,
+          lastStepByRole: 'poster',
+        } as any);
+      } catch {}
     }
-    try {
-      await updateHelpPostInFirestore(post.id, {
-        replies: updatedReplies,
-        repliesCount: updatedReplies.length,
-        isConfirmed: true,
-        bloodDonatedByHelper: true,
-        isResolved: true,
-        status: 'resolved',
-        serviceStage: 'completed' as any,
-        bloodWorkflowStep: 5,
-        lastStepUpdatedAtMs: nowMs,
-        lastStepByRole: 'poster',
-      } as any);
-    } catch {}
 
     try {
       const rawBlood = localStorage.getItem('sahaya_blood_requests');
@@ -850,26 +944,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         console.warn('Honor post creation error:', err);
       }
     }
-
-    setCompletedCelebration({ donorName, hospitalName });
-    let sec = 5;
-    setCelebrationCountdown(sec);
-    if (celebrationIntervalRef.current) {
-      clearInterval(celebrationIntervalRef.current);
-    }
-    celebrationIntervalRef.current = setInterval(() => {
-      sec -= 1;
-      setCelebrationCountdown(sec);
-      if (sec <= 0) {
-        if (celebrationIntervalRef.current) {
-          clearInterval(celebrationIntervalRef.current);
-          celebrationIntervalRef.current = null;
-        }
-        window.dispatchEvent(new CustomEvent('sahaya_blood_modal_close'));
-        handleCloseModal();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
-    }, 1000);
+    // Single Step 5 Thank-You screen renders automatically (no duplicate celebration overlay!) with 5s auto-close to notice board
   };
 
   return (
@@ -972,79 +1047,87 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                     localStorage.getItem(`sahaya_blood_step3_ack_${off.post.id}`) === 'true')
               );
 
+              const isPosterLiveTrackingStep = Boolean(
+                isBloodOffer && currentStep === 3 && off.isPostOwner && !isMineOffer
+              );
+
               return (
                 <div
                   key={`offer_${off.post.id}_${off.reply.id || idx}`}
                   className="p-4 rounded-2xl border-2 border-slate-200 dark:border-emerald-900/60 bg-slate-50/70 dark:bg-[#0a1c12] space-y-4"
                 >
-                  {/* Contact Row */}
-                  <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-200 dark:border-slate-800">
-                    <div>
-                      <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 block">
-                        {off.isPostOwner ? '🩸 ලේ පරිත්‍යාගශීලියා:' : '🏥 දැන්වීම් පළකරන්නා:'}
-                      </span>
-                      <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate">
-                        👤 {otherPartyName}
-                      </span>
+                  {/* Contact Row (Hidden on Poster Step 3 because Poster Step 3 shows ONLY Live Location + Phone & Chat cleanly) */}
+                  {!isPosterLiveTrackingStep && (
+                    <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-200 dark:border-slate-800">
+                      <div>
+                        <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 block">
+                          {off.isPostOwner ? '🩸 ලේ පරිත්‍යාගශීලියා:' : '🏥 දැන්වීම් පළකරන්නා:'}
+                        </span>
+                        <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate">
+                          👤 {otherPartyName}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {otherPartyPhone && (!isBloodOffer || off.isPostOwner || (off.isSelected && currentStep >= 3)) && (
+                          <a
+                            href={`tel:${otherPartyPhone}`}
+                            onClick={handleAcknowledgeBell}
+                            className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-mono font-black text-xs flex items-center gap-1"
+                          >
+                            <Phone className="w-3.5 h-3.5" />
+                            <span>{otherPartyPhone}</span>
+                          </a>
+                        )}
+                        {onOpenChat && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleAcknowledgeBell();
+                              onClose();
+                              onOpenChat(off.post);
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-black text-xs flex items-center gap-1 cursor-pointer"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            <span>Chat</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {otherPartyPhone && (!isBloodOffer || off.isPostOwner || (off.isSelected && currentStep >= 3)) && (
-                        <a
-                          href={`tel:${otherPartyPhone}`}
-                          onClick={handleAcknowledgeBell}
-                          className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-mono font-black text-xs flex items-center gap-1"
-                        >
-                          <Phone className="w-3.5 h-3.5" />
-                          <span>{otherPartyPhone}</span>
-                        </a>
-                      )}
-                      {onOpenChat && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleAcknowledgeBell();
-                            onClose();
-                            onOpenChat(off.post);
-                          }}
-                          className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-black text-xs flex items-center gap-1 cursor-pointer"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5" />
-                          <span>Chat</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                  )}
 
                   {isBloodOffer ? (
                     <div className="space-y-4 py-1">
-                      {/* Compact Unified 4-Step Progress Bar */}
-                      <div className="grid grid-cols-4 gap-1 text-[10px] font-black text-center">
-                        {[
-                          { num: 1, label: '1. පරීක්ෂාව' },
-                          { num: 2, label: '2. තෝරාගැනීම' },
-                          { num: 3, label: '3. ලේ දීම' },
-                          { num: 4, label: '4. අවසන්' },
-                        ].map((st) => {
-                          const activeNum = currentStep === 5 ? 4 : currentStep;
-                          const isDone = currentStep === 5 || activeNum > st.num;
-                          const isCurrent = currentStep !== 5 && activeNum === st.num;
-                          return (
-                            <div
-                              key={st.num}
-                              className={`py-1.5 px-1 rounded-xl border transition-all ${
-                                isDone
-                                  ? 'bg-emerald-600 text-white border-emerald-500'
-                                  : isCurrent
-                                  ? 'bg-rose-600 text-white border-rose-500 shadow-xs'
-                                  : 'bg-white dark:bg-slate-900 text-slate-400 border-slate-200 dark:border-slate-800'
-                              }`}
-                            >
-                              {isDone ? '✓ ' : ''}
-                              {st.label}
-                            </div>
-                          );
-                        })}
-                      </div>
+                      {/* Compact Unified 4-Step Progress Bar (Hidden on Poster Step 3 for pure Live Location + Phone + Chat view) */}
+                      {!isPosterLiveTrackingStep && (
+                        <div className="grid grid-cols-4 gap-1 text-[10px] font-black text-center">
+                          {[
+                            { num: 1, label: '1. පරීක්ෂාව' },
+                            { num: 2, label: '2. තෝරාගැනීම' },
+                            { num: 3, label: '3. ලේ දීම' },
+                            { num: 4, label: '4. අවසන්' },
+                          ].map((st) => {
+                            const activeNum = currentStep === 5 ? 4 : currentStep;
+                            const isDone = currentStep === 5 || activeNum > st.num;
+                            const isCurrent = currentStep !== 5 && activeNum === st.num;
+                            return (
+                              <div
+                                key={st.num}
+                                className={`py-1.5 px-1 rounded-xl border transition-all ${
+                                  isDone
+                                    ? 'bg-emerald-600 text-white border-emerald-500'
+                                    : isCurrent
+                                    ? 'bg-rose-600 text-white border-rose-500 shadow-xs'
+                                    : 'bg-white dark:bg-slate-900 text-slate-400 border-slate-200 dark:border-slate-800'
+                                }`}
+                              >
+                                {isDone ? '✓ ' : ''}
+                                {st.label}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
 
                       {/* STEP 2: Poster selects donor cleanly (without cluttering with duplicate edit fields) */}
                       {currentStep === 2 &&
@@ -1446,65 +1529,73 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                             )}
                           </div>
                         ) : (
-                          <div className="space-y-3 text-center">
+                          /* POSTER STEP 3 VIEW: ONLY Auto Live Location Map + Phone Number + Chat Button */
+                          <div className="space-y-3.5">
                             {(() => {
                               const liveLoc = (off.reply as any).donorLiveLocation || (off.post as any).donorLiveLocation;
-                              if (!liveLoc) return null;
-                              const liveMapUrl =
-                                typeof liveLoc.lat === 'number' && typeof liveLoc.lng === 'number'
-                                  ? `https://www.google.com/maps?q=${liveLoc.lat},${liveLoc.lng}`
-                                  : '';
+                              const hasLiveCoords = Boolean(
+                                liveLoc && typeof liveLoc.lat === 'number' && typeof liveLoc.lng === 'number'
+                              );
                               return (
-                                <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border-2 border-emerald-400 text-left space-y-2">
-                                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                                    <span className="text-xs font-black text-emerald-800 dark:text-emerald-200 flex items-center gap-1.5 animate-pulse">
-                                      <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
-                                      <span>🚗 පරිත්‍යාගශීලියා රෝහල වෙත පැමිණෙමින් සිටී (Live)</span>
+                                <div className="space-y-2.5">
+                                  <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border-2 border-emerald-500 flex items-center justify-between gap-2 flex-wrap">
+                                    <span className="text-xs sm:text-sm font-black text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                                      <span>
+                                        {hasLiveCoords
+                                          ? `🚗 "${helperName}" රෝහල වෙත පැමිණෙමින් සිටී (Live)`
+                                          : `📡 "${helperName}" පැමිණෙන Live Location සම්බන්ධ වෙමින් පවතී...`}
+                                      </span>
                                     </span>
-                                    {liveLoc.updatedAt && (
-                                      <span className="text-[10px] font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                                    {liveLoc?.updatedAt && (
+                                      <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded-full bg-emerald-600 text-white">
                                         {liveLoc.updatedAt}
                                       </span>
                                     )}
                                   </div>
-                                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                                    {typeof liveLoc.distanceKm === 'number' ? (
-                                      <p className="text-xs text-slate-700 dark:text-slate-200 font-black">
-                                        📍 රෝහලට ඇති දුර: {liveLoc.distanceKm} km
-                                      </p>
-                                    ) : (
-                                      <p className="text-xs text-slate-600 dark:text-slate-300 font-bold">
-                                        📡 සජීවී GPS පිහිටීම යාවත්කාලීන වේ
-                                      </p>
-                                    )}
-                                    {liveMapUrl && (
-                                      <a
-                                        href={liveMapUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="px-3 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black flex items-center gap-1"
-                                      >
-                                        <Navigation className="w-3 h-3" />
-                                        <span>සිතියමේ බලන්න</span>
-                                      </a>
-                                    )}
-                                  </div>
+
+                                  <BloodRouteMap
+                                    hospitalName={parsedDetails.hospitalName}
+                                    district={parsedDetails.district}
+                                    destLat={(off.post as any).hospitalPinLat || off.post.latitude || null}
+                                    destLng={(off.post as any).hospitalPinLng || off.post.longitude || null}
+                                    donorLat={hasLiveCoords ? liveLoc.lat : null}
+                                    donorLng={hasLiveCoords ? liveLoc.lng : null}
+                                    donorName={helperName}
+                                    isPosterView={true}
+                                    googleMapsNavUrl={parsedDetails.googleMapsNavUrl}
+                                  />
                                 </div>
                               );
                             })()}
-                            <p className="text-sm font-black text-amber-700 dark:text-amber-300 flex items-center justify-center gap-1.5">
-                              <Clock className="w-4 h-4 shrink-0" />
-                              <span>
-                                ⏳ "{helperName}" රෝහලට පැමිණ ලේ පරිත්‍යාගය සිදු කරන තෙක් රැඳී සිටින්න.
-                              </span>
-                            </p>
-                            <button
-                              type="button"
-                              onClick={handleCloseModal}
-                              className="w-full py-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-black text-xs cursor-pointer"
-                            >
-                              හරි (OK)
-                            </button>
+
+                            {/* ONLY Phone Number & Chat Button */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              {helperPhone && (
+                                <a
+                                  href={`tel:${helperPhone}`}
+                                  onClick={handleAcknowledgeBell}
+                                  className="py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-mono font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 active:scale-95 transition-all"
+                                >
+                                  <Phone className="w-4 h-4" />
+                                  <span>{helperPhone}</span>
+                                </a>
+                              )}
+                              {onOpenChat && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleAcknowledgeBell();
+                                    onClose();
+                                    onOpenChat(off.post);
+                                  }}
+                                  className="py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all"
+                                >
+                                  <MessageCircle className="w-4 h-4" />
+                                  <span>💬 Chat</span>
+                                </button>
+                              )}
+                            </div>
                           </div>
                         ))}
 

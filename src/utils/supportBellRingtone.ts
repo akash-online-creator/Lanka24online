@@ -17,6 +17,7 @@ export interface SupportAlertInfo {
 let audioCtx: AudioContext | null = null;
 let isRinging = false;
 let ringInterval: any = null;
+let autoStopTimeout: any = null;
 let currentAlertInfo: SupportAlertInfo | null = null;
 let vibrationInterval: any = null;
 let wakeLockSentinel: any = null;
@@ -139,7 +140,7 @@ export function startContinuousSupportBell(info?: SupportAlertInfo): void {
   playSingleBellChime();
   startVibration();
 
-  // Loop continuously every 1.65 seconds until stopped
+  // Loop continuously every 1.65 seconds until stopped (with 60s safety cap so it can never get stuck forever)
   if (ringInterval) clearInterval(ringInterval);
   ringInterval = setInterval(() => {
     if (!isRinging) {
@@ -148,6 +149,13 @@ export function startContinuousSupportBell(info?: SupportAlertInfo): void {
     }
     playSingleBellChime();
   }, 1650);
+
+  if (autoStopTimeout) clearTimeout(autoStopTimeout);
+  autoStopTimeout = setTimeout(() => {
+    if (isRinging) {
+      stopContinuousSupportBell();
+    }
+  }, 60000);
 
   notifyStateChange();
 }
@@ -158,9 +166,14 @@ export function startContinuousSupportBell(info?: SupportAlertInfo): void {
  */
 export function stopContinuousSupportBell(): void {
   isRinging = false;
+  currentAlertInfo = null;
   if (ringInterval) {
     clearInterval(ringInterval);
     ringInterval = null;
+  }
+  if (autoStopTimeout) {
+    clearTimeout(autoStopTimeout);
+    autoStopTimeout = null;
   }
 
   stopVibration();

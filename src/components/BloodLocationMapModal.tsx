@@ -420,6 +420,8 @@ interface BloodRouteMapProps {
   destLng?: number | null;
   donorLat?: number | null;
   donorLng?: number | null;
+  donorName?: string;
+  isPosterView?: boolean;
   googleMapsNavUrl: string;
 }
 
@@ -430,16 +432,25 @@ export const BloodRouteMap: React.FC<BloodRouteMapProps> = ({
   destLng,
   donorLat: propDonorLat,
   donorLng: propDonorLng,
+  donorName,
+  isPosterView = false,
   googleMapsNavUrl,
 }) => {
-  const [myLat, setMyLat] = useState<number | null>(propDonorLat || null);
-  const [myLng, setMyLng] = useState<number | null>(propDonorLng || null);
+  const [myLat, setMyLat] = useState<number | null>(propDonorLat ?? null);
+  const [myLng, setMyLng] = useState<number | null>(propDonorLng ?? null);
   const [targetLat, setTargetLat] = useState<number>(destLat || 6.9186);
   const [targetLng, setTargetLng] = useState<number>(destLng || 79.8688);
   const [locatingGps, setLocatingGps] = useState<boolean>(false);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const leafletMapRef = useRef<L.Map | null>(null);
+
+  useEffect(() => {
+    if (typeof propDonorLat === 'number' && typeof propDonorLng === 'number') {
+      setMyLat(propDonorLat);
+      setMyLng(propDonorLng);
+    }
+  }, [propDonorLat, propDonorLng]);
 
   useEffect(() => {
     if (destLat && destLng) {
@@ -482,10 +493,10 @@ export const BloodRouteMap: React.FC<BloodRouteMapProps> = ({
   }, []);
 
   useEffect(() => {
-    if (!myLat || !myLng) {
+    if (!isPosterView && (!myLat || !myLng)) {
       acquireDonorGps();
     }
-  }, [acquireDonorGps, myLat, myLng]);
+  }, [acquireDonorGps, myLat, myLng, isPosterView]);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -518,15 +529,18 @@ export const BloodRouteMap: React.FC<BloodRouteMapProps> = ({
     L.marker([targetLat, targetLng], { icon: dropIcon }).addTo(map);
 
     if (myLat && myLng) {
-      // Donor Pickup Marker
+      // Donor Pickup / Live Tracking Marker
+      const donorPinLabel = isPosterView
+        ? `🚗 ${donorName || 'පරිත්‍යාගශීලියා'} (Live)`
+        : '🟢 ඔබ සිටින ස්ථානය';
       const pickupIcon = L.divIcon({
         className: 'blood-pickup-pin',
         html: `<div style="display:flex;flex-direction:column;align-items:center;">
-          <div style="background:#059669;color:white;font-weight:900;font-size:10px;padding:2px 8px;border-radius:999px;border:2px solid white;box-shadow:0 4px 10px rgba(0,0,0,0.35);white-space:nowrap;">🟢 ඔබ සිටින ස්ථානය</div>
+          <div style="background:#059669;color:white;font-weight:900;font-size:10px;padding:2px 8px;border-radius:999px;border:2px solid white;box-shadow:0 4px 10px rgba(0,0,0,0.35);white-space:nowrap;">${donorPinLabel}</div>
           <div style="width:16px;height:16px;background:#10b981;border:3px solid white;border-radius:999px;box-shadow:0 4px 10px rgba(0,0,0,0.4);margin-top:2px;"></div>
         </div>`,
-        iconSize: [120, 44],
-        iconAnchor: [60, 40],
+        iconSize: [140, 44],
+        iconAnchor: [70, 40],
       });
       L.marker([myLat, myLng], { icon: pickupIcon }).addTo(map);
 
@@ -577,8 +591,8 @@ export const BloodRouteMap: React.FC<BloodRouteMapProps> = ({
             <Route className="w-4 h-4 text-emerald-400" />
           </div>
           <div>
-            <div className="text-xs font-black text-white flex items-center gap-1.5">
-              <span>🧭 සජීවී ගමන් මාර්ග මඟ පෙන්වීම</span>
+            <div className="text-xs font-black text-white flex items-center gap-1.5 flex-wrap">
+              <span>{isPosterView ? '📡 පරිත්‍යාගශීලියාගේ Live Location' : '🧭 සජීවී ගමන් මාර්ග මඟ පෙන්වීම'}</span>
               {distanceKm !== null && (
                 <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono">
                   {distanceKm} km
@@ -591,23 +605,27 @@ export const BloodRouteMap: React.FC<BloodRouteMapProps> = ({
               )}
             </div>
             <p className="text-[10px] text-slate-400">
-              🟢 ඔබ සිටින ස්ථානයේ සිට → 🔴 {hospitalName} {district ? `(${district})` : ''}
+              {isPosterView
+                ? `🚗 ${donorName || 'පරිත්‍යාගශීලියා'} → 🏥 ${hospitalName} ${district ? `(${district})` : ''}`
+                : `🟢 ඔබ සිටින ස්ථානයේ සිට → 🔴 ${hospitalName} ${district ? `(${district})` : ''}`}
             </p>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={acquireDonorGps}
-          className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 text-[11px] font-black flex items-center gap-1 cursor-pointer"
-        >
-          {locatingGps ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <LocateFixed className="w-3.5 h-3.5" />
-          )}
-          <span>මාගේ GPS</span>
-        </button>
+        {!isPosterView && (
+          <button
+            type="button"
+            onClick={acquireDonorGps}
+            className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 text-[11px] font-black flex items-center gap-1 cursor-pointer"
+          >
+            {locatingGps ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <LocateFixed className="w-3.5 h-3.5" />
+            )}
+            <span>මාගේ GPS</span>
+          </button>
+        )}
       </div>
 
       {/* Interactive Leaflet Route Map */}
@@ -615,19 +633,21 @@ export const BloodRouteMap: React.FC<BloodRouteMapProps> = ({
         <div ref={mapRef} className="w-full h-full z-10" />
       </div>
 
-      {/* Bottom Action Bar */}
-      <div className="p-3 bg-slate-950 border-t border-slate-800">
-        <a
-          href={finalNavUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95"
-        >
-          <Navigation className="w-4 h-4" />
-          <span>🗺️ Drop Location එක වෙත ගමන ආරම්භ කරන්න (Start Navigation)</span>
-          <ExternalLink className="w-3.5 h-3.5 opacity-80" />
-        </a>
-      </div>
+      {/* Bottom Action Bar (Donor navigation link only; Poster sees minimal Live Location + Phone & Chat) */}
+      {!isPosterView && (
+        <div className="p-3 bg-slate-950 border-t border-slate-800">
+          <a
+            href={finalNavUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95"
+          >
+            <Navigation className="w-4 h-4" />
+            <span>🗺️ Drop Location එක වෙත ගමන ආරම්භ කරන්න (Start Navigation)</span>
+            <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+          </a>
+        </div>
+      )}
     </div>
   );
 };

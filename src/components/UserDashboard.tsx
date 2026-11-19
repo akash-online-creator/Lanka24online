@@ -229,6 +229,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const seenPostIdsRef = useRef<Set<string>>(new Set());
   const seenReplyCountsRef = useRef<Map<string, number>>(new Map());
   const seenWorkflowStepsRef = useRef<Map<string, number>>(new Map());
+  const handledBloodStepKeysRef = useRef<Set<string>>(new Set());
   const seenStepTimestampsRef = useRef<Map<string, number>>(new Map());
   const isFirstPostsSnapshotRef = useRef(true);
 
@@ -465,8 +466,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                   targetPostId: pid,
                 });
 
-                // Ring continuous bell tone when initial request is made (if not yet confirmed/selected)
-                if (!p.isConfirmed && !p.isResolved && getPostStepNumber(p) < 3) {
+                // Ring continuous bell tone when initial request is made (if not yet confirmed/selected and NOT an appreciation honor post)
+                if (
+                  !p.isConfirmed &&
+                  !p.isResolved &&
+                  p.postType !== 'blood_donation_honor' &&
+                  getPostStepNumber(p) < 3
+                ) {
                   triggerSupportOfferAlert({
                     postId: pid,
                     postAuthorId: p.userId || p.authorId || '',
@@ -525,7 +531,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                       String(p.confirmedHelperName).trim().toLowerCase() === String(myReply.responderName).trim().toLowerCase()))
               );
 
-              // 🛑 Stop Bell Tone on this post for non-active steps (keep active for Selected Donor Step 3 & Poster Step 4)
+              const stepPostKey = String(p.postCode || pid).trim().toUpperCase();
+
+              // 🛑 Stop Bell Tone on this post for non-active steps (keep active only when newly triggering Step 3 Donor or Step 4 Poster)
               if (newStep >= 3 || p.isConfirmed || p.isResolved) {
                 const keepRingingForDonorStep3 = isBlood && isSelectedDonorMe && newStep === 3;
                 const keepRingingForPosterStep4 = isBlood && isOwner && newStep === 4;
@@ -537,7 +545,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 }
               }
 
-              // Step 1 completed by Helper/Donor -> Auto Pop-Up on Poster's screen for Step 2 + Ring Bell until someone is selected!
+              // Step 1 completed by Helper/Donor -> Auto Pop-Up on Poster's screen for Step 2 + Ring Bell ONCE per new offer!
               if (
                 isOwner &&
                 currentReplies.length > 0 &&
@@ -553,7 +561,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                     String(latestRep.responderId) === String(currentUserId) &&
                     p.lastStepByRole !== 'helper'
                 );
-                if (latestRep && !isStrictlySameUserId) {
+                const step2Key = `${stepPostKey}:step2:${latestRep?.id || currentReplies.length}`;
+                if (latestRep && !isStrictlySameUserId && !handledBloodStepKeysRef.current.has(step2Key)) {
+                  handledBloodStepKeysRef.current.add(step2Key);
+                  setSelectedPostForOffer(null);
+                  setIsBloodAndDisasterModalOpen(false);
                   setTargetPostForOffers(p);
                   setIsSupportOffersModalOpen(true);
                   triggerSupportOfferAlert({
@@ -570,67 +582,105 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 }
               }
 
-              // Step 2 completed by Poster (Donor/Helper Selected!) -> Auto Pop-Up on Selected Donor's screen + Continuous Bell Tone until stopped!
+              // Step 2 completed by Poster (Donor/Helper Selected!) -> Auto Pop-Up ONCE on Selected Donor's screen + Continuous Bell Tone until stopped!
               if (
                 (!isOwner || isSelectedDonorMe) &&
                 isSelectedDonorMe &&
                 newStep === 3 &&
                 (prevStep < 3 || (newStepTime > prevStepTime && p.lastStepByRole === 'poster'))
               ) {
-                setTargetPostForOffers(p);
-                setIsSupportOffersModalOpen(true);
-                if (isBlood) {
-                  triggerSupportOfferAlert({
-                    postId: pid,
-                    postAuthorId: currentUserId,
-                    postTitle: '✅ ඔබගේ ලේ ගැලපුම තහවුරු වී දැන්වීම්කරු විසින් ලේ පරිත්‍යාගය සඳහා ඔබව තෝරාගෙන ඇත!',
-                    helperName: p.userName || 'දැන්වීම්කරු',
-                    helperPhone: p.userPhone || '',
-                    helperMsg: 'BLOOD_DONOR_SELECTED',
-                    timestamp: Date.now(),
-                  });
-                } else {
-                  stopContinuousSupportBell();
+                const step3Key = `${stepPostKey}:step3`;
+                if (!handledBloodStepKeysRef.current.has(step3Key)) {
+                  handledBloodStepKeysRef.current.add(step3Key);
+                  setSelectedPostForOffer(null);
+                  setIsBloodAndDisasterModalOpen(false);
+                  setTargetPostForOffers(p);
+                  setIsSupportOffersModalOpen(true);
+                  if (isBlood) {
+                    triggerSupportOfferAlert({
+                      postId: pid,
+                      postAuthorId: currentUserId,
+                      postTitle: '✅ ඔබගේ ලේ ගැලපුම තහවුරු වී දැන්වීම්කරු විසින් ලේ පරිත්‍යාගය සඳහා ඔබව තෝරාගෙන ඇත!',
+                      helperName: p.userName || 'දැන්වීම්කරු',
+                      helperPhone: p.userPhone || '',
+                      helperMsg: 'BLOOD_DONOR_SELECTED',
+                      timestamp: Date.now(),
+                    });
+                  } else {
+                    stopContinuousSupportBell();
+                  }
                 }
               }
 
-              // Step 3 completed by Donor (Clicked "ඔව්, මම ලේ පරිත්‍යාගය සිදු කළෙමි") -> Auto Pop-Up on Poster's screen for Step 4 + Alert Bell!
+              // Step 3 (Donor started coming / Live Location active) -> Silently Auto Pop-Up ONCE on Poster's screen showing ONLY Live Location + Phone + Chat (NO bell ringing!)
+              if (isBlood && isOwner && newStep === 3) {
+                const selectedRep =
+                  currentReplies.find((r: any) => r && (r.isConfirmed || r.isAccepted)) || currentReplies[0];
+                const liveLoc = (selectedRep as any)?.donorLiveLocation || (p as any).donorLiveLocation;
+                const hasLiveOrAck = Boolean(
+                  (liveLoc && typeof liveLoc.lat === 'number' && typeof liveLoc.lng === 'number') ||
+                    (selectedRep as any)?.step3GuidelinesAccepted
+                );
+                const posterLiveKey = `${stepPostKey}:poster_live_loc`;
+                if (hasLiveOrAck && !handledBloodStepKeysRef.current.has(posterLiveKey)) {
+                  handledBloodStepKeysRef.current.add(posterLiveKey);
+                  stopContinuousSupportBell();
+                  setSelectedPostForOffer(null);
+                  setIsBloodAndDisasterModalOpen(false);
+                  setTargetPostForOffers(p);
+                  setIsSupportOffersModalOpen(true);
+                }
+              }
+
+              // Step 3 completed by Donor (Clicked "ඔව්, මම ලේ පරිත්‍යාගය සිදු කළෙමි") -> Auto Pop-Up ONCE on Poster's screen for Step 4 + Alert Bell!
               if (
                 isOwner &&
                 newStep === 4 &&
                 (prevStep < 4 || (newStepTime > prevStepTime && p.lastStepByRole === 'helper'))
               ) {
-                setTargetPostForOffers(p);
-                setIsSupportOffersModalOpen(true);
-                if (isBlood) {
-                  const donatedDonorName =
-                    p.confirmedHelperName ||
-                    currentReplies.find((r: any) => r?.isConfirmed || r?.isAccepted)?.responderName ||
-                    'පරිත්‍යාගශීලියා';
-                  triggerSupportOfferAlert({
-                    postId: pid,
-                    postAuthorId: currentUserId,
-                    postTitle: `🩸 "${donatedDonorName}" ලේ පරිත්‍යාගය සිදු කළ බව දන්වා ඇත. රුධිරය ලැබුණාද තහවුරු කරන්න!`,
-                    helperName: donatedDonorName,
-                    helperPhone: p.confirmedHelperPhone || '',
-                    helperMsg: 'BLOOD_DONATED_CONFIRM',
-                    timestamp: Date.now(),
-                  });
-                } else {
-                  stopContinuousSupportBell();
+                const step4Key = `${stepPostKey}:step4`;
+                if (!handledBloodStepKeysRef.current.has(step4Key)) {
+                  handledBloodStepKeysRef.current.add(step4Key);
+                  setSelectedPostForOffer(null);
+                  setIsBloodAndDisasterModalOpen(false);
+                  setTargetPostForOffers(p);
+                  setIsSupportOffersModalOpen(true);
+                  if (isBlood) {
+                    const donatedDonorName =
+                      p.confirmedHelperName ||
+                      currentReplies.find((r: any) => r?.isConfirmed || r?.isAccepted)?.responderName ||
+                      'පරිත්‍යාගශීලියා';
+                    triggerSupportOfferAlert({
+                      postId: pid,
+                      postAuthorId: currentUserId,
+                      postTitle: `🩸 "${donatedDonorName}" ලේ පරිත්‍යාගය සිදු කළ බව දන්වා ඇත. රුධිරය ලැබුණාද තහවුරු කරන්න!`,
+                      helperName: donatedDonorName,
+                      helperPhone: p.confirmedHelperPhone || '',
+                      helperMsg: 'BLOOD_DONATED_CONFIRM',
+                      timestamp: Date.now(),
+                    });
+                  } else {
+                    stopContinuousSupportBell();
+                  }
                 }
               }
 
-              // Step 4 completed by Poster -> Stop Bell & Auto Pop-Up Final Thank-You Notice on Selected Donor's screen (auto-closes after 5s)
+              // Step 4 completed by Poster -> Stop Bell & Auto Pop-Up ONCE Final Thank-You Notice on Selected Donor's screen (auto-closes after 5s)
               if (
                 (!isOwner || isSelectedDonorMe) &&
                 isSelectedDonorMe &&
                 newStep === 5 &&
                 (prevStep < 5 || (newStepTime > prevStepTime && p.lastStepByRole === 'poster'))
               ) {
-                stopContinuousSupportBell();
-                setTargetPostForOffers(p);
-                setIsSupportOffersModalOpen(true);
+                const step5Key = `${stepPostKey}:step5`;
+                if (!handledBloodStepKeysRef.current.has(step5Key)) {
+                  handledBloodStepKeysRef.current.add(step5Key);
+                  stopContinuousSupportBell();
+                  setSelectedPostForOffer(null);
+                  setIsBloodAndDisasterModalOpen(false);
+                  setTargetPostForOffers(p);
+                  setIsSupportOffersModalOpen(true);
+                }
               }
             }
 
@@ -790,10 +840,25 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   // 🔔 Listen for support offer bell state & incoming alerts
   useEffect(() => {
+    const buildFallbackAlert = (): SupportAlertInfo => ({
+      postId: '',
+      postAuthorId: '',
+      postTitle: '🔔 හදිසි දැනුම්දීමේ සීනුව නාද වේ...',
+      helperName: 'සහය සේවා',
+      helperPhone: '',
+      helperMsg: '',
+      timestamp: Date.now(),
+    });
+
+    // Sync immediately on mount in case bell was already ringing
+    if (isSupportBellRinging()) {
+      setRingingSupportAlert(getActiveSupportAlert() || buildFallbackAlert());
+    }
+
     const handleBellState = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail && detail.isRinging) {
-        setRingingSupportAlert(detail.alertInfo || null);
+        setRingingSupportAlert(detail.alertInfo || getActiveSupportAlert() || buildFallbackAlert());
       } else {
         setRingingSupportAlert(null);
       }
@@ -1152,15 +1217,15 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       setHelpPosts((prev) => [fullPost, ...(prev ? prev : [])]);
     }
 
+    // Mark post as created by this local user BEFORE writing to Firestore so we NEVER ring the announcement bell on the publisher's own device
+    markPostCreatedLocally(fullPost.id);
+    seenPostIdsRef.current.add(String(fullPost.id));
+
     try {
       await addHelpPostToFirestore(fullPost);
     } catch (err) {
       console.warn('Post saved locally, cloud sync notice:', err);
     }
-
-    // Mark post as created by this local user so we NEVER play the announcement alert sound on the publisher's own device
-    markPostCreatedLocally(fullPost.id);
-    seenPostIdsRef.current.add(String(fullPost.id));
 
     // 📢 Dispatch Background Push Notification to OTHER users (without playing local notification sound for the publisher)
     try {
@@ -1909,9 +1974,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
       {/* 🚨 Red Alert Ticker Banner removed */}
 
-      {/* 🔔 Minimal Incoming Message / Step Bell Banner (Rings continuously until viewed!) */}
+      {/* 🔔 ALWAYS-VISIBLE Fixed Floating Bell Stop Banner (Sits above ALL modals so user can ALWAYS stop the sound immediately!) */}
       {ringingSupportAlert && (
-        <div className="w-full rounded-2xl bg-amber-500 p-3.5 text-slate-950 shadow-xl border-2 border-white flex items-center justify-between gap-3 animate-in slide-in-from-top-3 duration-200">
+        <div className="fixed top-3 left-3 right-3 sm:left-1/2 sm:-translate-x-1/2 sm:max-w-xl z-[220] rounded-2xl bg-amber-500 p-3.5 text-slate-950 shadow-2xl border-2 border-white flex items-center justify-between gap-2.5 animate-in slide-in-from-top-3 duration-200">
           <div className="flex items-center gap-2.5 min-w-0">
             <Bell className="w-5 h-5 text-slate-950 shrink-0 animate-bounce" />
             <p className="text-xs sm:text-sm font-black text-slate-950 truncate">
@@ -1921,16 +1986,16 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
               onClick={() => {
                 stopContinuousSupportBell();
                 setRingingSupportAlert(null);
               }}
-              className="px-3 py-2 rounded-xl bg-white/90 hover:bg-white text-slate-950 font-black text-xs cursor-pointer shadow-xs"
+              className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs cursor-pointer shadow-md active:scale-95 transition-all"
             >
-              🔇 නිහඬ කරන්න
+              🔇 නාදය නවත්වන්න
             </button>
             <button
               type="button"
@@ -1954,7 +2019,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 }
                 setRingingSupportAlert(null);
               }}
-              className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-amber-300 font-black text-xs shrink-0 cursor-pointer"
+              className="px-3.5 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-amber-300 font-black text-xs shrink-0 cursor-pointer"
             >
               {ringingSupportAlert.helperMsg === 'CHAT_MSG'
                 ? 'පණිවිඩය බලන්න'
