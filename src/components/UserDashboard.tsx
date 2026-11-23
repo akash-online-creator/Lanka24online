@@ -544,8 +544,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 p.serviceType === 'blood_donation' ||
                 Boolean(p.bloodGroup);
 
+              // Blood post owner/requester is NEVER treated as the selected donor on their own request
               const isSelectedDonorMe = Boolean(
-                myReply &&
+                !isOwner &&
+                  myReply &&
                   (myReply.isConfirmed ||
                     myReply.isAccepted ||
                     (p.confirmedHelperId && currentUserId && String(p.confirmedHelperId) === String(currentUserId)) ||
@@ -610,7 +612,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
               // Step 2 completed by Poster (Donor/Helper Selected!) -> Auto Pop-Up ONCE on Selected Donor's screen + Continuous Bell Tone until stopped!
               if (
-                (!isOwner || isSelectedDonorMe) &&
+                !isOwner &&
                 isSelectedDonorMe &&
                 newStep === 3 &&
                 (prevStep < 3 || (newStepTime > prevStepTime && p.lastStepByRole === 'poster'))
@@ -696,7 +698,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
               // Step 4 completed by Poster -> Stop Bell & Auto Pop-Up ONCE Final Thank-You Notice on Selected Donor's screen (auto-closes after 5s)
               if (
-                (!isOwner || isSelectedDonorMe) &&
+                !isOwner &&
                 isSelectedDonorMe &&
                 newStep === 5 &&
                 (prevStep < 5 || (newStepTime > prevStepTime && p.lastStepByRole === 'poster'))

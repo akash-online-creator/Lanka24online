@@ -824,7 +824,14 @@ export function deduplicatePostReplies(replies: any[], post?: any): any[] {
         step3GuidelinesAccepted: Boolean(existing.step3GuidelinesAccepted || r.step3GuidelinesAccepted),
         donorArrivedAtHospital: Boolean(existing.donorArrivedAtHospital || r.donorArrivedAtHospital),
         bloodDonatedByHelper: Boolean(existing.bloodDonatedByHelper || r.bloodDonatedByHelper),
-        donorLiveLocation: r.donorLiveLocation || existing.donorLiveLocation,
+        donorLiveLocation: (() => {
+          const exLoc = existing.donorLiveLocation;
+          const inLoc = r.donorLiveLocation;
+          if (exLoc && inLoc) {
+            return Number(inLoc.updatedAtMs || 0) >= Number(exLoc.updatedAtMs || 0) ? inLoc : exLoc;
+          }
+          return inLoc || exLoc;
+        })(),
         workflowStep: Math.max(Number(existing.workflowStep || 0), Number(r.workflowStep || 0)),
       });
     }
@@ -986,7 +993,8 @@ export async function updateHelpPostInFirestore(postId: string, updateData: any)
       rawSanitized.postType === 'blood_request' ||
       rawSanitized.serviceType === 'blood_donation' ||
       String(rawSanitized.postCode || '').toUpperCase().startsWith('#BLD-') ||
-      rawSanitized.bloodWorkflowStep !== undefined;
+      rawSanitized.bloodWorkflowStep !== undefined ||
+      rawSanitized.donorLiveLocation !== undefined;
     if (isBloodDoc && String(postId).startsWith('bld_')) {
       const bloodSyncPayload: Record<string, any> = {};
       if (Array.isArray(sanitized.replies)) {

@@ -423,6 +423,14 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
         hospitalPinLng: (matched as any).hospitalPinLng || req.hospitalPinLng,
         replies: mergedReplies,
         repliesCount: mergedReplies.length,
+        donorLiveLocation: (() => {
+          const mLoc = (matched as any).donorLiveLocation;
+          const rLoc = (req as any).donorLiveLocation;
+          if (mLoc && rLoc) {
+            return Number(rLoc.updatedAtMs || 0) >= Number(mLoc.updatedAtMs || 0) ? rLoc : mLoc;
+          }
+          return mLoc || rLoc || null;
+        })(),
         bloodWorkflowStep: Math.max(Number((matched as any).bloodWorkflowStep || 0), Number((req as any).bloodWorkflowStep || 0)) || undefined,
       };
     }
@@ -465,6 +473,12 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       createdAtMs: req.createdAtMs || Date.now(),
       replies: cleanReqReplies,
       repliesCount: cleanReqReplies.length,
+      isConfirmed: Boolean((req as any).isConfirmed),
+      confirmedHelperId: (req as any).confirmedHelperId,
+      confirmedHelperName: (req as any).confirmedHelperName,
+      confirmedHelperPhone: (req as any).confirmedHelperPhone,
+      bloodDonatedByHelper: Boolean((req as any).bloodDonatedByHelper),
+      donorLiveLocation: (req as any).donorLiveLocation || null,
       bloodWorkflowStep: (req as any).bloodWorkflowStep,
     };
   };

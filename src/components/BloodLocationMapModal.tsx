@@ -444,13 +444,19 @@ export const BloodRouteMap: React.FC<BloodRouteMapProps> = ({
 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const leafletMapRef = useRef<L.Map | null>(null);
+  const dropMarkerRef = useRef<L.Marker | null>(null);
+  const donorMarkerRef = useRef<L.Marker | null>(null);
+  const routeLineRef = useRef<L.Polyline | null>(null);
 
   useEffect(() => {
     if (typeof propDonorLat === 'number' && typeof propDonorLng === 'number') {
       setMyLat(propDonorLat);
       setMyLng(propDonorLng);
+    } else if (isPosterView) {
+      setMyLat(null);
+      setMyLng(null);
     }
-  }, [propDonorLat, propDonorLng]);
+  }, [propDonorLat, propDonorLng, isPosterView]);
 
   useEffect(() => {
     if (destLat && destLng) {
@@ -498,6 +504,7 @@ export const BloodRouteMap: React.FC<BloodRouteMapProps> = ({
     }
   }, [acquireDonorGps, myLat, myLng, isPosterView]);
 
+  // Initialize Leaflet map ONCE so real-time GPS updates move markers smoothly without white-tile flicker
   useEffect(() => {
     if (!mapRef.current) return;
     if (leafletMapRef.current) {
@@ -516,20 +523,40 @@ export const BloodRouteMap: React.FC<BloodRouteMapProps> = ({
       attribution: '&copy; OpenStreetMap',
     }).addTo(map);
 
-    // Hospital Drop-off Marker
+    leafletMapRef.current = map;
+    const t = setTimeout(() => map.invalidateSize(), 200);
+    return () => {
+      clearTimeout(t);
+      dropMarkerRef.current = null;
+      donorMarkerRef.current = null;
+      routeLineRef.current = null;
+      map.remove();
+      leafletMapRef.current = null;
+    };
+  }, []);
+
+  // Smoothly update Hospital Drop Marker, Donor Live Location Marker & Route Polyline
+  useEffect(() => {
+    const map = leafletMapRef.current;
+    if (!map) return;
+
     const dropIcon = L.divIcon({
       className: 'blood-drop-pin',
       html: `<div style="display:flex;flex-direction:column;align-items:center;">
         <div style="background:#e11d48;color:white;font-weight:900;font-size:10px;padding:2px 8px;border-radius:999px;border:2px solid white;box-shadow:0 4px 10px rgba(0,0,0,0.35);white-space:nowrap;">🏥 රෝහල (Drop Location)</div>
         <div style="width:16px;height:16px;background:#e11d48;border:3px solid white;border-radius:4px;box-shadow:0 4px 10px rgba(0,0,0,0.4);margin-top:2px;"></div>
       </div>`,
-      iconSize: [120, 44],
-      iconAnchor: [60, 40],
+      iconSize: [140, 44],
+      iconAnchor: [70, 40],
     });
-    L.marker([targetLat, targetLng], { icon: dropIcon }).addTo(map);
 
-    if (myLat && myLng) {
-      // Donor Pickup / Live Tracking Marker
+    if (dropMarkerRef.current) {
+      dropMarkerRef.current.setLatLng([targetLat, targetLng]);
+    } else {
+      dropMarkerRef.current = L.marker([targetLat, targetLng], { icon: dropIcon }).addTo(map);
+    }
+
+    if (myLat !== null && myLng !== null) {
       const donorPinLabel = isPosterView
         ? `🚗 ${donorName || 'පරිත්‍යාගශීලියා'} (Live)`
         : '🟢 ඔබ සිටින ස්ථානය';
@@ -537,40 +564,52 @@ export const BloodRouteMap: React.FC<BloodRouteMapProps> = ({
         className: 'blood-pickup-pin',
         html: `<div style="display:flex;flex-direction:column;align-items:center;">
           <div style="background:#059669;color:white;font-weight:900;font-size:10px;padding:2px 8px;border-radius:999px;border:2px solid white;box-shadow:0 4px 10px rgba(0,0,0,0.35);white-space:nowrap;">${donorPinLabel}</div>
-          <div style="width:16px;height:16px;background:#10b981;border:3px solid white;border-radius:999px;box-shadow:0 4px 10px rgba(0,0,0,0.4);margin-top:2px;"></div>
+          <div style="width:16px;height:16px;background:#10b981;border:3px solid white;border-radius:999px;box-shadow:0 0 0 6px rgba(16,185,129,0.35),0 4px 10px rgba(0,0,0,0.4);margin-top:2px;"></div>
         </div>`,
-        iconSize: [140, 44],
-        iconAnchor: [70, 40],
+        iconSize: [160, 44],
+        iconAnchor: [80, 40],
       });
-      L.marker([myLat, myLng], { icon: pickupIcon }).addTo(map);
 
-      // Route Polyline
-      const routeLine = L.polyline(
-        [
+      if (donorMarkerRef.current) {
+        donorMarkerRef.current.setLatLng([myLat, myLng]);
+        donorMarkerRef.current.setIcon(pickupIcon);
+      } else {
+        donorMarkerRef.current = L.marker([myLat, myLng], { icon: pickupIcon }).addTo(map);
+      }
+
+      if (routeLineRef.current) {
+        routeLineRef.current.setLatLngs([
           [myLat, myLng],
           [targetLat, targetLng],
-        ],
-        {
-          color: '#0f172a',
-          weight: 5,
-          opacity: 0.85,
-          dashArray: '8, 6',
-        }
-      ).addTo(map);
+        ]);
+      } else {
+        routeLineRef.current = L.polyline(
+          [
+            [myLat, myLng],
+            [targetLat, targetLng],
+          ],
+          {
+            color: '#059669',
+            weight: 5,
+            opacity: 0.9,
+            dashArray: '8, 6',
+          }
+        ).addTo(map);
+      }
 
-      map.fitBounds(routeLine.getBounds(), { padding: [36, 36], maxZoom: 16 });
+      map.fitBounds(routeLineRef.current.getBounds(), { padding: [36, 36], maxZoom: 16 });
     } else {
+      if (donorMarkerRef.current) {
+        donorMarkerRef.current.remove();
+        donorMarkerRef.current = null;
+      }
+      if (routeLineRef.current) {
+        routeLineRef.current.remove();
+        routeLineRef.current = null;
+      }
       map.setView([targetLat, targetLng], 15);
     }
-
-    leafletMapRef.current = map;
-    const t = setTimeout(() => map.invalidateSize(), 200);
-    return () => {
-      clearTimeout(t);
-      map.remove();
-      leafletMapRef.current = null;
-    };
-  }, [targetLat, targetLng, myLat, myLng]);
+  }, [targetLat, targetLng, myLat, myLng, donorName, isPosterView]);
 
   const distanceKm =
     myLat && myLng ? calculateDistanceKm(myLat, myLng, targetLat, targetLng) : null;
@@ -629,8 +668,13 @@ export const BloodRouteMap: React.FC<BloodRouteMapProps> = ({
       </div>
 
       {/* Interactive Leaflet Route Map */}
-      <div className="relative w-full h-48 bg-slate-900">
+      <div className="relative w-full h-52 bg-slate-900">
         <div ref={mapRef} className="w-full h-full z-10" />
+        {isPosterView && !(myLat !== null && myLng !== null) && (
+          <div className="absolute bottom-2 left-2 right-2 z-20 px-3 py-1.5 rounded-xl bg-slate-950/85 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold text-center backdrop-blur-xs pointer-events-none">
+            📡 සහයකයාගේ සජීවී පිහිටීම (Live Location) ලබාගනිමින් පවතී...
+          </div>
+        )}
       </div>
 
       {/* Bottom Action Bar (Donor navigation link only; Poster sees minimal Live Location + Phone & Chat) */}

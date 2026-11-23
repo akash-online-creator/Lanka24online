@@ -39,6 +39,7 @@ import { playNotificationSound, triggerBrowserNotification } from '../utils/noti
 import { startContinuousSupportBell, stopContinuousSupportBell } from '../utils/supportBellRingtone';
 import { PolicyViolationModal } from './PolicyViolationModal';
 import { AudioVoiceRecorder, AudioVoicePlayer } from './AudioVoiceNote';
+import { BloodRouteMap } from './BloodLocationMapModal';
 const h = React.createElement;
 const CHAT_LANG_KEY_GLOBAL = 'sahaya_preferred_chat_lang';
 const CHAT_LANG_KEY_PREFIX = 'sahaya_chat_lang_';
@@ -236,11 +237,25 @@ const handleScrollToMessage = (msgId: string) => {
     }, 2500);
   }
 };
-const currentUserPhone = normalizePhoneStr(currentUser?.phone ? currentUser.phone : (currentUser as any)?.whatsappNumber);
-const postAuthorPhone = normalizePhoneStr(post?.userPhone);
+const currentUserPhone = normalizePhoneStr(
+  currentUser?.phone || (currentUser as any)?.whatsappPhone || (currentUser as any)?.whatsappNumber
+);
+const postAuthorPhones = [
+  normalizePhoneStr(post?.userPhone),
+  normalizePhoneStr((post as any)?.contactNumber),
+  normalizePhoneStr((post as any)?.contactPhone),
+  normalizePhoneStr((post as any)?.actualAuthorPhone),
+].filter((p) => p.length >= 9);
 const currentUserId = currentUser?.userId ? currentUser.userId : (currentUser as any)?.id ? (currentUser as any).id : '';
-const isPostAuthor = Boolean( post && currentUser && (checkIsPostOwner(currentUser, post) ? true : currentUser.name && post.userName && currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase()
-? true : currentUserId && post.userId && currentUserId === post.userId ? true : currentUserPhone && postAuthorPhone && currentUserPhone === postAuthorPhone)
+const isPostAuthor = Boolean(
+  post &&
+    currentUser &&
+    (checkIsPostOwner(currentUser, post) ||
+      (currentUserId &&
+        ((post.userId && currentUserId === post.userId) ||
+          ((post as any).authorId && currentUserId === (post as any).authorId) ||
+          ((post as any).actualAuthorId && currentUserId === (post as any).actualAuthorId))) ||
+      (currentUserPhone.length >= 9 && postAuthorPhones.some((pp) => pp.slice(-9) === currentUserPhone.slice(-9))))
 );
 const isMeMessage = (msg: any): boolean => {
 if (!msg ? true : !currentUser) return false;
@@ -1279,11 +1294,58 @@ const renderBloodDonationStepsPage = () => {
                   '🩸 3. මම ලේ පරිත්‍යාගය සිදු කළෙමි (4 වන පියවරට යොමු කරන්න →)'
                 )
               )
-            : h(
-                'p',
-                { className: 'mt-2 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-300/60' },
-                '⏳ පරිත්‍යාගශීලියා රෝහලට පැමිණ ලේ පරිත්‍යාග කළ බව තහවුරු කරන තෙක් කරුණාකර රැඳී සිටින්න.'
-              )
+            : (() => {
+                const selectedReply = Array.isArray(post?.replies)
+                  ? post.replies.find((r: any) => r && !r.declinedByPoster && !r.bloodReceivedConfirmed && (r.isConfirmed || r.isAccepted)) || post.replies[0]
+                  : null;
+                const liveLoc = (selectedReply as any)?.donorLiveLocation || (post as any)?.donorLiveLocation;
+                const hasLiveCoords = Boolean(liveLoc && typeof liveLoc.lat === 'number' && typeof liveLoc.lng === 'number');
+                const hospitalLabel = (post as any)?.hospitalName || post?.locationName || 'රෝහල';
+                const districtLabel = (post as any)?.district || '';
+                const destLat = (post as any)?.hospitalPinLat || post?.latitude || null;
+                const destLng = (post as any)?.hospitalPinLng || post?.longitude || null;
+                const navUrl = (post as any)?.dropLocationUrl || `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(hospitalLabel + ' ' + districtLabel + ' Sri Lanka')}&travelmode=driving`;
+                return h(
+                  'div',
+                  { className: 'mt-3 space-y-2.5' },
+                  h(
+                    'div',
+                    { className: 'p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-400 flex items-center justify-between gap-2 flex-wrap' },
+                    h(
+                      'span',
+                      { className: 'text-xs font-black text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5' },
+                      h('span', { className: 'w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0' }),
+                      h(
+                        'span',
+                        null,
+                        hasLiveCoords
+                          ? `🚗 "${donorDisplayName}" ලේ පරිත්‍යාග කිරීමට පැමිණෙමින් සිටී (Live Track)`
+                          : `📡 "${donorDisplayName}"ගේ Live Location සම්බන්ධ වෙමින් පවතී...`
+                      )
+                    ),
+                    liveLoc?.updatedAt
+                      ? h('span', { className: 'text-[10px] font-mono font-black px-2 py-0.5 rounded-full bg-emerald-600 text-white' }, liveLoc.updatedAt)
+                      : null
+                  ),
+                  h(BloodRouteMap, {
+                    hospitalName: hospitalLabel,
+                    district: districtLabel,
+                    destLat,
+                    destLng,
+                    donorLat: hasLiveCoords ? liveLoc.lat : null,
+                    donorLng: hasLiveCoords ? liveLoc.lng : null,
+                    donorName: donorDisplayName,
+                    isPosterView: true,
+                    googleMapsNavUrl: navUrl,
+                  }),
+                  h(
+                    'div',
+                    { className: 'p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-400 dark:border-amber-700 text-center space-y-1' },
+                    h('p', { className: 'text-xs sm:text-sm font-black text-amber-900 dark:text-amber-200' }, '⏳ ලේ පරිත්‍යාගය සිදු කර අවසන්වනතුරු රැඳී සිටින්න'),
+                    h('p', { className: 'text-[11px] font-bold text-slate-600 dark:text-slate-300' }, 'පරිත්‍යාගශීලියා ලේ ලබාදී අවසන් කළ පසු ඔබට 4 වන පියවර ස්වයංක්‍රීයව සක්‍රීය වේ.')
+                  )
+                );
+              })()
           : currentBloodStep > 3
           ? h('p', { className: 'mt-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300' }, '✓ පරිත්‍යාගශීලියා විසින් ලේ පරිත්‍යාගය සිදු කර ඇත.')
           : h('p', { className: 'mt-1 text-[11px] text-slate-500' }, 'දෙවන පියවර (තෝරාගැනීම) අවසන් වූ පසු මෙය සක්‍රීය වේ.')

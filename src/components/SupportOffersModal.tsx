@@ -364,14 +364,28 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   const myName = String(currentUser?.name || '').trim().toLowerCase();
   const isAdminUser = checkIsAdmin(currentUser);
 
+  const genericDonorNames = new Set([
+    'සහායක',
+    'පරිත්‍යාගශීලියා',
+    'සම්බන්ධීකාරක',
+    'දැන්වීම්කරු',
+    'ලියාපදිංචි පරිශීලක',
+    'නිර්නාමික පරිශීලක (anonymous)',
+    'anonymous user',
+    'පරිශීලක (user)',
+    'user',
+  ]);
+
   const isMyReplyMatch = (rep: any, post?: HelpPost): boolean => {
     if (!rep || !currentUser) return false;
+    // A blood post owner/requester is NEVER matched as the donor of their own request
+    if (post && checkIsPostOwner(currentUser, post)) return false;
     const rId = String(rep.responderId || '').trim();
     if (rId && myUserId && rId !== 'helper_user' && rId === myUserId) return true;
     const rPhone = String(rep.responderPhone || '').replace(/\D/g, '');
     if (rPhone.length >= 9 && myPhone.length >= 9 && rPhone.slice(-9) === myPhone.slice(-9)) return true;
     const rName = String(rep.responderName || '').trim().toLowerCase();
-    if (rName && myName && rName === myName) return true;
+    if (rName && myName && !genericDonorNames.has(rName) && !genericDonorNames.has(myName) && rName === myName) return true;
     // Also match saved local donor offer identity (handles cases where Donor typed a different phone/name on Step 1)
     if (post && typeof window !== 'undefined') {
       try {
@@ -382,9 +396,14 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
             : null);
         if (rawSaved) {
           const saved = JSON.parse(rawSaved);
+          const savedUid = String(saved.responderId || '').trim();
+          // Ignore stale localStorage entry left by another account on the same browser
+          if (savedUid && savedUid !== 'helper_user' && myUserId && savedUid !== myUserId) {
+            return false;
+          }
           if (saved.replyId && rep.id && String(saved.replyId) === String(rep.id)) return true;
-          if (saved.responderPhone && rPhone.length >= 9 && saved.responderPhone.slice(-9) === rPhone.slice(-9)) return true;
-          if (saved.responderName && rName && saved.responderName === rName) return true;
+          if (saved.responderPhone && rPhone.length >= 9 && String(saved.responderPhone).slice(-9) === rPhone.slice(-9)) return true;
+          if (saved.responderName && rName && !genericDonorNames.has(rName) && saved.responderName === rName) return true;
         }
       } catch {}
     }
@@ -472,7 +491,14 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
           lastStepUpdatedAtMs: Math.max(existingTs, incomingTs) || undefined,
           donorLiveLocation: advancedPintCycle
             ? (newerCyclePost as any).donorLiveLocation || null
-            : (p as any).donorLiveLocation || (existing as any).donorLiveLocation,
+            : (() => {
+                const exLoc = (existing as any).donorLiveLocation;
+                const inLoc = (p as any).donorLiveLocation;
+                if (exLoc && inLoc) {
+                  return Number(inLoc.updatedAtMs || 0) >= Number(exLoc.updatedAtMs || 0) ? inLoc : exLoc;
+                }
+                return inLoc || exLoc || null;
+              })(),
         } as any;
       }
     });
@@ -605,7 +631,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     return () => clearInterval(timer);
   }, [isOpen, shouldAutoCloseStep5]);
 
-  // AUTO-START Live Location streaming when Selected Donor is on Step 3B so Poster sees Donor arriving live automatically!
+  // AUTO-START Live Location streaming when Selected Donor is on Step 3 so Poster sees Donor arriving live automatically!
   const activeSelectedDonorOffer = filteredOffers.find((off) => {
     if (!off || !off.post || !off.reply) return false;
     const isBlood =
@@ -615,26 +641,30 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         String(off.post.postCode || '').toUpperCase().startsWith('#BLD-'));
     if (!isBlood) return false;
     const isMine = isMyReplyMatch(off.reply, off.post);
-    if (!off.isSelected || (off.isPostOwner && !isMine)) return false;
+    // Strictly ONLY the selected Donor (NEVER the Poster/Post Owner) broadcasts live location
+    if (!off.isSelected || off.isPostOwner || !isMine) return false;
     const isDone = Boolean(
       off.post.isResolved ||
         off.post.status === 'resolved' ||
         (off.post as any).bloodDonatedByHelper ||
-        Number((off.post as any).bloodWorkflowStep) >= 4
+        (off.reply as any).bloodDonatedByHelper ||
+        Number((off.post as any).bloodWorkflowStep) >= 4 ||
+        Number((off.reply as any).workflowStep) >= 4
     );
     if (isDone) return false;
-    const hasAck = Boolean(
-      acknowledgedMap[off.post.id] ||
-        (off.reply as any).step3GuidelinesAccepted ||
-        (typeof window !== 'undefined' && localStorage.getItem(`sahaya_blood_step3_ack_${off.post.id}`) === 'true')
-    );
-    return hasAck;
+    return true;
   });
 
   useEffect(() => {
-    if (!isOpen || !activeSelectedDonorOffer) return;
+    if (!activeSelectedDonorOffer) {
+      if (liveLocActiveRef.current || liveLocWatchIdRef.current !== null) {
+        stopLiveLocationWatch();
+      }
+      return;
+    }
+    if (!isOpen) return;
     const key = `${activeSelectedDonorOffer.post.id}:${activeSelectedDonorOffer.reply.id || 'sel'}`;
-    if (autoStartedLiveLocKeyRef.current === key || liveLocWatchIdRef.current !== null) return;
+    if (autoStartedLiveLocKeyRef.current === key && liveLocActiveRef.current) return;
     autoStartedLiveLocKeyRef.current = key;
     startLiveLocationWatch(activeSelectedDonorOffer.post, activeSelectedDonorOffer.reply, true);
   }, [isOpen, activeSelectedDonorOffer?.post?.id, activeSelectedDonorOffer?.reply?.id]);
@@ -816,10 +846,10 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     const parsedCoords = extractParsedBloodDetails(post);
 
     // IMPORTANT: Patch ONLY donorLiveLocation to Firestore (NEVER overwrite replies or bloodWorkflowStep with stale closure data!)
-    const pushPosition = async (pos: GeolocationPosition) => {
+    const pushPosition = async (pos: GeolocationPosition, force = false) => {
       if (!liveLocActiveRef.current) return;
       const now = Date.now();
-      if (now - lastLiveLocPushRef.current < 6000) return;
+      if (!force && now - lastLiveLocPushRef.current < 5000) return;
       lastLiveLocPushRef.current = now;
       const distKm =
         parsedCoords.lat !== null && parsedCoords.lng !== null
@@ -840,20 +870,34 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
       } catch {}
     };
 
+    // Push initial GPS fix immediately so Poster sees Donor's location right away
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          pushPosition(pos, true);
+        },
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 12000 }
+      );
+    } catch {}
+
     try {
       const watchId = navigator.geolocation.watchPosition(
         (pos) => {
-          pushPosition(pos);
+          pushPosition(pos, false);
         },
-        () => {
-          stopLiveLocationWatch();
+        (err) => {
+          // Only stop tracking if user explicitly denied location permission; keep tracking through transient GPS timeouts
+          if (err && err.code === 1) {
+            stopLiveLocationWatch();
+          }
         },
-        { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
       );
       liveLocWatchIdRef.current = watchId;
     } catch {
       navigator.geolocation.getCurrentPosition(
-        (pos) => pushPosition(pos),
+        (pos) => pushPosition(pos, true),
         () => stopLiveLocationWatch()
       );
     }
@@ -1371,7 +1415,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
               );
 
               const isPosterLiveTrackingStep = Boolean(
-                isBloodOffer && currentStep === 3 && off.isPostOwner && !isMineOffer
+                isBloodOffer && currentStep === 3 && off.isPostOwner
               );
 
               return (
@@ -1421,9 +1465,8 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
                   {isBloodOffer ? (
                     <div className="space-y-4 py-1">
-                      {/* Compact Unified 4-Step Progress Bar (Hidden on Poster Step 3 for pure Live Location + Phone + Chat view) */}
-                      {!isPosterLiveTrackingStep && (
-                        <div className="grid grid-cols-4 gap-1 text-[10px] font-black text-center">
+                      {/* Compact Unified 4-Step Progress Bar */}
+                      <div className="grid grid-cols-4 gap-1 text-[10px] font-black text-center">
                           {[
                             { num: 1, label: '1. පරීක්ෂාව' },
                             { num: 2, label: '2. තෝරාගැනීම' },
@@ -1449,8 +1492,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                               </div>
                             );
                           })}
-                        </div>
-                      )}
+                      </div>
 
                       {/* STEP 2: Poster selects donor cleanly (without cluttering with duplicate edit fields) */}
                       {currentStep === 2 &&
@@ -1636,10 +1678,10 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                         </div>
                       )}
 
-                      {/* STEP 3: Selected Donor first sees Pre-Donation Guidelines + "තේරුම් ගත්තෙමි" button, THEN sees Patient Name, Ward No, File No/Photo & Drop Location */}
+                      {/* STEP 3: Selected Donor ONLY sees Pre-Donation Guidelines + Patient Details + "ඔව්, මම ලේ පරිත්‍යාගය සිදු කළෙමි" button; Blood Requester (Poster) NEVER sees that button and instead sees Live Donor Location Tracking + Waiting Message */}
                       {currentStep === 3 &&
                         (off.isSelected || off.isPostOwner) &&
-                        (!off.isPostOwner || isMineOffer ? (
+                        (!off.isPostOwner && off.isSelected ? (
                           <div className="space-y-3.5 text-left">
                             {/* Selection Notice Banner */}
                             <div className="p-3 rounded-2xl bg-emerald-600 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-sm">
@@ -1852,7 +1894,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                             )}
                           </div>
                         ) : (
-                          /* POSTER STEP 3 VIEW: ONLY Auto Live Location Map + Phone Number + Chat Button */
+                          /* POSTER STEP 3 VIEW: Live Donor Location Tracking ABOVE + "ලේ පරිත්‍යාගය සිදු කර අවසන්වනතුරු රැඳී සිටින්න" Waiting Message (NEVER shows Donor's "ඔව්, මම ලේ පරිත්‍යාගය සිදු කළෙමි" button) */
                           <div className="space-y-3.5">
                             {(() => {
                               const liveLoc = (off.reply as any).donorLiveLocation || (off.post as any).donorLiveLocation;
@@ -1866,7 +1908,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
                                       <span>
                                         {hasLiveCoords
-                                          ? `🚗 "${helperName}" රෝහල වෙත පැමිණෙමින් සිටී (Live)`
+                                          ? `🚗 "${helperName}" ලේ පරිත්‍යාග කිරීමට පැමිණෙමින් සිටී (Live Track)`
                                           : `📡 "${helperName}" පැමිණෙන Live Location සම්බන්ධ වෙමින් පවතී...`}
                                       </span>
                                     </span>
@@ -1880,8 +1922,8 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                                   <BloodRouteMap
                                     hospitalName={parsedDetails.hospitalName}
                                     district={parsedDetails.district}
-                                    destLat={(off.post as any).hospitalPinLat || off.post.latitude || null}
-                                    destLng={(off.post as any).hospitalPinLng || off.post.longitude || null}
+                                    destLat={parsedDetails.lat || (off.post as any).hospitalPinLat || off.post.latitude || null}
+                                    destLng={parsedDetails.lng || (off.post as any).hospitalPinLng || off.post.longitude || null}
                                     donorLat={hasLiveCoords ? liveLoc.lat : null}
                                     donorLng={hasLiveCoords ? liveLoc.lng : null}
                                     donorName={helperName}
@@ -1892,7 +1934,18 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                               );
                             })()}
 
-                            {/* ONLY Donor Contact Details: Name, Phone Number & Chat Button */}
+                            {/* Waiting Message for Blood Requester while Donor completes donation */}
+                            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-400 dark:border-amber-700 text-center space-y-1.5 shadow-xs">
+                              <div className="flex items-center justify-center gap-2 text-amber-900 dark:text-amber-200 font-black text-sm sm:text-base">
+                                <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 animate-pulse" />
+                                <span>ලේ පරිත්‍යාගය සිදු කර අවසන්වනතුරු රැඳී සිටින්න</span>
+                              </div>
+                              <p className="text-xs font-bold text-slate-600 dark:text-slate-300 leading-relaxed">
+                                "{helperName}" ලේ පරිත්‍යාගය සිදු කර අවසන් කළ පසු, ඔබට රුධිරය ලැබුණු බව තහවුරු කිරීමේ 4 වන පියවර ස්වයංක්‍රීයව දිස්වේ.
+                              </p>
+                            </div>
+
+                            {/* Donor Contact Details: Name, Phone Number & Chat Button */}
                             <div className="p-3.5 rounded-2xl bg-white dark:bg-[#06150d] border-2 border-emerald-500/60 space-y-3">
                               <div className="flex items-center justify-between gap-2">
                                 <div>
