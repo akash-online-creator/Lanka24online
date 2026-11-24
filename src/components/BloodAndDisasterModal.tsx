@@ -283,6 +283,18 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       userId: actualAuthorIdVal,
     };
 
+    try {
+      if (typeof localStorage !== 'undefined') {
+        for (const storageKey of ['sahaya_my_created_post_ids', 'sahaya_my_created_posts']) {
+          const raw = localStorage.getItem(storageKey);
+          const list: string[] = raw ? JSON.parse(raw) : [];
+          if (Array.isArray(list) && !list.includes(newRequest.id)) {
+            localStorage.setItem(storageKey, JSON.stringify([newRequest.id, ...list].slice(0, 200)));
+          }
+        }
+      }
+    } catch {}
+
     const updated = [newRequest, ...bloodRequests];
     setBloodRequests(updated);
     saveBloodRequestsToStorage(updated);

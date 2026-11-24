@@ -238,6 +238,14 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
   // Donor Step 3 "තේරුම් ගත්තෙමි" acknowledgment state per post
   const [acknowledgedMap, setAcknowledgedMap] = useState<Record<string, boolean>>({});
+  const [bloodSyncTick, setBloodSyncTick] = useState<number>(0);
+
+  useEffect(() => {
+    if (!isOpen || typeof window === 'undefined') return;
+    const handleBloodSync = () => setBloodSyncTick((t) => t + 1);
+    window.addEventListener('sahaya_blood_disaster_updated', handleBloodSync);
+    return () => window.removeEventListener('sahaya_blood_disaster_updated', handleBloodSync);
+  }, [isOpen]);
 
   const stopLiveLocationWatch = () => {
     liveLocActiveRef.current = false;
@@ -411,6 +419,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   };
 
   const livePostsList: HelpPost[] = (() => {
+    void bloodSyncTick;
     const rawList: HelpPost[] = [];
     // Place live userPosts first so fresh Firestore updates always take priority over stale targetPost snapshots
     if (Array.isArray(userPosts)) {
@@ -418,6 +427,26 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     }
     if (targetPost && targetPost.id) {
       rawList.push(targetPost);
+    }
+    // Also merge real-time blood_requests from storage so donorLiveLocation and bloodWorkflowStep synced via blood_requests are reflected immediately
+    if (typeof window !== 'undefined') {
+      try {
+        const rawBlood = localStorage.getItem('sahaya_blood_requests');
+        if (rawBlood) {
+          const parsedBlood = JSON.parse(rawBlood);
+          if (Array.isArray(parsedBlood)) {
+            parsedBlood.forEach((b: any) => {
+              if (b && b.id && (b.donorLiveLocation || b.bloodWorkflowStep || Array.isArray(b.replies))) {
+                rawList.push({
+                  ...b,
+                  postType: 'blood_request',
+                  serviceType: 'blood_donation',
+                } as HelpPost);
+              }
+            });
+          }
+        }
+      } catch {}
     }
     Object.values(localStepPosts).forEach((lp) => {
       if (lp && lp.id) rawList.push(lp);

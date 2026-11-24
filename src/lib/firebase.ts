@@ -848,11 +848,33 @@ export function subscribeToHelpPosts(callback: (posts: any[]) => void): () => vo
     const map = new Map();
     [...fallbackPosts, ...legacyPosts, ...primaryPosts].forEach((p) => {
       if (p && p.id && !p.isDeleted && p.status !== 'deleted' && p.status !== 'archived') {
-        const cleanReplies = deduplicatePostReplies(Array.isArray(p.replies) ? p.replies : [], p);
-        map.set(String(p.id), {
+        const pid = String(p.id);
+        const existing = map.get(pid);
+        const combinedReplies = existing
+          ? [...(Array.isArray(existing.replies) ? existing.replies : []), ...(Array.isArray(p.replies) ? p.replies : [])]
+          : Array.isArray(p.replies)
+          ? p.replies
+          : [];
+        const cleanReplies = deduplicatePostReplies(combinedReplies, p);
+        const exLoc = existing?.donorLiveLocation;
+        const inLoc = p.donorLiveLocation;
+        const newestLiveLoc =
+          exLoc && inLoc
+            ? Number(inLoc.updatedAtMs || 0) >= Number(exLoc.updatedAtMs || 0)
+              ? inLoc
+              : exLoc
+            : inLoc || exLoc;
+        const maxBloodStep = Math.max(
+          Number(existing?.bloodWorkflowStep || 0),
+          Number(p.bloodWorkflowStep || 0)
+        );
+        map.set(pid, {
+          ...(existing || {}),
           ...p,
           replies: cleanReplies,
           repliesCount: cleanReplies.length,
+          ...(newestLiveLoc !== undefined ? { donorLiveLocation: newestLiveLoc } : {}),
+          ...(maxBloodStep > 0 ? { bloodWorkflowStep: maxBloodStep } : {}),
         });
       }
     });

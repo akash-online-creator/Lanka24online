@@ -62,11 +62,14 @@ export const checkIsPostOwner = (
   // 1. Check if this post was created on this browser/device by the current local user
   if (post.id && typeof window !== 'undefined') {
     try {
-      const rawCreated = localStorage.getItem('sahaya_my_created_posts');
-      if (rawCreated) {
-        const parsed = JSON.parse(rawCreated);
-        if (Array.isArray(parsed) && parsed.includes(String(post.id))) {
-          return true;
+      const pidStr = String(post.id).trim();
+      for (const storageKey of ['sahaya_my_created_post_ids', 'sahaya_my_created_posts']) {
+        const rawCreated = localStorage.getItem(storageKey);
+        if (rawCreated) {
+          const parsed = JSON.parse(rawCreated);
+          if (Array.isArray(parsed) && parsed.includes(pidStr)) {
+            return true;
+          }
         }
       }
     } catch {}
