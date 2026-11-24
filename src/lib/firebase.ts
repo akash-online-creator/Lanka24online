@@ -864,13 +864,32 @@ export function subscribeToHelpPosts(callback: (posts: any[]) => void): () => vo
               ? inLoc
               : exLoc
             : inLoc || exLoc;
-        const maxBloodStep = Math.max(
-          Number(existing?.bloodWorkflowStep || 0),
-          Number(p.bloodWorkflowStep || 0)
-        );
+        const pickOwnerStr = (...vals: any[]) => {
+          const bad = new Set(['blood_requester', 'anonymous_user', 'red_alert_reporter', 'helper_user', 'guest_user', 'usr_guest', 'unknown']);
+          for (const v of vals) {
+            const s = String(v || '').trim();
+            if (s && !bad.has(s.toLowerCase())) return s;
+          }
+          return '';
+        };
+        const existingUnitsRec = Number(existing?.unitsReceived || 0);
+        const incomingUnitsRec = Number(p.unitsReceived || 0);
+        const advancedPintCycle = existing ? incomingUnitsRec !== existingUnitsRec : false;
+        const newerCyclePost = incomingUnitsRec > existingUnitsRec ? p : existing;
+        const maxBloodStep = advancedPintCycle
+          ? Number(newerCyclePost?.bloodWorkflowStep || 1)
+          : Math.max(
+              Number(existing?.bloodWorkflowStep || 0),
+              Number(p.bloodWorkflowStep || 0)
+            );
         map.set(pid, {
           ...(existing || {}),
           ...p,
+          userId: pickOwnerStr(p.userId, existing?.userId) || p.userId || existing?.userId,
+          authorId: pickOwnerStr(p.authorId, existing?.authorId) || p.authorId || existing?.authorId,
+          actualAuthorId: pickOwnerStr(p.actualAuthorId, existing?.actualAuthorId) || p.actualAuthorId || existing?.actualAuthorId,
+          actualAuthorName: pickOwnerStr(p.actualAuthorName, existing?.actualAuthorName) || p.actualAuthorName || existing?.actualAuthorName,
+          actualAuthorPhone: pickOwnerStr(p.actualAuthorPhone, existing?.actualAuthorPhone) || p.actualAuthorPhone || existing?.actualAuthorPhone,
           replies: cleanReplies,
           repliesCount: cleanReplies.length,
           ...(newestLiveLoc !== undefined ? { donorLiveLocation: newestLiveLoc } : {}),

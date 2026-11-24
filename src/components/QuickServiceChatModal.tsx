@@ -246,7 +246,7 @@ const postAuthorPhones = [
   normalizePhoneStr((post as any)?.contactPhone),
   normalizePhoneStr((post as any)?.actualAuthorPhone),
 ].filter((p) => p.length >= 9);
-const currentUserId = currentUser?.userId ? currentUser.userId : (currentUser as any)?.id ? (currentUser as any).id : '';
+const currentUserId = currentUser?.userId ? currentUser.userId : (currentUser as any)?.uid ? (currentUser as any).uid : (currentUser as any)?.id ? (currentUser as any).id : '';
 const isPostAuthor = Boolean(
   post &&
     currentUser &&
@@ -1246,10 +1246,27 @@ const renderBloodDonationStepsPage = () => {
           stepBadge(3)
         ),
         currentBloodStep === 3
-          ? !isPostAuthor
-            ? h(
-                'div',
-                { className: 'mt-3 space-y-2' },
+          ? (() => {
+              const isSelectedDonorMeInChat = Boolean(
+                !isPostAuthor &&
+                  currentUser &&
+                  ((post?.confirmedHelperId && currentUserId && String(post.confirmedHelperId) === String(currentUserId)) ||
+                    (post?.confirmedHelperPhone && currentUserPhone.length >= 9 && String(post.confirmedHelperPhone).replace(/\D/g, '').slice(-9) === currentUserPhone.slice(-9)) ||
+                    (Array.isArray(post?.replies) &&
+                      post.replies.some((r: any) => {
+                        if (!r || r.declinedByPoster || r.bloodReceivedConfirmed || !(r.isConfirmed || r.isAccepted)) return false;
+                        const rId = String(r.responderId || '').trim();
+                        const rPh = String(r.responderPhone || '').replace(/\D/g, '');
+                        return Boolean(
+                          (rId && currentUserId && rId !== 'helper_user' && rId === currentUserId) ||
+                          (rPh.length >= 9 && currentUserPhone.length >= 9 && rPh.slice(-9) === currentUserPhone.slice(-9))
+                        );
+                      })))
+              );
+              return !isPostAuthor && isSelectedDonorMeInChat
+                ? h(
+                    'div',
+                    { className: 'mt-3 space-y-2' },
                 h('p', { className: 'text-xs text-slate-600 dark:text-slate-300' }, 'රෝහලට පැමිණීම සහ ලේ පරිත්‍යාග කිරීම පිළිබඳව දැන්වීම්කරු දැනුවත් කරන්න:'),
                 h(
                   'div',
@@ -1298,7 +1315,14 @@ const renderBloodDonationStepsPage = () => {
                 const selectedReply = Array.isArray(post?.replies)
                   ? post.replies.find((r: any) => r && !r.declinedByPoster && !r.bloodReceivedConfirmed && (r.isConfirmed || r.isAccepted)) || post.replies[0]
                   : null;
-                const liveLoc = (selectedReply as any)?.donorLiveLocation || (post as any)?.donorLiveLocation;
+                const repLoc = (selectedReply as any)?.donorLiveLocation;
+                const postLoc = (post as any)?.donorLiveLocation;
+                const liveLoc =
+                  repLoc && postLoc
+                    ? Number(postLoc.updatedAtMs || 0) >= Number(repLoc.updatedAtMs || 0)
+                      ? postLoc
+                      : repLoc
+                    : postLoc || repLoc;
                 const hasLiveCoords = Boolean(liveLoc && typeof liveLoc.lat === 'number' && typeof liveLoc.lng === 'number');
                 const hospitalLabel = (post as any)?.hospitalName || post?.locationName || 'රෝහල';
                 const districtLabel = (post as any)?.district || '';
@@ -1345,7 +1369,8 @@ const renderBloodDonationStepsPage = () => {
                     h('p', { className: 'text-[11px] font-bold text-slate-600 dark:text-slate-300' }, 'පරිත්‍යාගශීලියා ලේ ලබාදී අවසන් කළ පසු ඔබට 4 වන පියවර ස්වයංක්‍රීයව සක්‍රීය වේ.')
                   )
                 );
-              })()
+              })();
+            })()
           : currentBloodStep > 3
           ? h('p', { className: 'mt-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300' }, '✓ පරිත්‍යාගශීලියා විසින් ලේ පරිත්‍යාගය සිදු කර ඇත.')
           : h('p', { className: 'mt-1 text-[11px] text-slate-500' }, 'දෙවන පියවර (තෝරාගැනීම) අවසන් වූ පසු මෙය සක්‍රීය වේ.')

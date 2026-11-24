@@ -14,6 +14,7 @@ import { inspectAndSanitizeMessage, getUserStrikes, recordPolicyViolation, isUse
 import { PolicyViolationModal } from './PolicyViolationModal';
 import { BloodRouteMap } from './BloodLocationMapModal';
 import { updateHelpPostInFirestore } from '../lib/firebase';
+import { checkIsPostOwner } from '../utils/postOwnerHelper';
 
 export interface OfferSupportModalProps {
   post?: HelpPost | null;
@@ -74,15 +75,19 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
     post?.bloodGroup || parseBulletField('ලේ වර්ගය') || (bgMatch ? bgMatch[0].toUpperCase() : 'O+')
   ).trim().toUpperCase();
 
-  // Check if current user is already selected/confirmed by the poster
-  const existingMyReply = (post?.replies || []).find((r) => {
-    const uid = currentUser?.id || currentUser?.userId;
-    const uphone = currentUser?.phone || currentUser?.whatsappPhone;
-    return (
-      (uid && (r.responderId === uid || r.userId === uid)) ||
-      (uphone && r.responderPhone && r.responderPhone.replace(/\D/g, '') === uphone.replace(/\D/g, ''))
-    );
-  });
+  // Check if current user is already selected/confirmed by the poster (never match post owner as donor)
+  const isCurrentUserPostOwner = Boolean(post && currentUser && checkIsPostOwner(currentUser, post));
+  const existingMyReply = !isCurrentUserPostOwner
+    ? (post?.replies || []).find((r) => {
+        const uid = currentUser?.id || currentUser?.userId || (currentUser as any)?.uid;
+        const uphone = String(currentUser?.phone || currentUser?.whatsappPhone || (currentUser as any)?.whatsappNumber || '').replace(/\D/g, '');
+        const rph = String(r.responderPhone || '').replace(/\D/g, '');
+        return (
+          (uid && r.responderId !== 'helper_user' && (r.responderId === uid || r.userId === uid)) ||
+          (uphone.length >= 9 && rph.length >= 9 && rph.slice(-9) === uphone.slice(-9))
+        );
+      })
+    : undefined;
   const isSelectedByPoster = Boolean(
     existingMyReply && (existingMyReply.isConfirmed || existingMyReply.isAccepted)
   );

@@ -647,7 +647,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                   currentReplies.find((r: any) => r && !r.bloodReceivedConfirmed && Number(r.workflowStep || 0) < 5 && (r.isConfirmed || r.isAccepted)) ||
                   currentReplies.find((r: any) => r && !r.bloodReceivedConfirmed && Number(r.workflowStep || 0) < 5) ||
                   currentReplies[0];
-                const liveLoc = (selectedRep as any)?.donorLiveLocation || (p as any).donorLiveLocation;
+                const repLoc = (selectedRep as any)?.donorLiveLocation;
+                const postLoc = (p as any).donorLiveLocation;
+                const liveLoc =
+                  repLoc && postLoc
+                    ? Number(postLoc.updatedAtMs || 0) >= Number(repLoc.updatedAtMs || 0)
+                      ? postLoc
+                      : repLoc
+                    : postLoc || repLoc;
                 const hasLiveOrAck = Boolean(
                   (liveLoc && typeof liveLoc.lat === 'number' && typeof liveLoc.lng === 'number') ||
                     (selectedRep as any)?.step3GuidelinesAccepted
@@ -932,6 +939,172 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       window.removeEventListener('sahaya_stop_alert_for_post', handlePostDeletedCleanup);
     };
   }, [ringingSupportAlert]);
+
+  // 📡 Background Step 3 Donor Live Location GPS Broadcaster: keeps streaming donor GPS to Firestore & blood_requests even if SupportOffersModal is closed (e.g. while Donor uses Google Maps navigation)
+  const pausedBloodLiveLocIdsRef = useRef<Set<string>>(new Set());
+  const [liveLocPauseTick, setLiveLocPauseTick] = useState(0);
+
+  useEffect(() => {
+    const handleLiveLocState = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail || !detail.postId) return;
+      const pid = String(detail.postId);
+      if (detail.paused) {
+        pausedBloodLiveLocIdsRef.current.add(pid);
+      } else {
+        pausedBloodLiveLocIdsRef.current.delete(pid);
+      }
+      setLiveLocPauseTick((t) => t + 1);
+    };
+    window.addEventListener('sahaya_donor_live_loc_state', handleLiveLocState);
+    return () => window.removeEventListener('sahaya_donor_live_loc_state', handleLiveLocState);
+  }, []);
+
+  const activeStep3DonorBloodPost = useMemo(() => {
+    if (!user || user.isDemo) return null;
+    const myIds = new Set(
+      [user.userId, (user as any).uid, user.id, user.nicNumber, (user as any).nic]
+        .filter(Boolean)
+        .map((v) => String(v).trim().toLowerCase())
+    );
+    const myPhone = String(user.whatsappPhone || user.phone || (user as any).whatsappNumber || '').replace(/\D/g, '');
+    const myName = String(user.name || '').trim().toLowerCase();
+
+    return (helpPosts || []).find((p: any) => {
+      if (!p || !p.id || p.isDeleted || p.status === 'deleted') return false;
+      if (pausedBloodLiveLocIdsRef.current.has(String(p.id))) return false;
+      const isBlood =
+        p.postType !== 'blood_donation_honor' &&
+        (p.postType === 'blood_request' ||
+          p.serviceType === 'blood_donation' ||
+          String(p.postCode || '').toUpperCase().startsWith('#BLD-'));
+      if (!isBlood) return false;
+      if (checkIsPostOwner(user, p)) return false;
+
+      const step = Number(p.bloodWorkflowStep || 0);
+      const isDone = Boolean(
+        p.isResolved ||
+          p.status === 'resolved' ||
+          p.status === 'fulfilled' ||
+          p.isFulfilled ||
+          p.bloodDonatedByHelper ||
+          step >= 4
+      );
+      if (isDone) return false;
+      if (!p.isConfirmed && step !== 3) return false;
+
+      const replies = Array.isArray(p.replies) ? p.replies : [];
+      const selectedRep = replies.find(
+        (r: any) => r && !r.declinedByPoster && !r.bloodReceivedConfirmed && (r.isConfirmed || r.isAccepted)
+      );
+      if (selectedRep && (selectedRep.bloodDonatedByHelper || Number(selectedRep.workflowStep || 0) >= 4)) {
+        return false;
+      }
+
+      const confId = String(p.confirmedHelperId || selectedRep?.responderId || '').trim().toLowerCase();
+      const confPh = String(p.confirmedHelperPhone || selectedRep?.responderPhone || '').replace(/\D/g, '');
+      const confNm = String(p.confirmedHelperName || selectedRep?.responderName || '').trim().toLowerCase();
+
+      if (confId && confId !== 'helper_user' && myIds.has(confId)) return true;
+      if (confPh.length >= 9 && myPhone.length >= 9 && confPh.slice(-9) === myPhone.slice(-9)) return true;
+      if (confNm && myName && confNm !== 'සහායක' && confNm !== 'පරිත්‍යාගශීලියා' && confNm === myName) return true;
+
+      try {
+        const rawSaved =
+          localStorage.getItem(`sahaya_my_blood_offer_${p.id}`) ||
+          (p.postCode ? localStorage.getItem(`sahaya_my_blood_offer_${String(p.postCode).trim().toUpperCase()}`) : null);
+        if (rawSaved) {
+          const saved = JSON.parse(rawSaved);
+          const sUid = String(saved.responderId || '').trim().toLowerCase();
+          if (sUid && sUid !== 'helper_user' && myIds.size > 0 && !myIds.has(sUid)) return false;
+          if (selectedRep && saved.replyId && String(saved.replyId) === String(selectedRep.id)) return true;
+          if (saved.responderPhone && confPh.length >= 9 && String(saved.responderPhone).replace(/\D/g, '').slice(-9) === confPh.slice(-9)) return true;
+        }
+      } catch {}
+
+      return false;
+    }) || null;
+  }, [helpPosts, user, liveLocPauseTick]);
+
+  useEffect(() => {
+    if (!activeStep3DonorBloodPost || typeof navigator === 'undefined' || !navigator.geolocation) return;
+    let active = true;
+    let lastPushMs = 0;
+    let watchId: number | null = null;
+    const targetId = String(activeStep3DonorBloodPost.id);
+    const targetCode = activeStep3DonorBloodPost.postCode;
+    const destLat =
+      typeof (activeStep3DonorBloodPost as any).hospitalPinLat === 'number'
+        ? (activeStep3DonorBloodPost as any).hospitalPinLat
+        : typeof activeStep3DonorBloodPost.latitude === 'number'
+        ? activeStep3DonorBloodPost.latitude
+        : null;
+    const destLng =
+      typeof (activeStep3DonorBloodPost as any).hospitalPinLng === 'number'
+        ? (activeStep3DonorBloodPost as any).hospitalPinLng
+        : typeof activeStep3DonorBloodPost.longitude === 'number'
+        ? activeStep3DonorBloodPost.longitude
+        : null;
+
+    const pushGpsFix = (pos: GeolocationPosition, force = false) => {
+      if (!active) return;
+      const now = Date.now();
+      if (!force && now - lastPushMs < 5000) return;
+      lastPushMs = now;
+      const distKm =
+        destLat !== null && destLng !== null
+          ? calculateDistanceKm(pos.coords.latitude, pos.coords.longitude, destLat, destLng)
+          : undefined;
+      const liveLoc = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        updatedAt: new Date().toLocaleTimeString('si-LK', { hour: '2-digit', minute: '2-digit' }),
+        updatedAtMs: now,
+        distanceKm: distKm,
+      };
+      try {
+        const rawBlood = localStorage.getItem('sahaya_blood_requests');
+        if (rawBlood) {
+          const parsedBlood = JSON.parse(rawBlood);
+          if (Array.isArray(parsedBlood)) {
+            const nextBlood = parsedBlood.map((b: any) =>
+              b && (String(b.id) === targetId || (targetCode && b.postCode && String(b.postCode).toUpperCase() === String(targetCode).toUpperCase()))
+                ? { ...b, donorLiveLocation: liveLoc }
+                : b
+            );
+            localStorage.setItem('sahaya_blood_requests', JSON.stringify(nextBlood));
+            window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+          }
+        }
+      } catch {}
+      updateHelpPostInFirestore(targetId, {
+        donorLiveLocation: liveLoc,
+        ...(targetCode ? { postCode: targetCode } : {}),
+      } as any).catch(() => {});
+    };
+
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => pushGpsFix(pos, true),
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 12000 }
+      );
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => pushGpsFix(pos, false),
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+      );
+    } catch {}
+
+    return () => {
+      active = false;
+      if (watchId !== null) {
+        try {
+          navigator.geolocation.clearWatch(watchId);
+        } catch {}
+      }
+    };
+  }, [activeStep3DonorBloodPost?.id]);
   const [editingPost, setEditingPost] = useState<HelpPost | null>(null);
   const [editingQuickServicePost, setEditingQuickServicePost] = useState<HelpPost | null>(null);
   const [editingFindForMePost, setEditingFindForMePost] = useState<HelpPost | null>(null);
@@ -1391,7 +1564,15 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         if (p.id === updatedPost.id || (upCode && pCode && pCode === upCode)) {
           found = true;
           if (p.id !== updatedPost.id) matchedAltId = p.id;
-          return { ...p, ...updatedPost, id: p.id };
+          const badOwner = (v: any) => !v || ['blood_requester', 'anonymous_user', 'helper_user', 'unknown'].includes(String(v).trim().toLowerCase());
+          return {
+            ...p,
+            ...updatedPost,
+            id: p.id,
+            userId: !badOwner((updatedPost as any).userId) ? (updatedPost as any).userId : p.userId,
+            authorId: !badOwner((updatedPost as any).authorId) ? (updatedPost as any).authorId : (p as any).authorId,
+            actualAuthorId: !badOwner((updatedPost as any).actualAuthorId) ? (updatedPost as any).actualAuthorId : (p as any).actualAuthorId,
+          };
         }
         return p;
       });
@@ -2662,7 +2843,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       {/* 1.5. Quick Service Real-time Negotiation Chat Modal (Node 5) */}
       <QuickServiceChatModal
         isOpen={Boolean(selectedPostForChat)}
-        post={selectedPostForChat ? ((helpPosts || []).find((p) => p && p.id === selectedPostForChat.id) || selectedPostForChat) : null}
+        post={selectedPostForChat ? ((helpPosts || []).find((p) => p && (p.id === selectedPostForChat.id || (selectedPostForChat.postCode && p.postCode && String(p.postCode).trim().toUpperCase() === String(selectedPostForChat.postCode).trim().toUpperCase()))) || selectedPostForChat) : null}
         onClose={() => setSelectedPostForChat(null)}
         currentUser={user}
         lang={language}

@@ -598,7 +598,9 @@ const myReply = !ownerCheck
       if (r.responderId && myUserId && myUserId !== 'anonymous_guest' && String(r.responderId) === String(myUserId)) return true;
       const rPhone = (r.responderPhone || '').replace(/\D/g, '');
       if (normCurrentPhone.length >= 9 && rPhone.length >= 9 && normCurrentPhone.slice(-9) === rPhone.slice(-9)) return true;
-      if (currentUser?.name && r.responderName && currentUser.name.trim().toLowerCase() === r.responderName.trim().toLowerCase()) return true;
+      const rNameLower = String(r.responderName || '').trim().toLowerCase();
+      const uNameLower = String(currentUser?.name || '').trim().toLowerCase();
+      if (uNameLower && rNameLower && rNameLower !== 'සහායක' && rNameLower !== 'පරිත්‍යාගශීලියා' && uNameLower === rNameLower) return true;
       return false;
     })
   : null;
@@ -764,7 +766,7 @@ const renderInteractiveActionBar = () => {
           : cardBloodStep === 4
           ? getLangText(`👉 පියවර 4/4: ලේ ලැබුණා තහවුරු කරන්න`, `👉 Step 4/4: Confirm Blood`, `👉 படி 4/4: உறுதிப்படுத்தவும்`)
           : cardBloodStep === 3
-          ? getLangText(`⏳ පියවර 3/4 • පරිත්‍යාගශීලීන් (${offersCount})`, `⏳ Step 3/4 • Donors (${offersCount})`, `⏳ படி 3/4 (${offersCount})`)
+          ? getLangText(`🚗 පියවර 3/4 • Live Track / රැඳී සිටින්න`, `🚗 Step 3/4 • Live Track`, `🚗 படி 3/4 • Live Track`)
           : cardBloodStep === 2
           ? getLangText(`👉 පියවර 2/4: පරිත්‍යාගශීලියා තෝරන්න (${offersCount})`, `👉 Step 2/4: Select Donor (${offersCount})`, `👉 படி 2/4 (${offersCount})`)
           : getLangText(`🩸 පරිත්‍යාගශීලීන් (${offersCount})`, `🩸 Donors (${offersCount})`, `🩸 கொடையாளர்கள் (${offersCount})`)

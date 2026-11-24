@@ -56,6 +56,7 @@ interface FlattenedOffer {
   reply: PostReply;
   isSelected: boolean;
   isPostOwner: boolean;
+  isMineOffer?: boolean;
 }
 
 function extractParsedBloodDetails(post: any) {
@@ -367,7 +368,12 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     }
   };
 
-  const myUserId = String(currentUser?.userId || currentUser?.id || '').trim();
+  const myUserId = String(currentUser?.userId || (currentUser as any)?.uid || currentUser?.id || '').trim();
+  const myUserIds = new Set(
+    [currentUser?.userId, (currentUser as any)?.uid, currentUser?.id, currentUser?.nicNumber, (currentUser as any)?.nic]
+      .filter(Boolean)
+      .map((v) => String(v).trim().toLowerCase())
+  );
   const myPhone = String(currentUser?.whatsappPhone || currentUser?.phone || (currentUser as any)?.whatsappNumber || '').replace(/\D/g, '');
   const myName = String(currentUser?.name || '').trim().toLowerCase();
   const isAdminUser = checkIsAdmin(currentUser);
@@ -389,7 +395,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     // A blood post owner/requester is NEVER matched as the donor of their own request
     if (post && checkIsPostOwner(currentUser, post)) return false;
     const rId = String(rep.responderId || '').trim();
-    if (rId && myUserId && rId !== 'helper_user' && rId === myUserId) return true;
+    if (rId && rId !== 'helper_user' && myUserIds.has(rId.toLowerCase())) return true;
     const rPhone = String(rep.responderPhone || '').replace(/\D/g, '');
     if (rPhone.length >= 9 && myPhone.length >= 9 && rPhone.slice(-9) === myPhone.slice(-9)) return true;
     const rName = String(rep.responderName || '').trim().toLowerCase();
@@ -406,8 +412,15 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
           const saved = JSON.parse(rawSaved);
           const savedUid = String(saved.responderId || '').trim();
           // Ignore stale localStorage entry left by another account on the same browser
-          if (savedUid && savedUid !== 'helper_user' && myUserId && savedUid !== myUserId) {
+          if (savedUid && savedUid !== 'helper_user' && myUserIds.size > 0 && !myUserIds.has(savedUid.toLowerCase())) {
             return false;
+          }
+          if (savedUid === 'helper_user' && myUserIds.size > 0) {
+            const savedPh = String(saved.responderPhone || '').replace(/\D/g, '');
+            const savedNm = String(saved.responderName || '').trim().toLowerCase();
+            const phoneFitsMe = myPhone.length >= 9 && savedPh.length >= 9 && savedPh.slice(-9) === myPhone.slice(-9);
+            const nameFitsMe = Boolean(myName && savedNm && !genericDonorNames.has(savedNm) && savedNm === myName);
+            if (!phoneFitsMe && !nameFitsMe) return false;
           }
           if (saved.replyId && rep.id && String(saved.replyId) === String(rep.id)) return true;
           if (saved.responderPhone && rPhone.length >= 9 && String(saved.responderPhone).slice(-9) === rPhone.slice(-9)) return true;
@@ -477,6 +490,14 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         const preferIncomingCycle =
           incomingUnitsRec > existingUnitsRec ||
           (incomingUnitsRec === existingUnitsRec && incomingTs > existingTs);
+        const pickOwnerField = (...vals: any[]): string => {
+          const placeholders = new Set(['blood_requester', 'anonymous_user', 'red_alert_reporter', 'helper_user', 'guest_user', 'usr_guest', 'unknown']);
+          for (const v of vals) {
+            const s = String(v || '').trim();
+            if (s && !placeholders.has(s.toLowerCase())) return s;
+          }
+          return '';
+        };
         const baseOrder = preferIncomingCycle ? { ...existing, ...p } : { ...p, ...existing };
         const advancedPintCycle = incomingUnitsRec !== existingUnitsRec;
         const newerCyclePost = incomingUnitsRec > existingUnitsRec ? p : existing;
@@ -484,6 +505,14 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         deduped[existingIdx] = {
           ...baseOrder,
           id: existing.id,
+          userId: pickOwnerField(existing.userId, p.userId) || baseOrder.userId,
+          authorId: pickOwnerField((existing as any).authorId, (p as any).authorId) || (baseOrder as any).authorId,
+          actualAuthorId: pickOwnerField((existing as any).actualAuthorId, (p as any).actualAuthorId) || (baseOrder as any).actualAuthorId,
+          actualAuthorName: pickOwnerField((existing as any).actualAuthorName, (p as any).actualAuthorName) || (baseOrder as any).actualAuthorName,
+          actualAuthorPhone: pickOwnerField((existing as any).actualAuthorPhone, (p as any).actualAuthorPhone) || (baseOrder as any).actualAuthorPhone,
+          userPhone: pickOwnerField(existing.userPhone, p.userPhone) || baseOrder.userPhone,
+          contactNumber: pickOwnerField((existing as any).contactNumber, (p as any).contactNumber) || (baseOrder as any).contactNumber,
+          contactPersonName: pickOwnerField((existing as any).contactPersonName, (p as any).contactPersonName) || (baseOrder as any).contactPersonName,
           replies: mergedReps,
           repliesCount: mergedReps.length,
           unitsReceived: Math.max(existingUnitsRec, incomingUnitsRec) || undefined,
@@ -577,6 +606,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
           reply: rep,
           isSelected,
           isPostOwner: effectiveIsOwner,
+          isMineOffer: isMine && !effectiveIsOwner,
         });
       });
     } else if (post.isConfirmed && (post.confirmedHelperName || post.confirmedBy) && (rawIsOwner || isAdminUser || isTargetMatch)) {
@@ -593,6 +623,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
         },
         isSelected: true,
         isPostOwner: true,
+        isMineOffer: false,
       });
     }
   });
@@ -893,8 +924,26 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
       };
       if (!liveLocActiveRef.current) return;
       try {
+        if (typeof localStorage !== 'undefined') {
+          const rawBlood = localStorage.getItem('sahaya_blood_requests');
+          if (rawBlood) {
+            const parsedBlood = JSON.parse(rawBlood);
+            if (Array.isArray(parsedBlood)) {
+              const nextBlood = parsedBlood.map((b: any) =>
+                b && (String(b.id) === String(targetPostId) || (post.postCode && b.postCode && String(b.postCode).toUpperCase() === String(post.postCode).toUpperCase()))
+                  ? { ...b, donorLiveLocation: liveLoc }
+                  : b
+              );
+              localStorage.setItem('sahaya_blood_requests', JSON.stringify(nextBlood));
+              window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+            }
+          }
+        }
+      } catch {}
+      try {
         await updateHelpPostInFirestore(targetPostId, {
           donorLiveLocation: liveLoc,
+          ...(post.postCode ? { postCode: post.postCode } : {}),
         } as any);
       } catch {}
     };
@@ -974,8 +1023,14 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   const handleToggleShareLocation = (post: HelpPost, reply: PostReply) => {
     if (isSharingLocation) {
       stopLiveLocationWatch();
+      try {
+        window.dispatchEvent(new CustomEvent('sahaya_donor_live_loc_state', { detail: { postId: post.id, paused: true } }));
+      } catch {}
       return;
     }
+    try {
+      window.dispatchEvent(new CustomEvent('sahaya_donor_live_loc_state', { detail: { postId: post.id, paused: false } }));
+    } catch {}
     startLiveLocationWatch(post, reply, false);
   };
 
@@ -1406,7 +1461,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
               const posterName = (off.post as any).contactPersonName || off.post.userName || 'දැන්වීම්කරු';
               const posterPhone = (off.post as any).contactNumber || off.post.userPhone || off.post.contactPhone || '';
               const isBloodOffer = isBloodPostCheck(off.post);
-              const isMineOffer = isMyReplyMatch(off.reply, off.post);
+              const isMineOffer = Boolean((off.isMineOffer ?? isMyReplyMatch(off.reply, off.post)) && !off.isPostOwner);
 
               const otherPartyName = off.isPostOwner ? helperName : posterName;
               const otherPartyPhone = off.isPostOwner ? helperPhone : posterPhone;
@@ -1710,7 +1765,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                       {/* STEP 3: Selected Donor ONLY sees Pre-Donation Guidelines + Patient Details + "ඔව්, මම ලේ පරිත්‍යාගය සිදු කළෙමි" button; Blood Requester (Poster) NEVER sees that button and instead sees Live Donor Location Tracking + Waiting Message */}
                       {currentStep === 3 &&
                         (off.isSelected || off.isPostOwner) &&
-                        (!off.isPostOwner && off.isSelected ? (
+                        (isMineOffer && !off.isPostOwner && off.isSelected ? (
                           <div className="space-y-3.5 text-left">
                             {/* Selection Notice Banner */}
                             <div className="p-3 rounded-2xl bg-emerald-600 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-sm">
@@ -1926,7 +1981,14 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                           /* POSTER STEP 3 VIEW: Live Donor Location Tracking ABOVE + "ලේ පරිත්‍යාගය සිදු කර අවසන්වනතුරු රැඳී සිටින්න" Waiting Message (NEVER shows Donor's "ඔව්, මම ලේ පරිත්‍යාගය සිදු කළෙමි" button) */
                           <div className="space-y-3.5">
                             {(() => {
-                              const liveLoc = (off.reply as any).donorLiveLocation || (off.post as any).donorLiveLocation;
+                              const repLoc = (off.reply as any)?.donorLiveLocation;
+                              const postLoc = (off.post as any)?.donorLiveLocation;
+                              const liveLoc =
+                                repLoc && postLoc
+                                  ? Number(postLoc.updatedAtMs || 0) >= Number(repLoc.updatedAtMs || 0)
+                                    ? postLoc
+                                    : repLoc
+                                  : postLoc || repLoc;
                               const hasLiveCoords = Boolean(
                                 liveLoc && typeof liveLoc.lat === 'number' && typeof liveLoc.lng === 'number'
                               );

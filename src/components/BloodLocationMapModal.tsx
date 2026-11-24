@@ -524,9 +524,19 @@ export const BloodRouteMap: React.FC<BloodRouteMapProps> = ({
     }).addTo(map);
 
     leafletMapRef.current = map;
-    const t = setTimeout(() => map.invalidateSize(), 200);
+    const t1 = setTimeout(() => map.invalidateSize(), 180);
+    const t2 = setTimeout(() => map.invalidateSize(), 500);
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && mapRef.current) {
+      ro = new ResizeObserver(() => {
+        try { map.invalidateSize(); } catch {}
+      });
+      ro.observe(mapRef.current);
+    }
     return () => {
-      clearTimeout(t);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      if (ro) ro.disconnect();
       dropMarkerRef.current = null;
       donorMarkerRef.current = null;
       routeLineRef.current = null;
@@ -609,6 +619,7 @@ export const BloodRouteMap: React.FC<BloodRouteMapProps> = ({
       }
       map.setView([targetLat, targetLng], 15);
     }
+    try { map.invalidateSize(); } catch {}
   }, [targetLat, targetLng, myLat, myLng, donorName, isPosterView]);
 
   const distanceKm =

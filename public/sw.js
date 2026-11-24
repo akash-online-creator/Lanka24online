@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sahaya-sewa-v18';
+const CACHE_NAME = 'sahaya-sewa-v19';
 
 const PRECACHE_ASSETS = ['/', '/index.html', '/manifest.json', '/logo.jpg', '/mixkit-manual-siren-fire-alert-1652.wav', '/siren.wav'];
 

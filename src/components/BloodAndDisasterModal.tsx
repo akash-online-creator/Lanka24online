@@ -254,7 +254,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       return;
     }
 
-    const actualAuthorIdVal = currentUser?.userId || (currentUser as any)?.id || currentUser?.nicNumber || (currentUser as any)?.nic || '';
+    const actualAuthorIdVal = currentUser?.userId || (currentUser as any)?.uid || (currentUser as any)?.id || currentUser?.nicNumber || (currentUser as any)?.nic || '';
     const actualAuthorNameVal = currentUser?.name || '';
     const actualAuthorPhoneVal = currentUser?.phone || (currentUser as any)?.whatsappPhone || (currentUser as any)?.whatsappNumber || '';
 
@@ -281,7 +281,12 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       createdAt: 'දැන් (Just now)',
       createdAtMs: Date.now(),
       userId: actualAuthorIdVal,
-    };
+      authorId: actualAuthorIdVal,
+      actualAuthorId: actualAuthorIdVal,
+      actualAuthorName: actualAuthorNameVal,
+      actualAuthorPhone: actualAuthorPhoneVal,
+      userPhone: actualAuthorPhoneVal || newContactPhone,
+    } as any;
 
     try {
       if (typeof localStorage !== 'undefined') {
@@ -419,8 +424,22 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
         [...(Array.isArray(matched.replies) ? matched.replies : []), ...reqReplies],
         matched
       );
+      const pickStr = (...vals: any[]) => {
+        const bad = new Set(['blood_requester', 'anonymous_user', 'helper_user', 'guest_user', 'usr_guest', 'unknown']);
+        for (const v of vals) {
+          const s = String(v || '').trim();
+          if (s && !bad.has(s.toLowerCase())) return s;
+        }
+        return '';
+      };
       return {
         ...matched,
+        userId: pickStr(matched.userId, (req as any).actualAuthorId, req.userId) || matched.userId || req.userId || 'blood_requester',
+        authorId: pickStr((matched as any).authorId, (req as any).authorId, (req as any).actualAuthorId, matched.userId, req.userId),
+        actualAuthorId: pickStr((matched as any).actualAuthorId, (req as any).actualAuthorId, (matched as any).authorId, matched.userId, req.userId),
+        actualAuthorName: pickStr((matched as any).actualAuthorName, (req as any).actualAuthorName),
+        actualAuthorPhone: pickStr((matched as any).actualAuthorPhone, (req as any).actualAuthorPhone),
+        userPhone: pickStr(matched.userPhone, (req as any).userPhone, (req as any).actualAuthorPhone, req.contactPhone),
         bloodGroup: matched.bloodGroup || req.bloodGroup,
         patientName: (matched as any).patientName || req.patientName,
         hospitalName: (matched as any).hospitalName || req.hospitalName,
@@ -473,9 +492,13 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       whatIsNeeded: `රෝගී නම: ${req.patientName} • ලේ වර්ගය: ${req.bloodGroup} • අවශ්‍ය ඒකක: ${req.unitsNeeded} • රෝහල: ${req.hospitalName} • දිස්ත්‍රික්කය: ${req.district} • අවශ්‍ය දිනය: ${req.neededDate || 'කඩිනමින්'} • සම්බන්ධීකාරක: ${req.contactName || 'සම්බන්ධීකාරක'} (${req.contactPhone})`,
       locationName: `${req.hospitalName}, ${req.district}`,
       district: req.district || 'කොළඹ',
-      userId: req.userId || 'blood_requester',
+      userId: (req as any).actualAuthorId || req.userId || 'blood_requester',
+      authorId: (req as any).authorId || (req as any).actualAuthorId || req.userId || '',
+      actualAuthorId: (req as any).actualAuthorId || req.userId || '',
+      actualAuthorName: (req as any).actualAuthorName || '',
+      actualAuthorPhone: (req as any).actualAuthorPhone || '',
       userName: req.contactName || req.patientName || 'දැන්වීම්කරු',
-      userPhone: req.contactPhone || '',
+      userPhone: (req as any).actualAuthorPhone || (req as any).userPhone || req.contactPhone || '',
       contactNumber: req.contactPhone || '',
       contactPersonName: req.contactName || req.patientName || 'දැන්වීම්කරු',
       helpersNeeded: req.unitsNeeded || 1,
@@ -529,15 +552,29 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
   const isPosterOfBloodReq = (req: BloodDonationRequest, linkedPost?: any) => {
     if (!currentUser || !req) return false;
     if (linkedPost && checkIsPostOwner(currentUser, linkedPost)) return true;
-    const userPhone = (currentUser.phone || (currentUser as any).whatsappNumber || '').replace(/\D/g, '');
-    const reqPhone = (req.contactPhone || '').replace(/\D/g, '');
-    return Boolean(
-      (userPhone && reqPhone && (userPhone === reqPhone || userPhone.slice(-7) === reqPhone.slice(-7))) ||
-      (currentUser?.name && req.contactName && currentUser?.name.trim().toLowerCase() === req.contactName.trim().toLowerCase()) ||
-      (currentUser.userId && req.userId && (currentUser.userId === req.userId || (currentUser as any).id === req.userId)) ||
-      ((currentUser as any).id && req.userId && ((currentUser as any).id === req.userId || currentUser.userId === req.userId)) ||
-      (currentUser.nicNumber && req.userId && currentUser.nicNumber === req.userId)
+    if (checkIsPostOwner(currentUser, req as any)) return true;
+    const userPhone = (currentUser.phone || (currentUser as any).whatsappPhone || (currentUser as any).whatsappNumber || '').replace(/\D/g, '');
+    const reqPhones = [req.contactPhone, (req as any).userPhone, (req as any).actualAuthorPhone]
+      .map((p) => String(p || '').replace(/\D/g, ''))
+      .filter((p) => p.length >= 9);
+    const myIds = new Set(
+      [currentUser.userId, (currentUser as any).uid, (currentUser as any).id, currentUser.nicNumber, (currentUser as any).nic]
+        .filter(Boolean)
+        .map((v) => String(v).trim().toLowerCase())
     );
+    const reqIds = [req.userId, (req as any).authorId, (req as any).actualAuthorId]
+      .filter(Boolean)
+      .map((v) => String(v).trim().toLowerCase())
+      .filter((v) => v && v !== 'blood_requester' && v !== 'anonymous_user');
+    const idMatch = reqIds.some((rid) => myIds.has(rid));
+    const phoneMatch = Boolean(userPhone.length >= 9 && reqPhones.some((rp) => rp.slice(-9) === userPhone.slice(-9)));
+    const uName = (currentUser?.name || '').trim().toLowerCase();
+    const rNames = [req.contactName, (req as any).actualAuthorName]
+      .filter(Boolean)
+      .map((n) => String(n).trim().toLowerCase())
+      .filter((n) => n && n !== 'සම්බන්ධීකාරක' && n !== 'දැන්වීම්කරු');
+    const nameMatch = Boolean(uName && rNames.includes(uName));
+    return Boolean(idMatch || phoneMatch || nameMatch);
   };
 
   const canDeleteBlood = (req: BloodDonationRequest) => {
@@ -701,7 +738,12 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
             createdAt: p.createdAt || 'දැන්',
             createdAtMs: p.createdAtMs || Date.now(),
             userId: p.userId,
-          });
+            authorId: (p as any).authorId,
+            actualAuthorId: (p as any).actualAuthorId,
+            actualAuthorName: (p as any).actualAuthorName,
+            actualAuthorPhone: (p as any).actualAuthorPhone,
+            userPhone: p.userPhone,
+          } as any);
         }
       }
     }
@@ -979,16 +1021,23 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                 const offersCount = activeRepliesList.length > 0 ? activeRepliesList.length : 0;
                 const reqUnitsTotal = Math.max(1, Number((linkedPost as any)?.unitsNeeded || req.unitsNeeded || 1));
                 const recUnitsTotal = Math.max(Number((linkedPost as any)?.unitsReceived || 0), Number((req as any).unitsReceived || 0));
-                const viewerPhone = (currentUser?.phone || (currentUser as any)?.whatsappNumber || '').replace(/\D/g, '');
+                const viewerPhone = (currentUser?.phone || (currentUser as any)?.whatsappPhone || (currentUser as any)?.whatsappNumber || '').replace(/\D/g, '');
+                const myViewerIds = new Set(
+                  [currentUser?.userId, (currentUser as any)?.uid, (currentUser as any)?.id, currentUser?.nicNumber]
+                    .filter(Boolean)
+                    .map((v) => String(v).trim().toLowerCase())
+                );
                 const myReply = !isPoster && currentUser
                   ? activeRepliesList.find((r: any) => {
                       if (!r) return false;
+                      const rId = String(r.responderId || '').trim().toLowerCase();
+                      if (rId && rId !== 'helper_user' && myViewerIds.has(rId)) return true;
                       const rPhone = String(r.responderPhone || '').replace(/\D/g, '');
-                      return Boolean(
-                        (r.responderId && (r.responderId === currentUser.userId || r.responderId === (currentUser as any).id)) ||
-                        (viewerPhone && rPhone && (viewerPhone === rPhone || viewerPhone.slice(-7) === rPhone.slice(-7))) ||
-                        (currentUser.name && r.responderName && currentUser.name.trim().toLowerCase() === String(r.responderName).trim().toLowerCase())
-                      );
+                      if (viewerPhone.length >= 9 && rPhone.length >= 9 && viewerPhone.slice(-9) === rPhone.slice(-9)) return true;
+                      const rName = String(r.responderName || '').trim().toLowerCase();
+                      const uName = String(currentUser.name || '').trim().toLowerCase();
+                      if (uName && rName && rName !== 'සහායක' && rName !== 'පරිත්‍යාගශීලියා' && uName === rName) return true;
+                      return false;
                     })
                   : null;
                 const isSupported = Boolean(myReply || (req.id ? supportedBloodIds.includes(req.id) : false));
